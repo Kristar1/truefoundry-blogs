@@ -1,0 +1,1194 @@
+
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway Series #10 — Agent Gateway: Stateful Execution</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB;
+    --kong:    #00D27B;
+    --portkey: #5A67FF;
+    --tf:      #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+
+  .series-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .tag-pill { display: inline-block; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace; padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase; }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer { background: #1a1200; border: 1px solid #3d2c00; color: var(--warn); font-size: .78rem; padding: .5rem 1rem; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; }
+
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre { background: #080c12; border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 0; }
+  .copy-btn { position: absolute; top: .55rem; right: .55rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: .68rem; padding: .22rem .55rem; border-radius: 5px; cursor: pointer; transition: all .15s ease; user-select: none; letter-spacing: .03em; line-height: 1.4; }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; } .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note { font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border); }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn { border-color: var(--warn); background: #1a1200; }
+  .callout.info { border-color: #60a5fa; background: #0a1220; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.info .callout-title { color: #60a5fa; }
+
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="series-bar">
+  <span class="tag-pill">AI Gateway Series</span>
+  <div class="series-dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot active" title="Blog 10 — Agent Gateway: Stateful Execution"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div>
+  </div>
+  <span class="tag-pill active">Blog 10 of 15</span>
+</div>
+
+<h1>Agent Gateway (Stateful Execution):<br>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 22 min read</span>
+  <span class="meta-item">🗓 March 2026</span>
+  <span class="meta-item">👤 Platform Engineering</span>
+  <div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 2026. Verify against current vendor docs before architectural decisions.</div>
+</div>
+
+<p style="font-size:.82rem; color: var(--muted);">Models referenced throughout this post reflect the production-current landscape as of this writing:</p>
+<div class="model-pills">
+  <span class="mpill openai">gpt-5.4</span>
+  <span class="mpill openai">gpt-5.4-pro</span>
+  <span class="mpill openai">gpt-5-mini</span>
+  <span class="mpill anthropic">claude-opus-4-6</span>
+  <span class="mpill anthropic">claude-sonnet-4-6</span>
+  <span class="mpill anthropic">claude-haiku-4-5</span>
+  <span class="mpill google">gemini-3.1-pro-preview</span>
+  <span class="mpill google">gemini-3-flash</span>
+  <span class="mpill google">gemini-3.1-flash-lite</span>
+</div>
+
+<!-- §0 TL;DR -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">🔥 Hypothetical Composite Scenario: One Automation, Many Governed Calls</div>
+  <p style="font-size:.78rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:.8rem;">This is a composite hypothetical illustrating a class of failure seen in agentic deployments. It is meant to explain the architectural pattern, not describe one specific incident.</p>
+  <p>An enterprise platform team deploys an autonomous remediation agent. To the business owner, it looks like one automation: read the ticket, inspect the codebase, propose a fix, run tests, and open a pull request. Under the hood, it is a chain of many LLM calls and tool invocations.</p>
+  <p>That is where agent gateway design matters. The gateway cannot just authenticate and route the first request; it has to carry identity, budgets, policy checks, and trace context across every call in the loop. Otherwise the riskiest and most expensive part of the workflow happens after the front door — leading to harder debugging, weaker spend control, and less trustworthy automation.</p>
+  <p><strong>Agent loops are governed call chains, not single requests.</strong> That is why this post evaluates gateways on four dimensions: connection lifecycle, tool-call governance, cross-call state, and traceable observability.</p>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-litellm">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">LiteLLM</div>
+    <div class="qp-desc">Redis-backed cross-call identity and budget state. Access groups bundle models + MCP servers + agents into one governed resource envelope. Best for teams needing multi-provider agent routing fast.</div>
+  </div>
+  <div class="qp-card c-kong">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Kong AI Gateway</div>
+    <div class="qp-desc">Dedicated MCP Traffic Gateway with AI MCP Proxy plugin. Converts MCP ↔ HTTP so tool traffic can traverse Kong's plugin ecosystem. Best for orgs already on Kong needing agentic protocol normalization.</div>
+  </div>
+  <div class="qp-card c-portkey">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Portkey</div>
+    <div class="qp-desc">OTel-compliant trace trees with W3C trace context for multi-step agent observability. Config-first fallback and circuit breaker for per-call resilience. Best for product teams needing trace-first agent governance.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">In the public docs reviewed here, TrueFoundry is the only platform explicitly documenting both four-hook MCP guardrails and a first-class async execution substrate. Its split-plane design keeps agent gateway support separate from orchestration/runtime: the gateway plane governs each LLM and MCP call, while async services handle the long-running loop.</div>
+  </div>
+</div>
+
+<!-- §1 WHY AGENT LOOPS STRESS GATEWAYS -->
+<h2>§1 — Why Agent Loops Break the Gateway Contract</h2>
+
+<p>Every AI gateway in this series was evaluated first against its LLM routing and load-balancing characteristics. Those capabilities matter for agents too — but they don't address the structural problem agents introduce. A synchronous chat completion is a request-response pair: one HTTP connection, one LLM call, one response. An agent loop is an orchestration graph: potentially dozens of LLM calls, tool invocations via MCP or REST, accumulated context state, and feedback cycles — all of which must be governed, observed, and protected while lasting far longer than any reasonable HTTP timeout.</p>
+
+<p>The gateway problems agents expose cluster into four categories:</p>
+
+<ul>
+  <li><strong>Connection lifecycle mismatch.</strong> Standard NGINX, ALB, and Kubernetes ingress timeouts sit between 30 and 300 seconds. Agent loops for complex tasks routinely run 5–20 minutes. Accumulated intermediate results and token context may be lost when the connection is severed, unless the application checkpoints state or externalizes orchestration progress. The fix is not simply "raise the timeout" — it requires either streaming intermediate progress via SSE, switching to a persistent WebSocket, or moving execution behind a queue-backed async service that decouples the client from the execution lifecycle.</li>
+  <li><strong>Tool-call governance gap.</strong> When a model calls a tool — whether via MCP, REST, or a function-calling schema — that tool call is a lateral API request that conventional gateways do not inspect. The model can be manipulated into invoking dangerous tools, passing malformed parameters, or leaking secrets through tool results. A gateway that only governs the LLM call but ignores the tool call has an unguarded injection surface.</li>
+  <li><strong>Cross-call budget and identity drift.</strong> A single agent run may cost orders of magnitude more than a single chat turn. An agent that burns through a team's daily token budget in one long loop is a real operational risk. Budget state, rate limit windows, and virtual key associations must persist across the full loop — not reset per HTTP request.</li>
+  <li><strong>Trace-level observability, not request-level.</strong> When an agent fails, the root cause is rarely the last LLM call. It may be a tool call three steps earlier that returned poisoned context. You need a trace tree — with spans for every LLM call, every tool invocation, every guardrail evaluation — not a flat request log.</li>
+</ul>
+
+<!-- OVERVIEW SVG: Agent Loop Anatomy -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 404" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="404" fill="#121826"/>
+  <text x="410" y="24" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Agent Loop Anatomy — Where Gateway Concerns Fire</text>
+  <text x="410" y="42" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">Each numbered step is a separate gateway concern; agent gateways must govern the full loop, not just ingress</text>
+
+  <!-- Step labels above timeline -->
+  <text x="90" y="70" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="600">Auth+Route</text>
+  <text x="195" y="70" text-anchor="middle" fill="#ffa726" font-size="9" font-weight="600">Tool ①</text>
+  <text x="290" y="70" text-anchor="middle" fill="#e8843a" font-size="9" font-weight="600">LLM call ①</text>
+  <text x="385" y="70" text-anchor="middle" fill="#ffa726" font-size="9" font-weight="600">Tool ②</text>
+  <text x="480" y="70" text-anchor="middle" fill="#e8843a" font-size="9" font-weight="600">LLM call ②</text>
+  <text x="575" y="70" text-anchor="middle" fill="#ffa726" font-size="9" font-weight="600">Tool ③</text>
+  <text x="670" y="70" text-anchor="middle" fill="#e8843a" font-size="9" font-weight="600">LLM call ③</text>
+  <text x="757" y="70" text-anchor="middle" fill="#50fa7b" font-size="9" font-weight="600">Result</text>
+
+  <!-- Timeline bar -->
+  <rect x="30" y="82" width="760" height="8" rx="4" fill="#1e2d45"/>
+  <!-- colored segments -->
+  <rect x="30" y="82" width="120" height="8" rx="4" fill="#00C2CB" fill-opacity=".7"/>
+  <rect x="155" y="82" width="80" height="8" fill="#ffa726" fill-opacity=".7"/>
+  <rect x="240" y="82" width="100" height="8" fill="#e8843a" fill-opacity=".7"/>
+  <rect x="345" y="82" width="80" height="8" fill="#ffa726" fill-opacity=".7"/>
+  <rect x="430" y="82" width="100" height="8" fill="#e8843a" fill-opacity=".7"/>
+  <rect x="535" y="82" width="80" height="8" fill="#ffa726" fill-opacity=".7"/>
+  <rect x="620" y="82" width="100" height="8" fill="#e8843a" fill-opacity=".7"/>
+  <rect x="725" y="82" width="65" height="8" rx="4" fill="#50fa7b" fill-opacity=".7"/>
+
+  <!-- Concern boxes -->
+  <!-- Connection lifecycle -->
+  <rect x="30" y="114" width="760" height="40" rx="5" fill="#0a0e16" stroke="#1e2d45"/>
+  <text x="40" y="129" fill="#7a8899" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace">CONNECTION LIFECYCLE</text>
+  <text x="40" y="144" fill="#4a5568" font-size="8.3">Long-running loop; stream progress or hand off to an async execution surface</text>
+
+  <!-- Identity + budget -->
+  <rect x="30" y="164" width="370" height="42" rx="5" fill="#001d1e" stroke="#00C2CB" stroke-opacity=".4"/>
+  <text x="40" y="179" fill="#00C2CB" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace">IDENTITY &amp; BUDGET STATE</text>
+  <text x="40" y="194" fill="#4a5568" font-size="8.3">Virtual key, team budget, and rate limits must persist across the full loop</text>
+
+  <!-- Tool call governance -->
+  <rect x="410" y="164" width="380" height="42" rx="5" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="420" y="179" fill="#FF5533" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace">TOOL-CALL GOVERNANCE</text>
+  <text x="420" y="193" fill="#6b7280" font-size="8.1">Each tool call needs auth, parameter checks,</text>
+  <text x="420" y="204" fill="#6b7280" font-size="8.1">and safety checks before + after execution</text>
+
+  <!-- Trace observability -->
+  <rect x="30" y="216" width="760" height="42" rx="5" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".4"/>
+  <text x="40" y="231" fill="#5A67FF" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace">TRACE-LEVEL OBSERVABILITY</text>
+  <text x="40" y="246" fill="#4a5568" font-size="8.3">Span-per-call trace tree with shared context across LLM calls and tool invocations</text>
+
+  <!-- Coverage matrix per vendor -->
+  <text x="30" y="282" fill="#7a8899" font-size="10" font-weight="700" font-family="IBM Plex Mono, monospace">COVERAGE BY PLATFORM</text>
+  <line x1="30" y1="288" x2="790" y2="288" stroke="#1e2d45"/>
+
+  <!-- Headers -->
+  <text x="220" y="304" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="700">LiteLLM</text>
+  <text x="380" y="304" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">Kong</text>
+  <text x="540" y="304" text-anchor="middle" fill="#5A67FF" font-size="9" font-weight="700">Portkey</text>
+  <text x="700" y="304" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="700">TrueFoundry</text>
+
+  <!-- Row: connection lifecycle -->
+  <text x="100" y="325" fill="#7a8899" font-size="9">Connection lifecycle</text>
+  <text x="220" y="325" text-anchor="middle" fill="#ffa726" font-size="11">⚠</text>
+  <text x="380" y="325" text-anchor="middle" fill="#ffa726" font-size="11">⚠</text>
+  <text x="540" y="325" text-anchor="middle" fill="#ffa726" font-size="11">⚠</text>
+  <text x="700" y="325" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+
+  <!-- Row: identity + budget -->
+  <text x="100" y="345" fill="#7a8899" font-size="9">Identity &amp; budget state</text>
+  <text x="220" y="345" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+  <text x="380" y="345" text-anchor="middle" fill="#ffa726" font-size="11">⚠</text>
+  <text x="540" y="345" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+  <text x="700" y="345" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+
+  <!-- Row: tool-call governance -->
+  <text x="100" y="365" fill="#7a8899" font-size="9">Tool-call governance</text>
+  <text x="220" y="365" text-anchor="middle" fill="#ffa726" font-size="11">⚠</text>
+  <text x="380" y="365" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+  <text x="540" y="365" text-anchor="middle" fill="#ffa726" font-size="11">⚠</text>
+  <text x="700" y="365" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+
+  <!-- Row: trace observability -->
+  <text x="100" y="385" fill="#7a8899" font-size="9">Trace-level observability</text>
+  <text x="220" y="385" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+  <text x="380" y="385" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+  <text x="540" y="385" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+  <text x="700" y="385" text-anchor="middle" fill="#50fa7b" font-size="11">✓</text>
+</svg>
+</div>
+<div class="img-caption">Agent loop timeline showing where each gateway concern fires. The real question is not whether a platform can accept the first request, but whether it can govern every repeated LLM and tool call across the full loop.</div>
+
+<p>Each gateway in this review addresses these concerns to varying degrees. The critical architectural distinction is that <strong>the gateway layer governs individual calls</strong> — each LLM request, each tool invocation. It does not (and should not) maintain the agent's reasoning state or conversation history. That state belongs to the application or the execution substrate. What differs between platforms is: how many of these call-level concerns they govern natively, whether their parent platform provides an async execution substrate for the full loop, and how those two layers are integrated.</p>
+
+<hr>
+
+<!-- §2 LITELLM -->
+<div class="vendor-header litellm">
+  <span class="vendor-badge">LiteLLM</span>
+  <span class="vendor-title">§2 — Redis-Backed Identity State + MCP Access Groups</span>
+</div>
+
+<h3>Architecture for Agents</h3>
+<p>LiteLLM's most important contribution to agent governance is architectural: the proxy server validates virtual key identity, checks budget state, and applies rate limits <em>before</em> the router sees a request. As documented on the <a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank" rel="noopener noreferrer">proxy architecture page</a>, this pipeline — virtual key validation → Redis/in-memory cache lookup → database fallback → per-key, per-user, per-team, and global rate-limit checks → router → provider — fires on every single call in an agent loop. The Redis cache ensures that key lookup and budget state are consistent across calls without a database round trip for each LLM request, which matters when an agent makes 15+ calls in rapid succession.</p>
+
+<p>For agent resource bundling, the <a href="https://docs.litellm.ai/docs/proxy/access_groups" target="_blank" rel="noopener noreferrer">access groups page</a> documents a capability that is particularly well-suited to multi-tool agents: a single access group can bundle models, MCP servers, and agents, then be attached to a key or team. That means a virtual key issued to an agent service automatically scopes the entire set of resources that service is allowed to invoke — not just the LLM endpoints. Budget and rate limits then apply to all calls made under that key, regardless of whether they are LLM calls or pass-through calls to external agent APIs.</p>
+
+<p>LiteLLM also exposes a <a href="https://docs.litellm.ai/docs/proxy/pass_through" target="_blank" rel="noopener noreferrer">pass-through endpoint</a> capability for routing requests to any external API with centralized authentication, spend tracking, and budgeting applied. This is the mechanism for pulling orchestrator APIs, rerankers, or custom tool endpoints under the same budget envelope as the LLM calls, giving a unified cost picture across a long agent run. At the guardrail layer, LiteLLM supports <code>pre_call</code>, <code>during_call</code>, and <code>post_call</code> execution modes, documented in the <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank" rel="noopener noreferrer">guardrails quick start</a>, plus <a href="https://docs.litellm.ai/docs/proxy/guardrails/prompt_injection" target="_blank" rel="noopener noreferrer">in-memory prompt injection detection</a> using similarity checks and LLM evaluation.</p>
+
+<div class="code-wrap"><pre><span class="cm"># LiteLLM: Multi-model agent routing with budget governance across a long loop
+# Sources: routing-load-balancing · provider_budget_routing · keys_teams_router_settings</span>
+<span class="key">model_list</span>:
+  - <span class="key">model_name</span>: <span class="str">code-agent</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">anthropic/claude-opus-4-6</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/ANTHROPIC_API_KEY</span>
+      <span class="key">weight</span>: <span class="num">70</span>
+      <span class="key">tpm</span>: <span class="num">100000</span>
+      <span class="key">rpm</span>: <span class="num">300</span>
+
+  - <span class="key">model_name</span>: <span class="str">code-agent</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4-6</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/ANTHROPIC_API_KEY</span>
+      <span class="key">weight</span>: <span class="num">30</span>
+      <span class="key">tpm</span>: <span class="num">200000</span>
+      <span class="key">rpm</span>: <span class="num">500</span>
+
+  - <span class="key">model_name</span>: <span class="str">code-agent-fallback</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">openai/gpt-5.4</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/OPENAI_API_KEY</span>
+
+<span class="key">router_settings</span>:
+  <span class="key">routing_strategy</span>: <span class="str">latency-based-routing</span>
+  <span class="key">num_retries</span>: <span class="num">3</span>
+  <span class="key">fallbacks</span>:
+    - <span class="str">code-agent</span>: [<span class="str">code-agent-fallback</span>]
+  <span class="key">provider_budget_config</span>:
+    <span class="key">anthropic</span>:
+      <span class="key">budget_limit</span>: <span class="num">500.0</span>
+      <span class="key">time_period</span>: <span class="str">1d</span>
+    <span class="key">openai</span>:
+      <span class="key">budget_limit</span>: <span class="num">200.0</span>
+      <span class="key">time_period</span>: <span class="str">1d</span>
+
+<span class="cm"># Guardrails shown here are illustrative; access groups are documented separately
+# for bundling models + MCP servers + agents under one key policy</span>
+<span class="key">guardrails</span>:
+  - <span class="key">guardrail_name</span>: <span class="str">agent-prompt-safety</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">guardrail</span>: <span class="str">presidio</span>
+      <span class="key">mode</span>: [<span class="str">pre_call</span>, <span class="str">post_call</span>]
+      <span class="key">pii_entities_config</span>:
+        <span class="key">CREDIT_CARD</span>: <span class="str">MASK</span>
+        <span class="key">EMAIL_ADDRESS</span>: <span class="str">MASK</span>
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Sources: <a href="https://docs.litellm.ai/docs/routing-load-balancing" target="_blank" rel="noopener noreferrer">routing-load-balancing</a> · <a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank" rel="noopener noreferrer">provider_budget_routing</a> · <a href="https://docs.litellm.ai/docs/proxy/access_groups" target="_blank" rel="noopener noreferrer">access_groups</a> · <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank" rel="noopener noreferrer">guardrails/quick_start</a></div>
+
+<!-- LiteLLM SVG -->
+<div class="svg-wrap">
+<svg viewBox="0 0 680 230" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="680" height="230" fill="#121826"/>
+  <text x="340" y="22" text-anchor="middle" fill="#00C2CB" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">LITELLM — AGENT REQUEST PIPELINE (PER CALL IN LOOP)</text>
+  <defs><marker id="la" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00C2CB"/></marker></defs>
+
+  <!-- Agent loop caller -->
+  <rect x="10" y="65" width="90" height="55" rx="5" fill="#1a2233" stroke="#4a5568"/>
+  <text x="55" y="85" text-anchor="middle" fill="#7a8899" font-size="9" font-weight="600">Agent Loop</text>
+  <text x="55" y="100" text-anchor="middle" fill="#4a5568" font-size="8">Call N of 14</text>
+  <text x="55" y="113" text-anchor="middle" fill="#4a5568" font-size="8">bearer key</text>
+
+  <!-- Step 1: Virtual key + budget -->
+  <line x1="100" y1="92" x2="130" y2="92" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+  <rect x="132" y="52" width="130" height="80" rx="6" fill="#001d1e" stroke="#00C2CB" stroke-width="1.5"/>
+  <text x="197" y="74" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="700">Virtual Key</text>
+  <text x="197" y="88" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="700">+ Budget Check</text>
+  <text x="197" y="103" text-anchor="middle" fill="#7a8899" font-size="8">Redis/cache → DB fallback</text>
+  <text x="197" y="117" text-anchor="middle" fill="#7a8899" font-size="8">per-key/team/global</text>
+
+  <!-- Step 2: Rate limit -->
+  <line x1="262" y1="92" x2="292" y2="92" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+  <rect x="294" y="60" width="110" height="64" rx="6" fill="#001d1e" stroke="#00C2CB"/>
+  <text x="349" y="82" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="700">Rate Limit</text>
+  <text x="349" y="96" text-anchor="middle" fill="#7a8899" font-size="8">TPM · RPM</text>
+  <text x="349" y="110" text-anchor="middle" fill="#7a8899" font-size="8">key / user / team</text>
+
+  <!-- Step 3: Router -->
+  <line x1="404" y1="92" x2="434" y2="92" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+  <rect x="436" y="55" width="100" height="74" rx="6" fill="#001d1e" stroke="#00C2CB"/>
+  <text x="486" y="78" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="700">Router</text>
+  <text x="486" y="93" text-anchor="middle" fill="#7a8899" font-size="8">latency-based</text>
+  <text x="486" y="107" text-anchor="middle" fill="#7a8899" font-size="8">+ fallback chain</text>
+
+  <!-- Providers -->
+  <line x1="536" y1="78" x2="575" y2="65" stroke="#e8843a" stroke-width="1.2"/>
+  <line x1="536" y1="92" x2="575" y2="92" stroke="#e8843a" stroke-width="1.2"/>
+  <line x1="536" y1="106" x2="575" y2="121" stroke="#10a37f" stroke-width="1.2"/>
+  <rect x="577" y="52" width="90" height="26" rx="4" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="622" y="69" text-anchor="middle" fill="#e8843a" font-size="9">claude-opus-4-6</text>
+  <rect x="577" y="82" width="90" height="26" rx="4" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="622" y="99" text-anchor="middle" fill="#e8843a" font-size="9">claude-sonnet-4-6</text>
+  <rect x="577" y="110" width="90" height="26" rx="4" fill="#0a1a14" stroke="#10a37f"/>
+  <text x="622" y="127" text-anchor="middle" fill="#10a37f" font-size="9">gpt-5.4 (fallback)</text>
+
+  <!-- Redis annotation -->
+  <rect x="132" y="152" width="130" height="28" rx="4" fill="#0a0e16" stroke="#1e2d45"/>
+  <text x="197" y="170" text-anchor="middle" fill="#4a5568" font-size="8">Redis/cache reduces DB round trips</text>
+  <line x1="197" y1="132" x2="197" y2="150" stroke="#1e2d45" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <!-- Access groups -->
+  <rect x="294" y="152" width="240" height="28" rx="4" fill="#0a0e16" stroke="#1e2d45"/>
+  <text x="414" y="166" text-anchor="middle" fill="#4a5568" font-size="8"><tspan x="414" dy="0">Access group: models + MCP servers + agents</tspan><tspan x="414" dy="10">→ one key scope</tspan></text>
+
+  <!-- Pass-through note -->
+  <text x="340" y="205" text-anchor="middle" fill="#7a8899" font-size="9">Pass-through endpoints extend budget tracking to tool APIs and orchestrator calls</text>
+  <text x="340" y="220" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: docs.litellm.ai/docs/proxy/architecture · access_groups · pass_through</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM fires the full identity + budget + rate-limit pipeline on every call in the agent loop. Redis ensures consistent state without a database round trip per call. Editorial reconstruction based on LiteLLM architecture docs.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — No Native Async Execution Substrate</div>
+  <p>LiteLLM is a proxy, not an execution runtime. It governs each call within an agent loop excellently, but it has no native mechanism for handling the full loop as a long-running async job. Your application or orchestration layer must handle the connection lifecycle problem — either by implementing SSE streaming, polling, or a queue-backed async worker. At 1000+ RPS, the deployment guide explicitly states Redis is required to prevent database connection exhaustion — meaning production agent deployments need Redis as a first-class infrastructure dependency, not an optimization.</p>
+</div>
+
+<hr>
+
+<!-- §3 KONG -->
+<div class="vendor-header kong">
+  <span class="vendor-badge">Kong</span>
+  <span class="vendor-title">§3 — MCP Protocol Adapter with Shared Plugin Governance</span>
+</div>
+
+<h3>Architecture for Agents</h3>
+<p>Kong's answer to agent governance is protocol-level: the <a href="https://developer.konghq.com/plugins/ai-mcp-proxy/" target="_blank" rel="noopener noreferrer">AI MCP Proxy plugin</a> converts MCP requests into standard HTTP calls and returns responses in MCP format. This is architecturally significant because MCP tool traffic can then traverse Kong's existing plugin ecosystem, letting many of the same governance controls — auth, rate limiting, prompt guards, and audit logs — apply to tool calls without requiring a separate governance surface. The <a href="https://developer.konghq.com/mcp/" target="_blank" rel="noopener noreferrer">MCP Traffic Gateway</a> documentation explicitly frames this as applying security, governance, and observability controls to MCP servers using available Kong plugins.</p>
+
+<p>For the connection lifecycle problem, Kong documents a <code>response_streaming</code> configuration parameter in the <a href="https://developer.konghq.com/ai-gateway/streaming/" target="_blank" rel="noopener noreferrer">streaming guide</a> with <code>allow</code>, <code>deny</code>, and <code>always</code> modes. This governs how streaming output is handled through the gateway data plane — including the <code>include_usage</code> flag that lets the gateway surface token usage statistics in the final SSE frame of a streaming response. AI Proxy Advanced extends streaming support for multi-target scenarios, including a <code>response_buffer_size</code> setting (documented in the <a href="https://developer.konghq.com/plugins/ai-aws-guardrails/" target="_blank" rel="noopener noreferrer">AI AWS Guardrails plugin</a>) to control how streaming output is chunked for guardrail inspection — a critical capability when running content-safety checks on streamed agent outputs.</p>
+
+<p>Kong's observability for agent workloads is also strong: the <a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank" rel="noopener noreferrer">metrics page</a> documents that AI metrics can include a <code>request_mode</code> label (from Kong v3.12) with values <code>oneshot</code>, <code>stream</code>, and <code>realtime</code>, making it possible to separately track and alarm on streaming vs. non-streaming agent traffic in Prometheus. The <a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank" rel="noopener noreferrer">Gen AI OTel attributes reference</a> documents rich span metadata including operation name, provider name, model name, and request parameters.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Kong: illustrative pseudo-config for MCP Traffic Gateway + AI Proxy Advanced
+# Sources: ai-mcp-proxy · ai-proxy-advanced · ai-rate-limiting-advanced</span>
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">services</span>:
+  - <span class="key">name</span>: <span class="str">agent-llm-service</span>
+    <span class="key">url</span>: <span class="str">http://localhost</span>
+    <span class="key">routes</span>:
+      - <span class="key">name</span>: <span class="str">llm-route</span>
+        <span class="key">paths</span>: [<span class="str">/v1/chat/completions</span>]
+      - <span class="key">name</span>: <span class="str">mcp-route</span>
+        <span class="key">paths</span>: [<span class="str">/mcp</span>]
+
+<span class="key">plugins</span>:
+  <span class="cm"># Prompt injection blocking on agent inputs — deny takes precedence</span>
+  - <span class="key">name</span>: <span class="str">ai-prompt-guard</span>
+    <span class="key">service</span>: <span class="str">agent-llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">deny_patterns</span>:
+        - <span class="str">"\x5C\x78E2\x5C\x78\x38\x30[\x5C\x78\x38B-\x5C\x78\x38D]"</span>
+
+  <span class="cm"># Converts MCP requests → standard HTTP so all Kong plugins govern tool calls</span>
+  - <span class="key">name</span>: <span class="str">ai-mcp-proxy</span>
+    <span class="key">service</span>: <span class="str">agent-llm-service</span>
+
+  <span class="cm"># Multi-provider LLM routing for each reasoning call in the agent loop</span>
+  - <span class="key">name</span>: <span class="str">ai-proxy-advanced</span>
+    <span class="key">service</span>: <span class="str">agent-llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">balancer</span>:
+        <span class="key">algorithm</span>: <span class="str">lowest-latency</span>
+        <span class="key">latency_strategy</span>: <span class="str">tpot</span>
+        <span class="key">max_fails</span>: <span class="num">3</span>
+        <span class="key">fail_timeout</span>: <span class="num">30</span>
+      <span class="key">targets</span>:
+        - <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">x-api-key</span>
+            <span class="key">header_value</span>: <span class="str">"{vault://aws/anthropic-key}"</span>
+          <span class="key">model</span>:
+            <span class="key">provider</span>: <span class="str">anthropic</span>
+            <span class="key">name</span>: <span class="str">claude-opus-4-6</span>
+        - <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">Authorization</span>
+            <span class="key">header_value</span>: <span class="str">"{vault://aws/openai-key}"</span>
+          <span class="key">model</span>:
+            <span class="key">provider</span>: <span class="str">openai</span>
+            <span class="key">name</span>: <span class="str">gpt-5.4</span>
+
+  <span class="cm"># Token- and cost-aware quota per consumer across the agent session</span>
+  - <span class="key">name</span>: <span class="str">ai-rate-limiting-advanced</span>
+    <span class="key">service</span>: <span class="str">agent-llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">llm_providers</span>:
+        - <span class="key">name</span>: <span class="str">anthropic</span>
+          <span class="key">limit</span>: [<span class="num">500</span>, <span class="num">50000</span>]
+          <span class="key">window_size</span>: [<span class="num">60</span>, <span class="num">3600</span>]
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative pseudo-config. Sources: <a href="https://developer.konghq.com/plugins/ai-mcp-proxy/" target="_blank" rel="noopener noreferrer">ai-mcp-proxy</a> · <a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank" rel="noopener noreferrer">ai-proxy-advanced</a> · <a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/" target="_blank" rel="noopener noreferrer">ai-rate-limiting-advanced</a> · <a href="https://developer.konghq.com/ai-gateway/streaming/" target="_blank" rel="noopener noreferrer">streaming</a></div>
+
+<!-- Kong SVG -->
+<div class="svg-wrap">
+<svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="720" height="240" fill="#121826"/>
+  <text x="360" y="22" text-anchor="middle" fill="#00D27B" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">KONG — MCP PROTOCOL ADAPTER + PLUGIN CHAIN</text>
+  <defs>
+    <marker id="ka" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00D27B"/></marker>
+    <marker id="ka2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#4a5568"/></marker>
+  </defs>
+
+  <!-- LLM call path label -->
+  <text x="30" y="60" fill="#7a8899" font-size="8" font-family="IBM Plex Mono, monospace">LLM CALL PATH</text>
+  <!-- MCP tool call path label -->
+  <text x="30" y="150" fill="#7a8899" font-size="8" font-family="IBM Plex Mono, monospace">MCP TOOL CALL PATH</text>
+
+  <!-- LLM path -->
+  <rect x="30" y="65" width="65" height="34" rx="4" fill="#1a2233" stroke="#4a5568"/><text x="62" y="86" text-anchor="middle" fill="#7a8899" font-size="9">Agent LLM</text>
+  <line x1="95" y1="82" x2="118" y2="82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#ka2)"/>
+  <rect x="120" y="58" width="80" height="48" rx="5" fill="#001e13" stroke="#00D27B" stroke-opacity=".7"/>
+  <text x="160" y="78" text-anchor="middle" fill="#00D27B" font-size="8" font-weight="700">Auth + Rate</text>
+  <text x="160" y="91" text-anchor="middle" fill="#4a5568" font-size="7">ai-rate-limiting-adv</text>
+  <text x="160" y="101" text-anchor="middle" fill="#4a5568" font-size="7">Consumer identity</text>
+  <line x1="200" y1="82" x2="223" y2="82" stroke="#00D27B" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#ka)"/>
+  <rect x="225" y="58" width="80" height="48" rx="5" fill="#001e13" stroke="#00D27B" stroke-opacity=".7"/>
+  <text x="265" y="78" text-anchor="middle" fill="#00D27B" font-size="8" font-weight="700">Prompt Guard</text>
+  <text x="265" y="91" text-anchor="middle" fill="#4a5568" font-size="7">Regex + Unicode</text>
+  <text x="265" y="101" text-anchor="middle" fill="#4a5568" font-size="7">deny-first</text>
+  <line x1="305" y1="82" x2="328" y2="82" stroke="#00D27B" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#ka)"/>
+  <rect x="330" y="50" width="110" height="64" rx="5" fill="#001e13" stroke="#00D27B"/>
+  <text x="385" y="73" text-anchor="middle" fill="#00D27B" font-size="8" font-weight="700">AI Proxy Advanced</text>
+  <text x="385" y="87" text-anchor="middle" fill="#7a8899" font-size="7">lowest-latency (tpot)</text>
+  <text x="385" y="99" text-anchor="middle" fill="#7a8899" font-size="7">fallback + circuit break</text>
+  <text x="385" y="110" text-anchor="middle" fill="#4a5568" font-size="7">response_streaming: allow</text>
+  <line x1="440" y1="76" x2="545" y2="64" stroke="#e8843a" stroke-width="1.2"/>
+  <line x1="440" y1="90" x2="545" y2="96" stroke="#10a37f" stroke-width="1.2"/>
+  <rect x="545" y="52" width="115" height="24" rx="4" fill="#1a0f06" stroke="#e8843a" stroke-width="1.1"/>
+  <text x="602.5" y="67" text-anchor="middle" fill="#e8843a" font-size="8" font-weight="600">claude-opus-4-6</text>
+  <rect x="545" y="84" width="115" height="24" rx="4" fill="#0a1a14" stroke="#10a37f" stroke-width="1.1"/>
+  <text x="602.5" y="99" text-anchor="middle" fill="#10a37f" font-size="8" font-weight="600">gpt-5.4 (fallback)</text>
+
+  <!-- MCP path -->
+  <rect x="30" y="155" width="65" height="34" rx="4" fill="#1a2233" stroke="#4a5568"/><text x="62" y="176" text-anchor="middle" fill="#7a8899" font-size="9">MCP Tool</text>
+  <line x1="95" y1="172" x2="118" y2="172" stroke="#4a5568" stroke-width="1.5" marker-end="url(#ka2)"/>
+  <rect x="120" y="148" width="130" height="48" rx="5" fill="#001e13" stroke="#00D27B" stroke-width="1.5"/>
+  <text x="185" y="168" text-anchor="middle" fill="#00D27B" font-size="8" font-weight="700">AI MCP Proxy</text>
+  <text x="185" y="181" text-anchor="middle" fill="#7a8899" font-size="7">MCP → HTTP adapter</text>
+  <text x="185" y="191" text-anchor="middle" fill="#4a5568" font-size="7">many of the same controls can apply</text>
+  <line x1="250" y1="172" x2="273" y2="172" stroke="#00D27B" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#ka)"/>
+  <rect x="275" y="148" width="130" height="48" rx="5" fill="#001e13" stroke="#00D27B" stroke-opacity=".7"/>
+  <text x="340" y="168" text-anchor="middle" fill="#00D27B" font-size="8" font-weight="700">Shared Plugin Controls</text>
+  <text x="340" y="181" text-anchor="middle" fill="#7a8899" font-size="7">Rate limit · Guard · Logs</text>
+  <text x="340" y="191" text-anchor="middle" fill="#4a5568" font-size="7">many of the same controls</text>
+  <line x1="405" y1="172" x2="478" y2="172" stroke="#00D27B" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#ka)"/>
+  <rect x="482" y="156" width="120" height="32" rx="4" fill="#0a1220" stroke="#6ba3f5" stroke-opacity=".7"/>
+  <text x="542" y="176" text-anchor="middle" fill="#6ba3f5" font-size="8" font-weight="600">External Tool API</text>
+
+  <!-- Bottom note -->
+  <line x1="30" y1="212" x2="690" y2="212" stroke="#1e2d45" stroke-width="1"/>
+  <text x="360" y="228" text-anchor="middle" fill="#3a4a5a" font-size="8">AI MCP Proxy bridges the protocol gap — many of the same Kong plugin controls can apply to MCP tool traffic</text>
+</svg>
+</div>
+<div class="img-caption">Kong governs LLM calls through its existing AI gateway plugin stack and can extend many of those same controls to MCP tool traffic via the AI MCP Proxy adapter. Editorial reconstruction based on Kong MCP Traffic Gateway and AI Proxy Advanced docs.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — Enterprise Plugin Dependencies &amp; No Async Compute Plane</div>
+  <p>The MCP Traffic Gateway and AI MCP Proxy plugin are documented for Kong Enterprise. AI Proxy Advanced (required for multi-target balancing with streaming) requires a minimum Kong 3.8 and an enterprise license. As with LiteLLM, Kong has no native async execution substrate — the gateway governs each call in the loop, but you need separate infrastructure to handle the long-running loop itself. Always verify plugin version and license requirements against the <a href="https://developer.konghq.com/plugins/compatibility/" target="_blank" rel="noopener noreferrer">plugin compatibility reference</a>.</p>
+</div>
+
+<hr>
+
+<!-- §4 PORTKEY -->
+<div class="vendor-header portkey">
+  <span class="vendor-badge">Portkey</span>
+  <span class="vendor-title">§4 — Trace-First Agent Resilience via Composable Configs</span>
+</div>
+
+<h3>Architecture for Agents</h3>
+<p>Portkey's primary contribution to agent governance is observability depth combined with composable resilience. The <a href="https://portkey.ai/docs/product/observability/traces" target="_blank" rel="noopener noreferrer">tracing page</a> documents OTel-compliant tracing that groups related LLM calls into spans under a trace ID using a tree structure, with explicit support for W3C trace context. The docs describe this as suitable not only for single prompt-response flows but specifically for multi-step agentic and tool-augmented workflows. This trace-tree model makes Portkey one of the strongest options for diagnosing where inside an agent loop a failure occurred — something flat request logs cannot provide.</p>
+
+<p>Resilience for agent loops is handled through Portkey's config-first composable strategy graph. The <a href="https://portkey.ai/docs/product/ai-gateway/fallbacks" target="_blank" rel="noopener noreferrer">fallback</a>, <a href="https://portkey.ai/docs/product/ai-gateway/automatic-retries" target="_blank" rel="noopener noreferrer">retry</a>, and <a href="https://portkey.ai/docs/product/ai-gateway/circuit-breaker" target="_blank" rel="noopener noreferrer">circuit breaker</a> pages show that all three compose into the same JSON config object. The circuit breaker tracks per-strategy-path health with configurable failure thresholds, failure-rate percentages, cooldown intervals, and minimum request counts before statistical evaluation — making it a path-aware reliability control rather than a provider-global kill switch. For an agent making 14+ LLM calls, a circuit breaker that opens on a specific routing path after 3 failures prevents cost from accumulating on a broken execution branch.</p>
+
+<p>The <a href="https://portkey.ai/docs/product/observability/analytics" target="_blank" rel="noopener noreferrer">analytics page</a> surfaces a metric that directly validates agent resilience investment: the number of requests rescued by gateway strategies. That single metric tells you whether the retry/fallback/circuit-breaker investment in your agent config is actually firing and saving executions.</p>
+
+<div class="code-wrap"><pre>{
+  <span class="key">"strategy"</span>: { <span class="key">"mode"</span>: <span class="str">"fallback"</span> },
+  <span class="key">"targets"</span>: [
+    {
+      <span class="key">"strategy"</span>: { <span class="key">"mode"</span>: <span class="str">"loadbalance"</span> },
+      <span class="key">"targets"</span>: [
+        {
+          <span class="key">"provider"</span>: <span class="str">"@anthropic-prod"</span>,
+          <span class="key">"weight"</span>: <span class="num">0.7</span>,
+          <span class="key">"override_params"</span>: { <span class="key">"model"</span>: <span class="str">"claude-opus-4-6"</span> }
+        },
+        {
+          <span class="key">"provider"</span>: <span class="str">"@anthropic-prod"</span>,
+          <span class="key">"weight"</span>: <span class="num">0.3</span>,
+          <span class="key">"override_params"</span>: { <span class="key">"model"</span>: <span class="str">"claude-sonnet-4-6"</span> }
+        }
+      ]
+    },
+    {
+      <span class="key">"provider"</span>: <span class="str">"@openai-prod"</span>,
+      <span class="key">"override_params"</span>: { <span class="key">"model"</span>: <span class="str">"gpt-5.4"</span> }
+    }
+  ],
+  <span class="key">"retry"</span>: {
+    <span class="key">"attempts"</span>: <span class="num">3</span>,
+    <span class="key">"on_status_codes"</span>: [<span class="num">408</span>, <span class="num">429</span>, <span class="num">500</span>, <span class="num">503</span>]
+  }
+}
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative JSON object synthesized from documented Portkey config patterns. Sources: <a href="https://portkey.ai/docs/product/ai-gateway/fallbacks" target="_blank" rel="noopener noreferrer">portkey.ai — Fallbacks</a> · <a href="https://portkey.ai/docs/product/ai-gateway/load-balancing" target="_blank" rel="noopener noreferrer">Load Balancing</a> · <a href="https://portkey.ai/docs/product/ai-gateway/automatic-retries" target="_blank" rel="noopener noreferrer">Automatic Retries</a> · <a href="https://portkey.ai/docs/product/ai-gateway/circuit-breaker" target="_blank" rel="noopener noreferrer">Circuit Breaker</a> · <a href="https://portkey.ai/docs/product/ai-gateway/canary-testing" target="_blank" rel="noopener noreferrer">Canary Testing</a> · <a href="https://portkey.ai/docs/product/ai-gateway/request-timeouts" target="_blank" rel="noopener noreferrer">Request Timeouts</a></div>
+
+<!-- Portkey SVG -->
+<div class="svg-wrap">
+<svg viewBox="0 0 680 230" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="680" height="230" fill="#121826"/>
+  <text x="340" y="22" text-anchor="middle" fill="#5A67FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">PORTKEY — TRACE-TREE FOR MULTI-STEP AGENT VISIBILITY</text>
+  <defs><marker id="pa" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#5A67FF"/></marker></defs>
+
+  <!-- Left: Config -->
+  <rect x="20" y="48" width="150" height="140" rx="8" fill="#0a0c24" stroke="#5A67FF" stroke-dasharray="6,3"/>
+  <text x="95" y="68" text-anchor="middle" fill="#5A67FF" font-size="9" font-weight="700">Config Object</text>
+  <rect x="33" y="78" width="124" height="20" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/><text x="95" y="92" text-anchor="middle" fill="#7a8899" font-size="8">mode: fallback</text>
+  <rect x="33" y="102" width="124" height="20" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/><text x="95" y="116" text-anchor="middle" fill="#7a8899" font-size="8">mode: loadbalance</text>
+  <rect x="33" y="126" width="124" height="20" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/><text x="95" y="140" text-anchor="middle" fill="#7a8899" font-size="8">retry + circuit breaker</text>
+  <rect x="33" y="150" width="124" height="20" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/><text x="95" y="164" text-anchor="middle" fill="#7a8899" font-size="8">guardrails (hooks)</text>
+
+  <!-- Right: Trace tree -->
+  <line x1="170" y1="118" x2="205" y2="118" stroke="#5A67FF" stroke-width="1.5" marker-end="url(#pa)"/>
+  <rect x="208" y="40" width="220" height="156" rx="8" fill="#0a0c24" stroke="#5A67FF"/>
+  <text x="318" y="60" text-anchor="middle" fill="#5A67FF" font-size="9" font-weight="700">Trace Tree (W3C context)</text>
+  <!-- Trace node: root -->
+  <rect x="220" y="68" width="196" height="22" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".5"/>
+  <text x="318" y="83" text-anchor="middle" fill="#5A67FF" font-size="8">traceId: agent-run-001</text>
+  <!-- LLM calls as child spans -->
+  <line x1="230" y1="90" x2="230" y2="100" stroke="#5A67FF" stroke-opacity=".4"/>
+  <rect x="232" y="100" width="180" height="19" rx="2" fill="#080c12" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="322" y="113" text-anchor="middle" fill="#e8843a" font-size="7.5">span: LLM call 1 · claude-opus-4-6</text>
+  <rect x="232" y="122" width="180" height="19" rx="2" fill="#080c12" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="322" y="135" text-anchor="middle" fill="#ffa726" font-size="7.5">span: LLM call 2 · retried (429)</text>
+  <rect x="232" y="144" width="180" height="19" rx="2" fill="#080c12" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="322" y="157" text-anchor="middle" fill="#e8843a" font-size="7.5">span: LLM call 3 · claude-opus-4-6</text>
+  <rect x="232" y="166" width="180" height="19" rx="2" fill="#080c12" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="322" y="179" text-anchor="middle" fill="#10a37f" font-size="7.5">span: LLM call 4 · gpt-5.4 (fallback)</text>
+
+  <!-- Arrows to analytics -->
+  <line x1="428" y1="118" x2="460" y2="118" stroke="#5A67FF" stroke-width="1.5" marker-end="url(#pa)"/>
+  <rect x="463" y="80" width="190" height="80" rx="6" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".6"/>
+  <text x="558" y="100" text-anchor="middle" fill="#5A67FF" font-size="9" font-weight="700">Analytics</text>
+  <text x="558" y="116" text-anchor="middle" fill="#7a8899" font-size="8">rescued by gateway strategies</text>
+  <text x="558" y="130" text-anchor="middle" fill="#7a8899" font-size="8">Logs: retry / fallback state</text>
+  <text x="558" y="144" text-anchor="middle" fill="#7a8899" font-size="8">OTel export to any backend</text>
+
+  <text x="340" y="215" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: portkey.ai/docs/product/observability/traces · analytics · opentelemetry</text>
+</svg>
+</div>
+<div class="img-caption">Portkey's trace tree groups all spans for a multi-step agent run under one trace ID with W3C trace context. The analytics layer surfaces how many agent calls were rescued by gateway resilience strategies. Editorial reconstruction based on Portkey observability docs.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — MCP Governance Depth &amp; No Native Async Execution</div>
+  <p>Portkey features a dedicated MCP Gateway (GA in January 2026) that provides centralized authentication, RBAC, and observability for MCP servers. However, it governs traffic primarily at the gateway policy layer, and public docs do not currently detail per-tool-invocation mutation hooks equivalent to TrueFoundry. Furthermore, like LiteLLM, Portkey has no native async execution substrate — long agent loop management must be handled in application or orchestration code. The hybrid VPC data plane (Helm-deployed; documented at <a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank" rel="noopener noreferrer">enterprise/hybrid2</a>) keeps payload data in-network but the connection lifecycle problem remains an application concern.</p>
+</div>
+
+<hr>
+
+<!-- §5 TRUEFOUNDRY -->
+<div class="vendor-header tf">
+  <span class="vendor-badge">TrueFoundry</span>
+  <span class="vendor-title">§5 — K8s-Native Async Execution + Four-Hook MCP Guardrails</span>
+</div>
+
+<h3>Architecture for Agents</h3>
+<p>In the public docs reviewed here, TrueFoundry is the only platform explicitly documenting both the gateway governance problem and the execution substrate problem within one architecture. The gateway problem — governing each LLM and tool call — is addressed by the <strong>stateless Hono gateway plane</strong> with its four-hook guardrail system. The execution problem — running the full agent loop without connection timeouts — is addressed by the <strong>async service runtime</strong> in the compute plane.</p>
+
+<p>That separation matters operationally: gateway support for agent workloads is kept distinct from orchestration and runtime. The gateway plane proxies and governs LLM and MCP traffic, while orchestration state and long-running execution live in the control and compute planes rather than being fused into MCP itself.</p>
+
+<p>The gateway plane's four-hook model, documented in the <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank" rel="noopener noreferrer">guardrails overview</a>, is one of the most complete tool-call governance surfaces in this review. The four hooks are: <strong>LLM input</strong> (prompt injection, moderation, validation before any model sees the prompt), <strong>LLM output</strong> (hallucination checks, secrets detection, output filtering), <strong>MCP pre-tool</strong> (SQL injection checks, parameter validation, permission verification before tool execution), and <strong>MCP post-tool</strong> (secrets detection, PII redaction, result sanitization after tool execution). The docs explicitly call MCP hooks "critical for agentic workflows where a model autonomously invokes tools." This symmetric pre/post framing around tool execution is what differentiates TrueFoundry from gateways that do not explicitly document both MCP hook positions.</p>
+
+<p>The gateway plane architecture is intentionally stateless: documented at the <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank" rel="noopener noreferrer">gateway plane architecture page</a> as performing in-memory evaluation for rate limits, load balancing, authentication, and authorization on the hot path with no external calls unless cache is involved, and async queueing for logs and metrics. Multiple gateway plane pods can be deployed cross-region while configuration is managed centrally via a queue with HTTP fallback — making it horizontally scalable without coordination overhead.</p>
+
+<p>The response headers <code>x-tfy-resolved-model</code> and <code>x-tfy-applied-configurations</code>, documented on the <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank" rel="noopener noreferrer">headers page</a>, expose exactly which routing decisions and guardrail surfaces fired for each individual call in the loop. Combined with the <code>server-timing</code> header that breaks latency into authentication, guardrails, model call, and logging phases, this gives per-call observability depth that complements trace-level observability.</p>
+
+<p>For the connection lifecycle problem, the platform's <strong>async service runtime</strong> — documented in the <a href="https://www.truefoundry.com/docs/introduction-to-async-service" target="_blank" rel="noopener noreferrer">async service introduction</a> and <a href="https://www.truefoundry.com/docs/deploy-your-first-asyncservice" target="_blank" rel="noopener noreferrer">async service deployment</a> pages — provides a first-class K8s-native runtime for queue-backed long-running work. Async services are designed precisely for application behavior that is fundamentally queue-backed and should not be forced through synchronous request-response semantics. Deploying an agent loop as a TrueFoundry async service decouples client connection lifecycle from execution lifecycle: the agent run proceeds behind a queue while the platform's Kubernetes substrate manages the worker pods. This is a structural solution to the timeout problem, not a timeout-limit increase.</p>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry: Four-hook MCP guardrails for agent tool governance
+# Source: truefoundry.com/docs/ai-gateway/guardrails-configuration</span>
+<span class="key">name</span>: <span class="str">code-agent-guardrails</span>
+<span class="key">type</span>: <span class="str">gateway-guardrails-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">agent-mcp-safety-policy</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        - <span class="str">"team:agent-platform"</span>
+      <span class="key">models</span>:
+        - <span class="str">"code-agent"</span>
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"production"</span>
+    <span class="cm"># Hook 1: Check prompt before model sees it</span>
+    <span class="key">llm_input_guardrails</span>:
+      - <span class="str">"agent-group/prompt-injection-check"</span>
+    <span class="cm"># Hook 2: Check model output before returning to agent loop</span>
+    <span class="key">llm_output_guardrails</span>:
+      - <span class="str">"agent-group/secrets-detection"</span>
+      - <span class="str">"agent-group/hallucination-filter"</span>
+    <span class="cm"># Hook 3: Check tool call parameters before execution</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>:
+      - <span class="str">"agent-group/permission-validator"</span>
+      - <span class="str">"agent-group/parameter-sanitizer"</span>
+    <span class="cm"># Hook 4: Check tool results before returning to agent loop</span>
+    <span class="key">mcp_tool_post_invoke_guardrails</span>:
+      - <span class="str">"agent-group/pii-redactor"</span>
+      - <span class="str">"agent-group/result-safety-check"</span>
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank" rel="noopener noreferrer">guardrails-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank" rel="noopener noreferrer">guardrails-overview</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank" rel="noopener noreferrer">headers</a></div>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry: Latency-based routing for agent reasoning calls
+# Source: truefoundry.com/docs/ai-gateway/load-balancing-configuration</span>
+<span class="key">name</span>: <span class="str">agent-routing-policy</span>
+<span class="key">type</span>: <span class="str">gateway-load-balancing-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">code-agent-latency-routing</span>
+    <span class="key">type</span>: <span class="str">latency-based-routing</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        - <span class="str">"team:agent-platform"</span>
+      <span class="key">models</span>:
+        - <span class="str">"code-agent"</span>
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"production"</span>
+    <span class="key">load_balance_targets</span>:
+      - <span class="key">target</span>: <span class="str">"anthropic/claude-opus-4-6"</span>
+        <span class="key">retry_config</span>:
+          <span class="key">attempts</span>: <span class="num">2</span>
+          <span class="key">on_status_codes</span>: [<span class="num">429</span>, <span class="num">500</span>, <span class="num">503</span>]
+      - <span class="key">target</span>: <span class="str">"anthropic/claude-sonnet-4-6"</span>
+        <span class="key">retry_config</span>:
+          <span class="key">attempts</span>: <span class="num">2</span>
+          <span class="key">on_status_codes</span>: [<span class="num">429</span>, <span class="num">500</span>, <span class="num">503</span>]
+<span class="cm">---</span>
+<span class="cm"># TrueFoundry: Per-agent budget limiting
+# Source: truefoundry.com/docs/ai-gateway/budgetlimiting</span>
+<span class="key">name</span>: <span class="str">agent-budget-policy</span>
+<span class="key">type</span>: <span class="str">gateway-budget-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">agent-team-daily-budget</span>
+    <span class="key">when</span>:
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"production"</span>
+    <span class="key">limit_to</span>: <span class="num">150</span>
+    <span class="key">unit</span>: <span class="str">cost_per_day</span>
+    <span class="key">budget_applies_per</span>: [<span class="str">'metadata.team_id'</span>]
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Sources: <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank" rel="noopener noreferrer">load-balancing-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank" rel="noopener noreferrer">budgetlimiting</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank" rel="noopener noreferrer">ratelimiting</a></div>
+
+<!-- TrueFoundry Architecture SVG -->
+<div class="svg-wrap">
+<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="720" height="260" fill="#121826"/>
+  <text x="360" y="22" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">TRUEFOUNDRY — SPLIT-PLANE AGENT ARCHITECTURE</text>
+
+  <!-- Compute plane label -->
+  <rect x="15" y="38" width="220" height="185" rx="8" fill="#0d0906" stroke="#FF5533" stroke-opacity=".25" stroke-dasharray="6,4"/>
+  <text x="125" y="58" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="600" font-family="IBM Plex Mono, monospace">COMPUTE PLANE</text>
+  <!-- Async service box -->
+  <rect x="28" y="66" width="194" height="70" rx="6" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="125" y="84" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="700">Async Service</text>
+  <text x="125" y="98" text-anchor="middle" fill="#7a8899" font-size="8">Queue-backed agent loop</text>
+  <text x="125" y="111" text-anchor="middle" fill="#7a8899" font-size="8">Decouples client from execution lifecycle</text>
+  <text x="125" y="124" text-anchor="middle" fill="#4a5568" font-size="7">Queue-backed workers handle long tasks</text>
+  <!-- Job runner -->
+  <rect x="28" y="148" width="194" height="52" rx="6" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".3"/>
+  <text x="125" y="168" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="600">Jobs / Workflows</text>
+  <text x="125" y="182" text-anchor="middle" fill="#7a8899" font-size="8">Batch agent runs · DAG orchestration</text>
+  <text x="125" y="194" text-anchor="middle" fill="#4a5568" font-size="7">Flyte-backed · finite execution</text>
+
+  <!-- Gateway plane label -->
+  <rect x="248" y="38" width="330" height="185" rx="8" fill="#0d0906" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="413" y="58" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="600" font-family="IBM Plex Mono, monospace">AGENT GATEWAY PLANE (HONO · STATELESS)</text>
+
+  <!-- Four guardrail hooks -->
+  <rect x="260" y="66" width="140" height="28" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="330" y="83" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="600">Hook 1: LLM Input</text>
+
+  <rect x="260" y="100" width="140" height="28" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="330" y="117" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="600">Hook 2: LLM Output</text>
+
+  <rect x="260" y="134" width="140" height="28" rx="4" fill="#2a1508" stroke="#FF5533" stroke-width="1.5"/>
+  <text x="330" y="151" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="700">Hook 3: MCP Pre-Tool ★</text>
+
+  <rect x="260" y="168" width="140" height="28" rx="4" fill="#2a1508" stroke="#FF5533" stroke-width="1.5"/>
+  <text x="330" y="185" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="700">Hook 4: MCP Post-Tool ★</text>
+
+  <!-- Routing + budget blocks -->
+  <rect x="410" y="66" width="155" height="60" rx="4" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="487" y="84" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="600">Agent Gateway Support</text>
+  <text x="487" y="98" text-anchor="middle" fill="#7a8899" font-size="7.5">Separated from orchestration/runtime</text>
+  <text x="487" y="111" text-anchor="middle" fill="#7a8899" font-size="7.5">routing · budgets · guardrails</text>
+
+  <rect x="410" y="134" width="155" height="60" rx="4" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="487" y="153" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="600">Observability</text>
+  <text x="487" y="167" text-anchor="middle" fill="#7a8899" font-size="7.5">x-tfy-resolved-model header</text>
+  <text x="487" y="180" text-anchor="middle" fill="#7a8899" font-size="7.5">server-timing per-call phases</text>
+
+  <!-- Arrow: compute → gateway -->
+  <line x1="235" y1="118" x2="254" y2="118" stroke="#FF5533" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Providers on right -->
+  <rect x="592" y="38" width="114" height="185" rx="6" fill="#0d0906" stroke="#1e2d45"/>
+  <text x="649" y="58" text-anchor="middle" fill="#7a8899" font-size="8" font-family="IBM Plex Mono, monospace">PROVIDERS</text>
+  <rect x="602" y="66" width="94" height="22" rx="3" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="649" y="81" text-anchor="middle" fill="#e8843a" font-size="8">claude-opus-4-6</text>
+  <rect x="602" y="93" width="94" height="22" rx="3" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="649" y="108" text-anchor="middle" fill="#e8843a" font-size="8">claude-sonnet-4-6</text>
+  <rect x="602" y="120" width="94" height="22" rx="3" fill="#0a1a14" stroke="#10a37f"/>
+  <text x="649" y="135" text-anchor="middle" fill="#10a37f" font-size="8">gpt-5.4</text>
+  <line x1="578" y1="100" x2="600" y2="100" stroke="#FF5533" stroke-width="1.2"/>
+  <line x1="578" y1="118" x2="600" y2="118" stroke="#FF5533" stroke-width="1.2"/>
+  <line x1="578" y1="131" x2="600" y2="131" stroke="#FF5533" stroke-width="1.2"/>
+
+  <!-- Bottom notes -->
+  <text x="360" y="240" text-anchor="middle" fill="#7a8899" font-size="8.5">★ In the public docs reviewed here, TrueFoundry is the only platform explicitly documenting pre-tool AND post-tool hooks for MCP</text>
+  <text x="360" y="255" text-anchor="middle" fill="#3a4a5a" font-size="7.5">Source: truefoundry.com/docs/platform/gateway-plane-architecture · guardrails-overview · introduction-to-async-service</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's split-plane architecture makes the separation explicit: the compute plane handles the long-running agent loop as a queue-backed async service, while the agent gateway plane governs each individual LLM and MCP tool call with routing, budgets, observability, and four symmetric hooks. In the public docs reviewed here, TrueFoundry is the only platform explicitly documenting both layers together. Editorial reconstruction based on TrueFoundry platform and gateway docs.</div>
+
+<!-- TrueFoundry four-hook detail SVG -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="280" fill="#121826"/>
+  <text x="410" y="24" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">TrueFoundry Four-Hook Guardrail Model — Single MCP Tool Call in an Agent Loop</text>
+  <text x="410" y="42" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">Hook placement is symmetric: pre/post on both LLM calls and tool invocations</text>
+  <defs><marker id="tfa" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#FF5533"/></marker></defs>
+
+  <!-- Flow row 1: LLM path -->
+  <text x="30" y="78" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">LLM CALL ↓</text>
+
+  <!-- Agent request -->
+  <rect x="30" y="85" width="80" height="40" rx="5" fill="#1a2233" stroke="#4a5568"/>
+  <text x="70" y="101" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">Agent</text>
+  <text x="70" y="116" text-anchor="middle" fill="#7a8899" font-size="8">call N</text>
+
+  <line x1="110" y1="105" x2="138" y2="105" stroke="#FF5533" stroke-width="1.5" marker-end="url(#tfa)"/>
+
+  <!-- Hook 1 -->
+  <rect x="140" y="78" width="120" height="54" rx="5" fill="#1e0d08" stroke="#FF5533" stroke-width="1.5"/>
+  <text x="200" y="96" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="700">Hook 1 · LLM Input</text>
+  <text x="200" y="110" text-anchor="middle" fill="#7a8899" font-size="7.5">Prompt injection check</text>
+  <text x="200" y="122" text-anchor="middle" fill="#4a5568" font-size="7">Moderation · PII scan</text>
+
+  <line x1="260" y1="105" x2="288" y2="105" stroke="#FF5533" stroke-width="1.5" marker-end="url(#tfa)"/>
+
+  <!-- LLM -->
+  <rect x="290" y="78" width="120" height="54" rx="5" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="350" y="100" text-anchor="middle" fill="#e8843a" font-size="9" font-weight="600">claude-opus-4-6</text>
+  <text x="350" y="115" text-anchor="middle" fill="#7a8899" font-size="7.5">→ decides tool call</text>
+
+  <line x1="410" y1="105" x2="438" y2="105" stroke="#FF5533" stroke-width="1.5" marker-end="url(#tfa)"/>
+
+  <!-- Hook 2 -->
+  <rect x="440" y="78" width="120" height="54" rx="5" fill="#1e0d08" stroke="#FF5533" stroke-width="1.5"/>
+  <text x="500" y="96" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="700">Hook 2 · LLM Output</text>
+  <text x="500" y="110" text-anchor="middle" fill="#7a8899" font-size="7.5">Hallucination filter</text>
+  <text x="500" y="122" text-anchor="middle" fill="#4a5568" font-size="7">Secrets detection</text>
+
+  <line x1="560" y1="105" x2="560" y2="150" stroke="#FF5533" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#tfa)"/>
+  <text x="570" y="132" fill="#7a8899" font-size="8" font-style="italic">tool-call intent → MCP path</text>
+
+  <!-- Flow row 2: Tool path -->
+  <text x="30" y="168" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">MCP TOOL CALL ↓</text>
+
+  <!-- Hook 3 -->
+  <rect x="30" y="178" width="120" height="54" rx="5" fill="#1e0d08" stroke="#FF5533" stroke-width="2"/>
+  <text x="90" y="196" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="700">Hook 3 · MCP Pre-Tool</text>
+  <text x="90" y="210" text-anchor="middle" fill="#7a8899" font-size="7.5">Permission validator</text>
+  <text x="90" y="222" text-anchor="middle" fill="#4a5568" font-size="7">Param sanitizer · SQL check</text>
+
+  <line x1="150" y1="205" x2="178" y2="205" stroke="#FF5533" stroke-width="1.5" marker-end="url(#tfa)"/>
+
+  <!-- Tool execution -->
+  <rect x="180" y="178" width="120" height="54" rx="5" fill="#0a1220" stroke="#6ba3f5"/>
+  <text x="240" y="200" text-anchor="middle" fill="#6ba3f5" font-size="9" font-weight="600">MCP Tool Exec</text>
+  <text x="240" y="215" text-anchor="middle" fill="#7a8899" font-size="7.5">GitHub · DB · API</text>
+
+  <line x1="300" y1="205" x2="328" y2="205" stroke="#FF5533" stroke-width="1.5" marker-end="url(#tfa)"/>
+
+  <!-- Hook 4 -->
+  <rect x="330" y="178" width="120" height="54" rx="5" fill="#1e0d08" stroke="#FF5533" stroke-width="2"/>
+  <text x="390" y="196" text-anchor="middle" fill="#FF5533" font-size="8" font-weight="700">Hook 4 · MCP Post-Tool</text>
+  <text x="390" y="210" text-anchor="middle" fill="#7a8899" font-size="7.5">PII redactor</text>
+  <text x="390" y="222" text-anchor="middle" fill="#4a5568" font-size="7">Secrets scan · Result safety</text>
+
+  <line x1="450" y1="205" x2="478" y2="205" stroke="#FF5533" stroke-width="1.5" marker-end="url(#tfa)"/>
+
+  <!-- Result back to loop -->
+  <rect x="480" y="178" width="120" height="54" rx="5" fill="#1a2233" stroke="#4a5568"/>
+  <text x="540" y="200" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">Clean Result</text>
+  <text x="540" y="215" text-anchor="middle" fill="#7a8899" font-size="8">→ back to agent loop</text>
+
+  <text x="410" y="262" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: truefoundry.com/docs/ai-gateway/guardrails-overview · guardrails-getting-started · guardrails-configuration</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's four-hook model is symmetric: every tool call has a pre-invocation check (params, permissions) and a post-invocation check (output sanitization). In the public docs reviewed here, this is the only gateway explicitly documenting per-tool-call safety enforcement on both sides. Based on TrueFoundry guardrails docs; not an official vendor diagram.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — K8s Prerequisite &amp; Adoption Barrier</div>
+  <p>The async service runtime and the self-hosted gateway plane require a running Kubernetes cluster, domain, TLS certificate, image-pull credentials, and a control-plane API key. For teams without a dedicated K8s platform engineering function, this is a meaningful adoption barrier compared to LiteLLM's single Python container or Portkey's SaaS edge. The deployment guide at <a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank" rel="noopener noreferrer">deploy-gateway-plane</a> makes these prerequisites explicit. The platform offers a hosted control plane and gateway-SaaS deployment mode that reduces this overhead, but full self-hosting is where the async service runtime advantage is most pronounced.</p>
+</div>
+
+<hr>
+
+<!-- §6 FEATURE MATRIX -->
+<h2>§6 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation as of March 2026. ✅ = native, ⚠ = partial or requires customization, ❌ = not natively supported per current public docs.</p>
+
+<div class="matrix-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th style="color:var(--litellm)">LiteLLM</th>
+      <th style="color:var(--kong)">Kong AI GW</th>
+      <th style="color:var(--portkey)">Portkey</th>
+      <th style="color:var(--tf)">TrueFoundry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>MCP tool-call governance</strong></td>
+      <td><span class="partial">⚠</span> Access groups scope MCP servers to keys/teams; no per-call pre/post-tool checks</td>
+      <td><span class="check">✅</span> AI MCP Proxy adapts MCP → HTTP so Kong plugins can govern tool traffic (Enterprise)</td>
+      <td><span class="check">✅</span> Dedicated MCP Gateway (GA Jan 2026) provides centralized auth, RBAC, and observability; public docs do not detail per-tool mutation hooks</td>
+      <td><span class="check">✅</span> Explicit MCP pre-tool + post-tool guardrail hooks; both sides of execution governed</td>
+    </tr>
+    <tr>
+      <td><strong>Long-running agent execution substrate</strong></td>
+      <td><span class="cross">❌</span> Gateway only; application/orchestration layer must handle loop lifecycle and connection timeout</td>
+      <td><span class="partial">⚠</span> Streaming governance via <code>response_streaming</code> modes; no native async compute plane</td>
+      <td><span class="cross">❌</span> Gateway only; streaming pass-through; loop execution is application concern</td>
+      <td><span class="check">✅</span> First-class async services as K8s-native queue-backed runtime for long-running agent loops</td>
+    </tr>
+    <tr>
+      <td><strong>Cross-call identity + budget state</strong></td>
+      <td><span class="check">✅</span> Redis-backed key/budget/rate state persists across every call in the loop without DB round trips</td>
+      <td><span class="partial">⚠</span> Cost-aware rate limiting per consumer; no cumulative daily-budget routing across a loop</td>
+      <td><span class="check">✅</span> Budget limits, rate limits, workspace-level usage governance, and API-key/config-attached policy surfaces</td>
+      <td><span class="check">✅</span> <code>gateway-budget-config</code> with <code>budget_applies_per</code> metadata segmentation; daily cost windows</td>
+    </tr>
+    <tr>
+      <td><strong>Multi-provider fallback per LLM call</strong></td>
+      <td><span class="check">✅</span> <code>fallbacks</code> array; <code>num_retries</code>; EWMA latency routing</td>
+      <td><span class="check">✅</span> AI Proxy Advanced: fallback + circuit breaker via <code>max_fails</code> + <code>fail_timeout</code></td>
+      <td><span class="check">✅</span> Nested <code>mode: fallback</code> over <code>mode: loadbalance</code>; circuit breaker with failure-rate threshold</td>
+      <td><span class="check">✅</span> Latency/priority routing with retries, fallbacks, and SLA cutoff</td>
+    </tr>
+    <tr>
+      <td><strong>Streaming governance (SSE / chunked)</strong></td>
+      <td><span class="partial">⚠</span> Provider streaming passes through; no gateway-level streaming mode control</td>
+      <td><span class="check">✅</span> <code>response_streaming: allow/deny/always</code>; <code>include_usage</code> in final SSE frame; <code>response_buffer_size</code> for guardrail inspection</td>
+      <td><span class="partial">⚠</span> Streaming pass-through; no documented gateway streaming-mode policy</td>
+      <td><span class="partial">⚠</span> Streaming via provider; <code>server-timing</code> exposes per-call phase breakdowns, but no dedicated gateway streaming-mode policy is documented</td>
+    </tr>
+    <tr>
+      <td><strong>Trace-level observability for agent loops</strong></td>
+      <td><span class="check">✅</span> <code>x-litellm-call-id</code> per call; OTel callbacks (<code>callbacks: ["otel"]</code>); success/failure callbacks</td>
+      <td><span class="check">✅</span> Gen AI OTel attributes with <code>gen_ai.operation.name</code>, model, request params; <code>request_mode</code> label from v3.12</td>
+      <td><span class="check">✅</span> OTel-compliant trace trees; W3C trace context; multi-step agent span grouping documented</td>
+      <td><span class="check">✅</span> OTEL export; <code>x-tfy-applied-configurations</code> + <code>server-timing</code> expose per-call guardrail timing</td>
+    </tr>
+    <tr>
+      <td><strong>Prompt injection defense</strong></td>
+      <td><span class="check">✅</span> In-memory injection detection via similarity checks + LLM evaluation (<code>pre_call</code> mode)</td>
+      <td><span class="check">✅</span> AI Prompt Guard (deterministic regex); AI Semantic Prompt Guard (embedding-based)</td>
+      <td><span class="check">✅</span> Native <code>default.regexMatch</code> and partner guardrail checks (Lakera, Aporia, etc.)</td>
+      <td><span class="check">✅</span> LLM input guardrail hook; pluggable integration (Azure Content Safety, TFY PII)</td>
+    </tr>
+    <tr>
+      <td><strong>Tool result safety (post-tool check)</strong></td>
+      <td><span class="partial">⚠</span> <code>post_call</code> guardrail mode on LLM responses; tool results not inspected separately</td>
+      <td><span class="partial">⚠</span> AI Semantic Response Guard on LLM outputs; no dedicated MCP post-tool hook</td>
+      <td><span class="partial">⚠</span> LLM-response checks are documented; no explicit MCP post-tool surface is documented</td>
+      <td><span class="check">✅</span> Dedicated <code>mcp_tool_post_invoke_guardrails</code> hook; PII redactor + secrets scan on tool results</td>
+    </tr>
+    <tr>
+      <td><strong>Per-call observability headers</strong></td>
+      <td><span class="check">✅</span> <code>x-litellm-call-id</code> as stable correlation key across retries and callbacks</td>
+      <td><span class="partial">⚠</span> AI audit log per request; no per-call response header with routing decision</td>
+      <td><span class="partial">⚠</span> Logs surface cache/retry/fallback state; no per-call response header documenting gateway path</td>
+      <td><span class="check">✅</span> <code>x-tfy-resolved-model</code> + <code>x-tfy-applied-configurations</code> + <code>server-timing</code> on every response</td>
+    </tr>
+    <tr>
+      <td><strong>GitOps / YAML-native policy authoring</strong></td>
+      <td><span class="check">✅</span> <code>config.yaml</code>-first; deployable via Proxy CLI, Docker, Helm, or mounted config</td>
+      <td><span class="check">✅</span> decK declarative YAML; Konnect and self-managed topologies</td>
+      <td><span class="partial">⚠</span> Config JSON via SDK/API; no native YAML-on-disk GitOps flow documented</td>
+      <td><span class="check">✅</span> Typed YAML policy configs; <code>tfy apply</code> with <code>--dry-run</code> / <code>--show-diff</code></td>
+    </tr>
+    <tr>
+      <td><strong>Self-hosted data plane</strong></td>
+      <td><span class="check">✅</span> Fully self-hosted; Docker + K8s + Helm documented</td>
+      <td><span class="check">✅</span> Fully self-hosted (traditional, hybrid, db-less) + Konnect managed option</td>
+      <td><span class="partial">⚠</span> Hybrid: data plane in VPC via Helm; control dashboard remains in Portkey cloud</td>
+      <td><span class="check">✅</span> Self-hostable in-cluster gateway plane; control plane can also be self-hosted (enterprise)</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p style="font-size:.72rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-top:.3rem;">Feature claims cross-referenced against official public documentation. Verify before production decisions. Kong advanced AI features require enterprise license + minimum version.</p>
+
+<hr>
+
+<!-- §7 EDITORIAL VERDICT -->
+<h2>§7 — Editorial Verdict</h2>
+<p>Editorial assessments as of March 2026.</p>
+
+<div class="verdict-grid">
+  <div class="verdict-card litellm">
+    <div class="verdict-label">LiteLLM</div>
+    <div class="verdict-name">The Budget-State Workhorse</div>
+    <div class="verdict-text">LiteLLM's Redis-backed budget and identity state is highly practical for long agent loops: every LLM call inherits the same key, team, and budget context without a database round trip. Access groups for bundling models + MCP servers + agents into one governed resource envelope is the right abstraction. The gap is execution: there's no native mechanism for handling the loop's connection lifecycle.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Teams that already have an async job infrastructure and need per-call budget governance across multi-provider agent routing. Fast adoption path with Python + Redis.</div>
+  </div>
+  <div class="verdict-card kong">
+    <div class="verdict-label">Kong AI Gateway</div>
+    <div class="verdict-name">The Protocol Normalizer</div>
+    <div class="verdict-text">Kong's AI MCP Proxy is architecturally significant: it brings tool traffic into Kong's existing plugin ecosystem, so many of the same controls can apply without building a separate tool-governance plane. Streaming governance with <code>response_streaming</code> modes and <code>response_buffer_size</code> for guardrail inspection of chunks is well documented. Especially strong for orgs already operating Kong that want LLM-call and tool-call policy to live in one gateway stack.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Existing Kong users; high-throughput orgs that need MCP protocol normalization, semantic routing, and RAG injection alongside agent governance — all in one plugin layer.</div>
+  </div>
+  <div class="verdict-card portkey">
+    <div class="verdict-label">Portkey</div>
+    <div class="verdict-name">The Trace-First Observer</div>
+    <div class="verdict-text">Portkey's W3C trace-context–aware trace trees for multi-step agent flows are the cleanest in this review for diagnosing loop failures. The composable fallback + circuit breaker + retry config handles per-call resilience well. The honest gap is the absence of a native async execution substrate — which requires application-side orchestration for long-running loops.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Product teams needing trace-first agent observability without K8s overhead. Best fit for LLM-heavy agents where observability and per-call resilience matter more than deep tool-call governance.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">TrueFoundry</div>
+    <div class="verdict-name">The Full-Stack Agent Platform</div>
+    <div class="verdict-text">In the public docs reviewed here, TrueFoundry is the only platform explicitly documenting both gateway governance and execution lifecycle from one architecture. The four-hook guardrail system (LLM input, LLM output, MCP pre-tool, MCP post-tool) is especially complete for tool-calling agents. Just as importantly, the split-plane design keeps agent gateway support separate from orchestration: the gateway governs traffic, while async services handle the long-running loop. The gap is K8s operational prerequisite — a real barrier for teams without platform infra.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> K8s-native platform teams building production agentic systems that invoke real external tools. Best fit when you need MCP post-tool safety enforcement and async loop execution documented within one governed platform.</div>
+  </div>
+</div>
+
+<h3>Positioning Map — MCP Governance Maturity vs. Operational Support for Long-Running Agents</h3>
+<div class="svg-wrap">
+<svg viewBox="0 0 620 420" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="620" height="420" fill="#121826"/>
+  <!-- Axes -->
+  <line x1="65" y1="20" x2="65" y2="340" stroke="#1e2d45" stroke-width="1"/>
+  <line x1="65" y1="340" x2="575" y2="340" stroke="#1e2d45" stroke-width="1"/>
+  <!-- Grid lines -->
+  <line x1="65" y1="180" x2="575" y2="180" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="320" y1="20" x2="320" y2="340" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- Axis labels -->
+  <text x="320" y="378" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono, monospace">← Low MCP Governance Maturity — High →</text>
+  <text x="14" y="180" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono, monospace" transform="rotate(-90,14,180)">Operational Support for Long-Running Agents</text>
+
+  <!-- Quadrant labels -->
+  <text x="185" y="330" text-anchor="middle" fill="#1e2d45" font-size="9" font-family="IBM Plex Mono, monospace">LOW GOV / LOW ASYNC</text>
+  <text x="460" y="330" text-anchor="middle" fill="#1e2d45" font-size="9" font-family="IBM Plex Mono, monospace">HIGH GOV / LOW ASYNC</text>
+  <text x="185" y="38" text-anchor="middle" fill="#1e2d45" font-size="9" font-family="IBM Plex Mono, monospace">LOW GOV / HIGH ASYNC</text>
+  <text x="460" y="38" text-anchor="middle" fill="#1e2d45" font-size="9" font-family="IBM Plex Mono, monospace">HIGH GOV / HIGH ASYNC</text>
+
+  <!-- LiteLLM bubble: medium MCP gov, lower operational support for long-running agents -->
+  <circle cx="195" cy="268" r="52" fill="#00C2CB" fill-opacity=".1" stroke="#00C2CB" stroke-width="1.5"/>
+  <text x="195" y="263" text-anchor="middle" fill="#00C2CB" font-size="13" font-weight="700">LiteLLM</text>
+  <text x="195" y="280" text-anchor="middle" fill="#00C2CB" font-size="9.5" font-family="IBM Plex Mono, monospace">Redis state</text>
+  <text x="195" y="294" text-anchor="middle" fill="#00C2CB" font-size="9.5" font-family="IBM Plex Mono, monospace">Access groups</text>
+
+  <!-- Portkey bubble: lower MCP gov, lower operational support for long-running agents -->
+  <circle cx="148" cy="245" r="46" fill="#5A67FF" fill-opacity=".1" stroke="#5A67FF" stroke-width="1.5"/>
+  <text x="148" y="240" text-anchor="middle" fill="#5A67FF" font-size="13" font-weight="700">Portkey</text>
+  <text x="148" y="257" text-anchor="middle" fill="#5A67FF" font-size="9.5" font-family="IBM Plex Mono, monospace">Trace-first</text>
+  <text x="148" y="271" text-anchor="middle" fill="#5A67FF" font-size="9.5" font-family="IBM Plex Mono, monospace">SaaS edge</text>
+
+  <!-- Kong bubble: high MCP gov, lower async -->
+  <circle cx="455" cy="250" r="54" fill="#00D27B" fill-opacity=".1" stroke="#00D27B" stroke-width="1.5"/>
+  <text x="455" y="242" text-anchor="middle" fill="#00D27B" font-size="13" font-weight="700">Kong</text>
+  <text x="455" y="259" text-anchor="middle" fill="#00D27B" font-size="9.5" font-family="IBM Plex Mono, monospace">MCP Proxy</text>
+  <text x="455" y="273" text-anchor="middle" fill="#00D27B" font-size="9.5" font-family="IBM Plex Mono, monospace">Plugin chain</text>
+
+  <!-- TrueFoundry bubble: high MCP gov, high async -->
+  <circle cx="480" cy="95" r="58" fill="#FF5533" fill-opacity=".1" stroke="#FF5533" stroke-width="1.5"/>
+  <text x="480" y="86" text-anchor="middle" fill="#FF5533" font-size="13" font-weight="700">TrueFoundry</text>
+  <text x="480" y="103" text-anchor="middle" fill="#FF5533" font-size="9.5" font-family="IBM Plex Mono, monospace">4-hook MCP</text>
+  <text x="480" y="117" text-anchor="middle" fill="#FF5533" font-size="9.5" font-family="IBM Plex Mono, monospace">Async services</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Bubble size reflects relative feature breadth for agent workloads. Axes are editorial assessments as of March 2026. In the public docs reviewed here, TrueFoundry is the only platform explicitly documented in the high-governance / high-operational-support quadrant.</p>
+
+<hr>
+
+<!-- §8 REFERENCES -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank" rel="noopener noreferrer">LiteLLM — Life of a Request (Proxy Architecture)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/access_groups" target="_blank" rel="noopener noreferrer">LiteLLM — Access Groups (Models + MCP Servers + Agents)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/pass_through" target="_blank" rel="noopener noreferrer">LiteLLM — Pass-Through Endpoints</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank" rel="noopener noreferrer">LiteLLM — Provider Budget Routing</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank" rel="noopener noreferrer">LiteLLM — Guardrails Quick Start (pre_call / post_call modes)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/guardrails/prompt_injection" target="_blank" rel="noopener noreferrer">LiteLLM — Prompt Injection Detection</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/deploy" target="_blank" rel="noopener noreferrer">LiteLLM — Deployment Guide (Redis requirement at 1000+ RPS)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/routing-load-balancing" target="_blank" rel="noopener noreferrer">LiteLLM — Routing, Loadbalancing &amp; Fallbacks</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-mcp-proxy/" target="_blank" rel="noopener noreferrer">Kong — AI MCP Proxy Plugin</a></li>
+  <li><a href="https://developer.konghq.com/mcp/" target="_blank" rel="noopener noreferrer">Kong — MCP Traffic Gateway</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/streaming/" target="_blank" rel="noopener noreferrer">Kong — Streaming with AI Gateway</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank" rel="noopener noreferrer">Kong — AI Proxy Advanced Plugin</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/" target="_blank" rel="noopener noreferrer">Kong — AI Rate Limiting Advanced Plugin</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank" rel="noopener noreferrer">Kong — Monitor AI LLM Metrics (request_mode label)</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank" rel="noopener noreferrer">Kong — Gen AI OpenTelemetry Attributes Reference</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-prompt-guard/" target="_blank" rel="noopener noreferrer">Kong — AI Prompt Guard Plugin</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-aws-guardrails/" target="_blank" rel="noopener noreferrer">Kong — AI AWS Guardrails Plugin (response_buffer_size)</a></li>
+  <li><a href="https://portkey.ai/docs/product/observability/traces" target="_blank" rel="noopener noreferrer">Portkey — Tracing (W3C Trace Context, multi-step agents)</a></li>
+  <li><a href="https://portkey.ai/docs/product/observability/analytics" target="_blank" rel="noopener noreferrer">Portkey — Analytics (rescued by gateway strategies)</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/fallbacks" target="_blank" rel="noopener noreferrer">Portkey — Fallbacks</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/circuit-breaker" target="_blank" rel="noopener noreferrer">Portkey — Circuit Breaker</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/automatic-retries" target="_blank" rel="noopener noreferrer">Portkey — Automatic Retries</a></li>
+  <li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank" rel="noopener noreferrer">Portkey — Deploy in Your Infrastructure (Hybrid VPC)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank" rel="noopener noreferrer">TrueFoundry — Guardrails Overview (Four-Hook Model)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank" rel="noopener noreferrer">TrueFoundry — Guardrails Configuration</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-getting-started" target="_blank" rel="noopener noreferrer">TrueFoundry — Guardrails Getting Started</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank" rel="noopener noreferrer">TrueFoundry — Gateway Plane Architecture (Stateless Hono)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/introduction-to-async-service" target="_blank" rel="noopener noreferrer">TrueFoundry — Introduction to Async Service</a></li>
+  <li><a href="https://www.truefoundry.com/docs/deploy-your-first-asyncservice" target="_blank" rel="noopener noreferrer">TrueFoundry — Deploy Your First Async Service</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank" rel="noopener noreferrer">TrueFoundry — Request and Response Headers (x-tfy-resolved-model, server-timing)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank" rel="noopener noreferrer">TrueFoundry — Load Balancing Configuration</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank" rel="noopener noreferrer">TrueFoundry — Budget Limiting</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank" rel="noopener noreferrer">TrueFoundry — Export OpenTelemetry Data</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank" rel="noopener noreferrer">TrueFoundry — Deploy Gateway Plane</a></li>
+</ol>
+
+<hr>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 10 of 15 &nbsp;·&nbsp; March 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
+  Feature claims cross-referenced against official public documentation as of March 2026. Verify before production decisions.
+</p>
+
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+
+</body></html>
