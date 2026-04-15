@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="Phase 1 of the 15-part AI Gateway comparison series across LiteLLM, Kong, Portkey, and TrueFoundry. This landing page includes the first 3 comparisons, with the remaining 12 releasing soon."/>
+<title>AI Gateway Comparison Series - Phase 1 of 5</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+    --litellm:#00C2CB; --kong:#00D27B; --portkey:#5A67FF; --tf:#FF5533;
+    --text:#e2e8f0; --muted:#7a8899;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html { scroll-behavior:smooth; }
+  body {
+    background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif;
+    font-size:16px; line-height:1.75; margin:0; padding:2rem 1.5rem 6rem;
+  }
+  code, pre, .mono { font-family:'IBM Plex Mono', monospace; }
+  a { color:#60a5fa; text-decoration:none; } a:hover { text-decoration:underline; }
+  .page { max-width:1200px; margin:0 auto; }
+  .series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+  .tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+  .tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+  .series-dots { display:flex; gap:.3rem; align-items:center; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--border); }
+  .dot.active { background:#60a5fa; }
+  .hero { padding:1rem 0 1rem; }
+  .hero-grid { display:grid; grid-template-columns: 1.35fr .85fr; gap:1.25rem; align-items:start; }
+  h1 { font-size:clamp(2.2rem, 4vw, 4rem); font-weight:700; line-height:1.06; letter-spacing:-.02em; margin-bottom:1rem; max-width:14ch; }
+  .lede { font-size:1.08rem; color:#cbd5e1; max-width:64ch; margin-bottom:1.25rem; }
+  .meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.25rem; flex-wrap:wrap; }
+  .meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+  .hero-card, .callout, .method-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; }
+  .hero-card { padding:1.15rem 1.2rem; }
+  .hero-card h2 { font-size:.84rem; font-family:'IBM Plex Mono',monospace; letter-spacing:.09em; text-transform:uppercase; color:#60a5fa; margin-bottom:.65rem; }
+  .hero-card p { color:#cbd5e1; margin-bottom:.9rem; }
+  .vendor-stack { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:.75rem; }
+  .vendor-pill { border:1px solid var(--border); border-radius:10px; padding:.8rem .9rem; background:var(--surface2); }
+  .vendor-pill strong { display:block; font-size:.95rem; margin-bottom:.15rem; }
+  .vendor-pill span { color:var(--muted); font-size:.78rem; }
+  .vendor-pill.litellm strong { color:var(--litellm); } .vendor-pill.kong strong { color:var(--kong); } .vendor-pill.portkey strong { color:var(--portkey); } .vendor-pill.tf strong { color:var(--tf); }
+  .callout { margin:1.75rem 0 2rem; padding:1rem 1.2rem; border-left:3px solid #60a5fa; background:#0a1220; }
+  .callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; color:#60a5fa; }
+  section h2 { font-size:1.5rem; font-weight:700; margin:0 0 .75rem; padding-bottom:.4rem; border-bottom:1px solid var(--border); }
+  section p.section-intro { color:#cbd5e1; margin-bottom:1.2rem; max-width:72ch; }
+  .comparison-grid-section { margin-bottom:6rem; }
+  .value-section { margin-top:0; }
+  .card-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1rem; }
+  .series-card { display:flex; flex-direction:column; gap:.7rem; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.15rem; min-height:100%; transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease; position:relative; overflow:hidden; }
+  .series-card::before { content:''; position:absolute; left:0; top:0; right:0; height:3px; background:linear-gradient(90deg, var(--litellm), var(--portkey), var(--tf)); opacity:.9; }
+  .series-card:hover { text-decoration:none; transform:translateY(-2px); border-color:#2e4060; box-shadow:0 12px 36px rgba(0,0,0,.22); }
+  .card-topline { display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+  .card-index, .card-status { font-family:'IBM Plex Mono',monospace; font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; }
+  .card-index { color:#93c5fd; }
+  .card-status { color:var(--muted); }
+  .series-card h3 { font-size:1.18rem; line-height:1.25; color:var(--text); }
+  .card-subtitle { color:#a5b4c3; font-size:.92rem; margin-top:-.25rem; }
+  .card-desc { color:var(--muted); font-size:.88rem; line-height:1.6; flex:1 1 auto; }
+  .feature-chips { list-style:none; display:flex; flex-wrap:wrap; gap:.45rem; padding:0; margin:0; }
+  .feature-chips li { border:1px solid var(--border); background:var(--surface2); color:#d7e0ea; border-radius:999px; padding:.26rem .6rem; font-size:.72rem; font-family:'IBM Plex Mono',monospace; }
+  .card-cta { display:flex; align-items:center; gap:.35rem; color:#60a5fa; font-weight:600; }
+  .method-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1rem; margin-top:1.2rem; }
+  .method-card { padding:1rem 1.05rem; }
+  .method-card h3 { font-size:.9rem; font-family:'IBM Plex Mono',monospace; letter-spacing:.07em; text-transform:uppercase; color:#93c5fd; margin-bottom:.45rem; }
+  .method-card p { color:var(--muted); font-size:.88rem; }
+  @media (max-width: 980px) {
+    .hero-grid, .card-grid, .method-grid { grid-template-columns:1fr 1fr; }
+    h1 { max-width:unset; }
+  }
+  @media (max-width: 720px) {
+    body { padding:1.25rem 1rem 4rem; }
+    .hero-grid, .card-grid, .method-grid, .vendor-stack { grid-template-columns:1fr; }
+    h1 { font-size:2.35rem; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="series-bar">
+    <span class="tag-pill">AI Gateway Series</span>
+    <div class="series-dots">
+      <div class="dot active"></div><div class="dot active"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+    <span class="tag-pill active">Phase 1 of 5</span>
+  </div>
+
+  <section class="hero">
+    <div class="hero-grid">
+      <div>
+        <h1>AI Gateway Comparison Series</h1>
+        <p class="lede">A rolling landing page for the 15-part comparison series across LiteLLM, Kong, Portkey, and TrueFoundry. This phase includes the first 3 comparisons; the remaining 12 will be released soon.</p>
+        <div class="meta">
+          <span class="meta-item">⏱ 3 live now</span>
+          <span class="meta-item">⏳ 12 more coming soon</span>
+          <span class="meta-item">👤 Platform Engineering · AI Infra</span>
+        </div>
+      </div>
+      <aside class="hero-card">
+        <h2>What this phase covers</h2>
+        <p>This release opens the first 3 comparison topics in the series, keeping the same visual shell and buyer-first sequencing while the remaining 12 posts are prepared.</p>
+        <div class="vendor-stack">
+          <div class="vendor-pill litellm"><strong>LiteLLM</strong><span>Router-first OSS gateway</span></div>
+          <div class="vendor-pill kong"><strong>Kong</strong><span>Gateway plugin ecosystem</span></div>
+          <div class="vendor-pill portkey"><strong>Portkey</strong><span>Managed AI gateway controls</span></div>
+          <div class="vendor-pill tf"><strong>TrueFoundry</strong><span>Enterprise AI gateway platform</span></div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Why AI gateways matter in production</div>
+      <p>Teams rarely start with an AI gateway because model access looks simple at first. The need shows up later, when reliability, cost controls, policy enforcement, and multi-model operations become business-critical. This series is being released in batches, so the remaining 12 comparisons will be added soon.</p>
+    </div>
+  </section>
+
+  <section class="comparison-grid-section">
+    <h2>Browse the first 3 comparisons</h2>
+    <p class="section-intro">This release covers the first 3 decision areas in the series. The remaining 12 comparisons will be released soon.</p>
+    <div class="card-grid">
+      <a class="series-card" href="model_coverage.html">
+      <div class="card-topline">
+        <span class="card-index">Blog 01</span>
+        <span class="card-status">Link ready</span>
+      </div>
+      <h3>Model Coverage</h3>
+      <p class="card-subtitle">Universal API, virtual models, self-hosted models</p>
+      <p class="card-desc">How broadly each gateway spans managed APIs and private inference without forcing apps to change integrations.</p>
+      <ul class="feature-chips"><li>Universal API</li><li>Virtual Models</li><li>Self-hosted Models</li></ul>
+      <div class="card-cta">Read comparison <span aria-hidden="true">→</span></div>
+    </a>
+<a class="series-card" href="multitenant.html">
+      <div class="card-topline">
+        <span class="card-index">Blog 02</span>
+        <span class="card-status">Link ready</span>
+      </div>
+      <h3>Org &amp; Team Management</h3>
+      <p class="card-subtitle">Multi-tenancy, projects, teams</p>
+      <p class="card-desc">How teams segment ownership, quotas, credentials, and access across shared enterprise AI platforms.</p>
+      <ul class="feature-chips"><li>Multi-tenant orgs</li><li>Projects &amp; Teams</li><li>Environment isolation</li></ul>
+      <div class="card-cta">Read comparison <span aria-hidden="true">→</span></div>
+    </a>
+<a class="series-card" href="routing.html">
+      <div class="card-topline">
+        <span class="card-index">Blog 03</span>
+        <span class="card-status">Link ready</span>
+      </div>
+      <h3>Routing &amp; Load Balancing</h3>
+      <p class="card-subtitle">Fallbacks, latency, priorities</p>
+      <p class="card-desc">How requests fail over, shift between providers, and stay available under bursty or degraded conditions.</p>
+      <ul class="feature-chips"><li>Weight-based routing</li><li>Latency-aware routing</li><li>Provider/model fallbacks</li></ul>
+      <div class="card-cta">Read comparison <span aria-hidden="true">→</span></div>
+    </a>
+    </div>
+  </section>
+
+  <section class="value-section">
+    <h2>What an enterprise AI gateway should solve</h2>
+    <p class="section-intro">A strong AI gateway does more than normalize APIs. It gives platform teams one control layer for model access, traffic policy, spend, observability, and enterprise deployment constraints.</p>
+    <div class="method-grid">
+      <div class="method-card">
+        <h3>Standardize model access</h3>
+        <p>Support managed APIs, private inference, and virtual models behind one stable interface so teams can ship faster without hard-coding provider choices into every application.</p>
+      </div>
+      <div class="method-card">
+        <h3>Control cost and reliability</h3>
+        <p>Route intelligently, fail over safely, cache where it matters, and make spend visible by team, app, and model before production usage turns into operational drag.</p>
+      </div>
+      <div class="method-card">
+        <h3>Deploy for enterprise reality</h3>
+        <p>Meet security, residency, and infrastructure requirements across SaaS, VPC, on-prem, and air-gapped environments while keeping governance and auditability intact.</p>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>
