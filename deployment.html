@@ -1,0 +1,914 @@
+
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Gateway Series #11 — Deployment, Infrastructure &amp; Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB;
+    --kong:    #00D27B;
+    --portkey: #5A67FF;
+    --tf:      #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+  .series-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .tag-pill { display: inline-block; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace; padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase; }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer { background: #1a1200; border: 1px solid #3d2c00; color: var(--warn); font-size: .78rem; padding: .5rem 1rem; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; }
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre { background: #080c12; border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 0; }
+  .copy-btn { position: absolute; top: .55rem; right: .55rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: .68rem; padding: .22rem .55rem; border-radius: 5px; cursor: pointer; transition: all .15s ease; user-select: none; letter-spacing: .03em; line-height: 1.4; }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+  .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note { font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border); }
+  .mono { font-family: 'IBM Plex Mono', monospace; font-size: .95em; }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn { border-color: var(--warn); background: #1a1200; }
+  .callout.info { border-color: #60a5fa; background: #0a1220; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.info .callout-title { color: #60a5fa; }
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+</style>
+</head>
+<body>
+<!-- ══════ HEADER ══════ -->
+<div class="series-bar">
+<span class="tag-pill">AI Gateway Series</span>
+<div class="series-dots">
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div>
+<div class="dot active" title="Blog 11 — Deployment, Infrastructure &amp; Architecture"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+</div>
+<span class="tag-pill active">Blog 11 of 15</span>
+</div>
+<h1>Deployment, Infrastructure &amp; Architecture:<br/>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+<div class="meta">
+<span class="meta-item">⏱ 22 min read</span>
+<span class="meta-item">🗓 March 2026</span>
+<span class="meta-item">👤 Platform Engineering</span>
+<div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 10, 2026. Verify against current vendor docs before architectural decisions.</div>
+</div>
+<p style="font-size:.82rem; color: var(--muted);">Examples below illustrate flagship and efficiency-tier model families referenced throughout this post; verify exact model strings against current provider API docs before use:</p>
+<div class="model-pills">
+<span class="mpill openai">gpt-5.4</span>
+<span class="mpill openai">gpt-5.4-pro</span>
+<span class="mpill openai">gpt-5.4-mini</span>
+<span class="mpill anthropic">claude-opus-4-6</span>
+<span class="mpill anthropic">claude-sonnet-4-6</span>
+<span class="mpill anthropic">claude-haiku-4-5</span>
+<span class="mpill google">gemini-3.1-pro-preview</span>
+<span class="mpill google">gemini-3-flash-preview</span>
+<span class="mpill google">gemini-3.1-flash-lite-preview</span>
+</div>
+<!-- ══════ §0 TL;DR ══════ -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<div class="scenario">
+<div class="scenario-title">🏦 Real-World Scenario: The Data-Sovereign AI Platform Mandate</div>
+<p>A pan-European financial institution receives a formal supervisory finding under DORA's ICT third-party risk provisions. The finding is unambiguous: their AI inference pipeline, which routes customer-facing prompts through a US-domiciled SaaS control plane, is non-compliant with cross-border data transfer restrictions and ICT concentration risk rules. The CISO issues a mandate — every component in the LLM governance path must run within the institution's own infrastructure. No SaaS control plane. No outbound licensing calls on the inference hot path. Full audit log ownership. The platform team has a 90-day window to re-architect.</p>
+<p>The team evaluates four candidates. <strong>Portkey's standard hybrid deployment</strong> moves the data plane into the VPC, but the control dashboard and higher-level configuration features remain in Portkey's cloud — the CISO rejects that default posture immediately unless a fully private enterprise deployment is explicitly scoped. <strong>LiteLLM</strong> is fully self-hostable in Python but the team discovers that at their target 1,500 RPS peak, Redis and careful database architecture become mandatory, and the Python GIL creates a horizontal-scaling story that adds operational surface area. <strong>Kong AI Gateway</strong> in db-less self-managed mode satisfies data residency, but the AI-specific features they need — AI Proxy Advanced load balancing, AI Rate Limiting Advanced — require an enterprise license whose validation path the security team scrutinizes carefully. <strong>TrueFoundry</strong> is the only platform with a formally documented split-plane model where the control plane itself can be self-hosted on enterprise plans; the gateway data plane is stateless and evaluates routing, budgets, and auth entirely in-memory with no external calls on the inference hot path. The public docs are mixed, however: architecture pages describe global licensing/authentication and analytics services outside customer infrastructure, while installation docs also describe an air-gapped deployment flow and an external-SSO option that removes dependence on the managed auth server. For strict regulatory reviews, that nuance should be validated directly against the latest enterprise deployment guidance.</p>
+<p>This blog dissects exactly why deployment architecture is not a Day-2 concern for AI gateways. It is often the decision that determines whether a product can be adopted at all.</p>
+</div>
+<div class="quickpick-grid">
+<div class="qp-card c-litellm">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">LiteLLM</div>
+<div class="qp-desc">Fully self-hosted Python proxy. Docker, K8s, and ECS/Terraform paths documented. Redis becomes required at scale. Best for teams that want rapid deployment without deep K8s expertise, while accepting Python-runtime scaling constraints.</div>
+</div>
+<div class="qp-card c-kong">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Kong AI Gateway</div>
+<div class="qp-desc">Multi-topology C/Lua data plane: traditional (DB), hybrid, and db-less. Konnect for managed CP or fully self-managed. Most portable runtime; AI plugin features are version- and license-gated.</div>
+</div>
+<div class="qp-card c-portkey">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Portkey</div>
+<div class="qp-desc">Offers a SaaS Anycast edge, a hybrid VPC mode (data plane in VPC, SaaS control plane), and air-gapped enterprise deployments where the Gateway and Backend run locally without access to Portkey's hosted control plane. Highly flexible across residency constraints.</div>
+</div>
+<div class="qp-card c-tf">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">TrueFoundry</div>
+<div class="qp-desc">K8s-native split-plane platform with the broadest documented deployment menu in this comparison: SaaS, VPC / on-prem gateway plane, enterprise self-hosted control plane, and fully self-hosted variants. Stateless Hono gateway pods keep the inference hot path in-memory. Docs also support multiple gateway planes and OpenTofu / Terraform + Helm. Public docs also include air-gapped install guidance and external SSO, though architecture pages still describe global auth/licensing and analytics services.</div>
+</div>
+</div>
+<!-- ══════ §1 WHY IT MATTERS ══════ -->
+<h2>§1 — Why Deployment Architecture Is a First-Class Concern</h2>
+<p>Routing strategy, fallback chains, and observability pipelines get most of the attention in AI gateway evaluations. Deployment architecture is typically deferred to a later phase — until it isn't. The moment a platform team encounters a security review, a data residency requirement, an air-gap mandate, or a large-scale production traffic target, deployment architecture becomes the dominant selection criterion.</p>
+<p>For AI gateways specifically, the deployment question is structurally harder than it is for conventional API gateways. Several forces converge:</p>
+<ul>
+<li><strong>The inference hot path carries regulated content.</strong> Prompt and completion payloads frequently contain PII, PHI, customer data, or proprietary business logic. Which components sit in that path, and where those components run, is a compliance question, not just an infrastructure one.</li>
+<li><strong>Control planes know too much.</strong> A gateway's control plane manages keys, budgets, routing policy, and audit logs. If the control plane is cloud-hosted, that knowledge graph lives outside your perimeter. This matters for both regulatory compliance and competitive confidentiality.</li>
+<li><strong>Stateless vs. stateful data planes have wildly different scaling contracts.</strong> A stateful data plane — one that accumulates key-lookup state, rate-limit counters, or routing decisions locally — becomes operationally rigid: you need sticky sessions, coordinated Redis clusters, or distributed locks to scale horizontally. A stateless data plane, where policy is pushed in from outside rather than accumulated locally, enables clean K8s HPA-based scaling without those constraints.</li>
+<li><strong>Provider credentials must go somewhere.</strong> Whether stored in a local database, a vault, an environment variable, or a SaaS secret store, the location of provider API keys shapes the threat model for every request that crosses the gateway.</li>
+</ul>
+<p><em>A single synthesis positioning map appears in §7 after the vendor-by-vendor analysis, once the deployment evidence has been laid out.</em></p>
+<hr/>
+<!-- ══════ §2 LITELLM ══════ -->
+<div class="vendor-header litellm">
+<span class="vendor-badge">LiteLLM</span>
+<span class="vendor-title">§2 — Python Proxy: Flexible Deployment, Runtime-Bounded Scale</span>
+</div>
+<h3>Deployment Architecture</h3>
+<p>LiteLLM's gateway is a Python process — the same runtime used for the SDK — and it can be deployed in any environment that can run a Python container. The public docs document four primary paths: direct Docker container, Docker with a database backend for persistent key/spend state, Kubernetes via Helm, and Terraform-based ECS for AWS-native environments.</p>
+<p>The deployment model creates a clear three-tier architecture. The lightest tier — a single containerized proxy with a <code>config.yaml</code> mounted in — handles routing, model aliasing, and provider normalization without external dependencies. The second tier adds a PostgreSQL database and master key, which unlocks persistent virtual keys, team budgets, the Admin UI, and spend tracking. The third tier layers Redis on top for state coordination at scale.</p>
+<p>The key inflection point documented explicitly by the LiteLLM deployment guide is <strong>1,000 requests per second</strong>: above this threshold, Redis is described as required to prevent database connection exhaustion and deadlocks. This is not a soft recommendation — it is a hard architectural constraint on the Python runtime's ability to manage concurrent state across multiple proxy replicas. The practical consequence for platform teams is that a highly available, horizontally scaled LiteLLM deployment is a three-component system (proxy + Redis + Postgres), and all three components must be designed for failure independently.</p>
+<div class="code-wrap"><pre><span class="cm"># Database-backed LiteLLM container — required for persistent key management,</span>
+<span class="cm"># team budgets, and the Admin UI. Redis must be added separately at &gt;1k RPS.</span>
+docker run \
+  -v $(pwd)/litellm_config.yaml:/app/config.yaml \
+  -e <span class="key">LITELLM_MASTER_KEY</span>=<span class="str">sk-1234</span> \
+  -e <span class="key">DATABASE_URL</span>=<span class="str">postgresql://&lt;user&gt;:&lt;password&gt;@&lt;host&gt;:&lt;port&gt;/&lt;dbname&gt;</span> \
+  -p 4000:4000 \
+  docker.litellm.ai/berriai/litellm-database:main-stable \
+  --config /app/config.yaml --detailed_debug</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/deploy" target="_blank">docs.litellm.ai/docs/proxy/deploy</a> · <a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">proxy/architecture</a></div>
+<div class="code-wrap"><pre><span class="cm"># Illustrative config.yaml shape — upstream definitions, general settings, observability</span>
+<span class="key">model_list</span>:
+  - <span class="key">model_name</span>: <span class="str">flagship-openai</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">openai/gpt-5.4</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/OPENAI_API_KEY</span>
+      <span class="key">api_base</span>: <span class="str">https://api.openai.com/v1</span>
+  - <span class="key">model_name</span>: <span class="str">flagship-claude</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4-6</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/ANTHROPIC_API_KEY</span>
+
+<span class="key">general_settings</span>:
+  <span class="key">master_key</span>: <span class="str">os.environ/LITELLM_MASTER_KEY</span>
+
+<span class="key">litellm_settings</span>:
+  <span class="key">callbacks</span>: [<span class="str">"otel"</span>]
+  <span class="key">success_callback</span>: [<span class="str">"langfuse"</span>]
+  <span class="key">service_callbacks</span>: [<span class="str">"datadog"</span>, <span class="str">"prometheus"</span>]
+  <span class="key">turn_off_message_logging</span>: <span class="kw">true</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">docs.litellm.ai/docs/proxy/config_settings</a> · <a href="https://docs.litellm.ai/docs/proxy/configs" target="_blank">proxy/configs</a></div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 680 230" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="230" width="680"></rect>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="340" y="22">LITELLM — THREE-TIER DEPLOYMENT STACK</text>
+<defs><marker id="la" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00C2CB" points="0 0, 7 2.5, 0 5"></polygon></marker></defs>
+<!-- Tier 1: Proxy -->
+<rect fill="#001d1e" height="52" rx="6" stroke="#00C2CB" stroke-width="1.5" width="580" x="40" y="45"></rect>
+<text fill="#00C2CB" font-size="11" font-weight="700" text-anchor="middle" x="330" y="65">Tier 1 — LiteLLM Proxy Process (Python)</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="330" y="83">Virtual key auth · Budget + rate limit checks · Router (EWMA / usage-based) · Provider normalization</text>
+<!-- Tier 2: DB -->
+<rect fill="#0a1a14" height="48" rx="6" stroke="#10a37f" stroke-width="1.2" width="270" x="40" y="115"></rect>
+<text fill="#10a37f" font-size="10" font-weight="600" text-anchor="middle" x="175" y="137">Tier 2 — PostgreSQL</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="175" y="153">Keys · Teams · Spend state · Admin UI</text>
+<!-- Tier 3: Redis -->
+<rect fill="#1a1200" height="48" rx="6" stroke="#ffa726" stroke-width="1.2" width="270" x="350" y="115"></rect>
+<text fill="#ffa726" font-size="10" font-weight="600" text-anchor="middle" x="485" y="137">Tier 3 — Redis</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="485" y="153">Key cache · rate-limit state · HA / shared-state scale</text>
+<!-- Arrows down -->
+<line stroke="#10a37f" stroke-dasharray="3,3" stroke-width="1.5" x1="175" x2="175" y1="97" y2="113"></line>
+<line stroke="#ffa726" stroke-dasharray="3,3" stroke-width="1.5" x1="485" x2="485" y1="97" y2="113"></line>
+<!-- Deploy options -->
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="340" y="185">Deployment: Docker  ·  Kubernetes / Helm  ·  Terraform (AWS ECS)</text>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="340" y="200">⚠ HA scale-out typically adds shared Redis + DB state across replicas</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="340" y="218">Source: docs.litellm.ai/docs/proxy/deploy · docs.litellm.ai/docs/proxy/architecture</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM's deployment tiers: proxy alone suffices for dev/low-traffic; database unlocks key management and spend tracking; Redis commonly appears in HA or higher-throughput multi-replica deployments for shared cache and rate-limit state. Editorial reconstruction based on LiteLLM deployment and architecture docs.</div>
+<h3>Kubernetes Scaling</h3>
+<p>LiteLLM supports K8s HPA, but horizontal scaling requires careful design. Because multiple proxy replicas must share the same Redis and Postgres instances to make consistent decisions on rate limits and key lookup, adding pods without coordinating that shared state layer creates inconsistent behavior. Redis becomes the coordination bus — its availability and latency directly affect whether HPA-triggered scale-out actually improves throughput or simply amplifies the pressure on the shared state layer. For lightweight deployments with a single replica, no Redis dependency exists; the complication arises specifically as the team moves toward high-availability multi-replica setups.</p>
+<div class="callout warn">
+<div class="callout-title">⚠ Limitation — Shared State Required for HA Multi-Replica Deployments</div>
+<p>The Python GIL and the requirement for shared Redis/Postgres state at scale mean that high-availability HPA-based scale-out for LiteLLM carries operational coupling. Each new replica must connect to the shared state layer. For teams that need low-latency, cost-efficient horizontal autoscaling with no coordination bus, this is the primary constraint to plan around. Single-replica or low-traffic deployments are unaffected.</p>
+</div>
+<hr/>
+<!-- ══════ §3 KONG ══════ -->
+<div class="vendor-header kong">
+<span class="vendor-badge">Kong</span>
+<span class="vendor-title">§3 — Multi-Topology C/Lua Runtime: Three Ways to Deploy</span>
+</div>
+<h3>Deployment Architecture</h3>
+<p>Kong AI Gateway's deployment architecture is documented at <a href="https://developer.konghq.com/ai-gateway/" target="_blank">developer.konghq.com/ai-gateway</a> through the lens of its underlying gateway primitives. The core insight is that AI features are a plugin layer on top of Kong Gateway's mature network runtime — and that runtime already offers three battle-tested topologies: <strong>traditional</strong> (DB-backed, admin API-driven), <strong>hybrid</strong> (centralized control plane with distributed data planes), and <strong>db-less</strong> (declarative config, no database dependency, YAML-driven). This topology choice is the central deployment decision for Kong AI Gateway.</p>
+<p>The <strong>Konnect</strong> SaaS offering provides a managed control plane with a supported path for hybrid or cloud-gateway data planes. The alternative is fully self-managed Kong: all control plane and data plane components within your own infrastructure. The quickstart path uses Konnect, which the docs explicitly frame as "a quickstart for exploration, not the endpoint of a production deployment journey." For regulated environments, self-managed Kong with db-less topology is the relevant deployment model because it has no external control-plane dependency whatsoever — config is consumed from a declarative YAML file pushed via decK or the Admin API from within the perimeter.</p>
+<div class="code-wrap"><pre><span class="cm"># Kong Quickstart — Konnect-based (exploration path)</span>
+<span class="cm"># Self-managed production deployments use decK + Helm, not this bootstrap script</span>
+<span class="key">export</span> KONNECT_TOKEN=<span class="str">'YOUR_KONNECT_PAT'</span>
+curl -Ls https://get.konghq.com/quickstart | bash -s -- -k $KONNECT_TOKEN --deck-output
+<span class="key">export</span> KONNECT_CONTROL_PLANE_URL=<span class="str">https://us.api.konghq.com</span>
+<span class="key">export</span> KONNECT_PROXY_URL=<span class="str">'http://localhost:8000'</span>
+
+<span class="cm"># Enterprise license — required for AI Proxy Advanced, AI Rate Limiting Advanced, etc.</span>
+<span class="key">export</span> KONG_LICENSE_DATA=<span class="str">'LICENSE-CONTENTS-GO-HERE'</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/ai-gateway/get-started/" target="_blank">developer.konghq.com/ai-gateway/get-started/</a></div>
+<div class="code-wrap"><pre><span class="cm"># DB-less declarative config — self-contained, no external control plane required</span>
+<span class="cm"># Suitable for air-gap / data-sovereign deployments of Kong Gateway</span>
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">services</span>:
+  - <span class="key">name</span>: <span class="str">llm-service</span>
+    <span class="key">url</span>: <span class="str">http://localhost</span>
+    <span class="key">routes</span>:
+      - <span class="key">name</span>: <span class="str">llm-route</span>
+        <span class="key">paths</span>: [<span class="str">/v1/chat/completions</span>]
+
+<span class="key">plugins</span>:
+  - <span class="key">name</span>: <span class="str">ai-proxy</span>            <span class="cm"># Min. Kong 3.6 · OSS + Enterprise</span>
+    <span class="key">service</span>: <span class="str">llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+      <span class="key">auth</span>:
+        <span class="key">header_name</span>: <span class="str">Authorization</span>
+        <span class="key">header_value</span>: <span class="str">"{vault://aws/openai-key}"</span>
+      <span class="key">model</span>:
+        <span class="key">provider</span>: <span class="str">openai</span>
+        <span class="key">name</span>: <span class="str">gpt-5.4</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-proxy/" target="_blank">developer.konghq.com/plugins/ai-proxy/</a> · <a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">plugin compatibility reference</a></div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 270" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="270" width="820"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="410" y="22">KONG AI GATEWAY — THREE DEPLOYMENT TOPOLOGIES</text>
+<!-- Traditional -->
+<rect fill="#001e13" height="190" rx="8" stroke="#00D27B" stroke-opacity=".4" width="240" x="20" y="38"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="700" text-anchor="middle" x="140" y="58">TRADITIONAL (DB)</text>
+<rect fill="#0a1a14" height="32" rx="4" stroke="#00D27B" stroke-opacity=".5" width="210" x="35" y="68"></rect>
+<text fill="#00D27B" font-size="9" font-weight="600" text-anchor="middle" x="140" y="87">Admin API / Control</text>
+<line stroke="#1e2d45" stroke-dasharray="3,2" stroke-width="1" x1="140" x2="140" y1="100" y2="112"></line>
+<rect fill="#0a1a14" height="32" rx="4" stroke="#00D27B" stroke-opacity=".5" width="210" x="35" y="113"></rect>
+<text fill="#00D27B" font-size="9" font-weight="600" text-anchor="middle" x="140" y="132">Kong Data Plane (C/Lua)</text>
+<line stroke="#1e2d45" stroke-dasharray="3,2" stroke-width="1" x1="140" x2="140" y1="145" y2="157"></line>
+<rect fill="#0a1a14" height="32" rx="4" stroke="#10a37f" stroke-opacity=".6" width="210" x="35" y="158"></rect>
+<text fill="#10a37f" font-size="9" font-weight="600" text-anchor="middle" x="140" y="177">PostgreSQL / Cassandra</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="140" y="215">State in DB · classic ops</text>
+<!-- Hybrid -->
+<rect fill="#001e13" height="190" rx="8" stroke="#00D27B" stroke-opacity=".7" width="240" x="290" y="38"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="700" text-anchor="middle" x="410" y="58">HYBRID (CP + DP)</text>
+<rect fill="#0a1a14" height="32" rx="4" stroke="#00D27B" width="210" x="305" y="68"></rect>
+<text fill="#00D27B" font-size="9" font-weight="600" text-anchor="middle" x="410" y="84">Konnect SaaS CP</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="410" y="96">or self-managed CP</text>
+<line stroke="#00D27B" stroke-dasharray="5,3" stroke-width="1.5" x1="410" x2="410" y1="100" y2="112"></line>
+<rect fill="#0d2237" height="32" rx="4" stroke="#00D27B" stroke-width="1.5" width="210" x="305" y="113"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="410" y="132">Kong Data Plane (C/Lua)</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="410" y="145">In your infrastructure</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="410" y="175">CP in Konnect or</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="410" y="188">self-managed · DP local</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="410" y="215">Most common production mode</text>
+<!-- DB-less -->
+<rect fill="#001e13" height="190" rx="8" stroke="#00D27B" stroke-opacity=".9" width="240" x="560" y="38"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="700" text-anchor="middle" x="680" y="58">DB-LESS (DECLARATIVE)</text>
+<rect fill="#0d2237" height="32" rx="4" stroke="#00D27B" width="210" x="575" y="68"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="680" y="84">Kong Data Plane (C/Lua)</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="680" y="96">No external DB or CP</text>
+<line stroke="#00D27B" stroke-width="1.5" x1="680" x2="680" y1="100" y2="112"></line>
+<rect fill="#0a1a14" height="32" rx="4" stroke="#50fa7b" stroke-opacity=".5" width="210" x="575" y="113"></rect>
+<text fill="#50fa7b" font-size="9" font-weight="600" text-anchor="middle" x="680" y="132">Declarative Config File</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="680" y="145">Via decK push or ConfigMap</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="680" y="175">Air-gap friendly</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="680" y="188">No state outside process</text>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="7.4" text-anchor="middle" x="680" y="207">AI Proxy Advanced /</text>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="7.4" text-anchor="middle" x="680" y="218">AI Rate Limiting Advanced</text>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="7.2" text-anchor="middle" x="680" y="229">require enterprise license</text>
+<!-- Source -->
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="410" y="250">Source: developer.konghq.com/ai-gateway/get-started/ · developer.konghq.com/plugins/compatibility/</text>
+</svg>
+</div>
+<div class="img-caption">Kong's three deployment topologies. DB-less mode is the most self-contained for regulated environments but advanced AI plugin features (AI Proxy Advanced, AI Rate Limiting Advanced) require enterprise license and specific minimum versions. Editorial reconstruction.</div>
+<h3>Kubernetes &amp; Scaling</h3>
+<p>Kong's C/Lua non-blocking runtime handles high raw concurrency per pod. In db-less mode, data plane pods are stateless with respect to routing configuration — declarative config is loaded at startup or via decK push — making K8s HPA straightforward. In traditional topology, state lives in the database, so scale-out is clean for the data plane itself. The AI Rate Limiting Advanced plugin's state coordination approach depends on the underlying topology and should be reviewed against the <a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">plugin compatibility reference</a> before sizing decisions are made.</p>
+<div class="callout warn">
+<div class="callout-title">⚠ Limitation — AI Feature Availability Is Version- and License-Gated</div>
+<p>DB-less topology with Kong Gateway OSS supports AI Proxy (from 3.6). AI Proxy Advanced, AI Rate Limiting Advanced, AI Semantic Cache, and AI RAG Injector all require enterprise license and higher minimum versions (3.7–3.10). The plugin compatibility reference is the authoritative source and must be consulted per topology before committing to a deployment model.</p>
+</div>
+<hr/>
+<!-- ══════ §4 PORTKEY ══════ -->
+<div class="vendor-header portkey">
+<span class="vendor-badge">Portkey</span>
+<span class="vendor-title">§4 — SaaS-First with a VPC Data-Plane Escape Hatch</span>
+</div>
+<h3>Deployment Architecture</h3>
+<p>Portkey is documented at <a href="https://portkey.ai/docs/product/ai-gateway" target="_blank">portkey.ai/docs/product/ai-gateway</a> as "a fully managed SaaS Anycast edge network." This is the default and primary deployment model: clients connect to Portkey's globally distributed edge, routing, retry, fallback, and config evaluation all execute in Portkey's cloud, and requests are forwarded to upstream providers. Setup time for this path is measured in minutes, and the absence of infrastructure to manage is a genuine productivity advantage for teams without dedicated platform engineering resources.</p>
+<p>The same Portkey docs also expose a quick local <strong>open-source gateway runtime</strong> via <span class="mono">npx @portkey-ai/gateway</span>. That matters for evaluation because it gives teams a concrete artifact to run before adopting the managed service or the hybrid Helm path, even though the deeper control-plane and dashboard experience remains cloud-centered in Portkey's published product story.</p>
+<p>For organizations that cannot send prompt or completion payloads through a third-party cloud, Portkey documents a <strong>hybrid deployment path</strong> at <a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">portkey.ai/docs/enterprise/hybrid2</a>. The data plane runs inside the customer VPC as a containerized service deployed via Helm. The declared contract is explicit: <em>prompts and responses stay inside the network while only metrics leave</em>. The Portkey control dashboard, config management surface, and higher-level features remain in Portkey's cloud — routing behavior is configured through that cloud control plane regardless of where the data plane runs. This is a meaningful improvement over pure SaaS for data path residency, but it is not equivalent to full self-hosting.</p>
+<div class="code-wrap"><pre><span class="cm"># Portkey VPC data-plane hybrid deployment via Helm</span>
+<span class="cm"># Prompts and responses remain in your network — only metrics leave to Portkey cloud</span>
+helm repo add portkey <span class="str">https://portkey-ai.github.io/helm</span>
+helm repo update
+
+<span class="cm"># Deploy the gateway data plane into your cluster</span>
+helm upgrade --install portkey-gateway portkey/gateway \
+  -n portkey \
+  -f values.yaml
+
+<span class="cm"># Watch pods come up</span>
+kubectl -n portkey get pods -w
+
+<span class="cm"># Validate with local port-forward</span>
+kubectl -n portkey port-forward svc/portkey-gateway 8787:8787
+curl http://localhost:8787/v1/health
+<span class="cm"># Expected: {"status":"healthy"}</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">portkey.ai/docs/enterprise/hybrid2</a> — Deploy Portkey in Your Infrastructure</div>
+<div class="code-wrap"><pre><span class="cm">// Illustrative adapted call — validates hybrid gateway routing after deployment</span>
+<span class="cm">// Note: handbook source uses "gpt-4"; model string updated here as an example only.</span>
+<span class="cm">// x-portkey-provider references a virtual provider alias configured via Portkey's cloud CP</span>
+curl https://gateway.internal.mycompany.com/v1/chat/completions \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -H <span class="str">"x-portkey-api-key: &lt;your-portkey-api-key&gt;"</span> \
+  -H <span class="str">"x-portkey-provider: @openai-prod"</span> \
+  -d <span class="str">'{
+    "model": "gpt-5.4",
+    "messages": [{"role": "user", "content": "Hello from my private gateway!"}]
+  }'</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source (adapted): <a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">portkey.ai/docs/enterprise/hybrid2</a> — Make Your First Call section. Model string updated for illustrative purposes; verify against your current provider API.</div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 740 240" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="240" width="740"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="370" y="22">PORTKEY — SaaS PATH VS HYBRID VPC PATH</text>
+<!-- Divider -->
+<line stroke="#1e2d45" stroke-dasharray="6,4" stroke-width="1.5" x1="370" x2="370" y1="36" y2="215"></line>
+<!-- SaaS Left -->
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="700" text-anchor="middle" x="185" y="48">SaaS PATH (Default)</text>
+<rect fill="#1a2233" height="34" rx="5" stroke="#4a5568" width="150" x="30" y="58"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="105" y="78">App / Client</text>
+<line stroke="#5A67FF" stroke-width="1.5" x1="180" x2="215" y1="75" y2="75"></line>
+<rect fill="#0a0c24" height="34" rx="5" stroke="#5A67FF" width="130" x="217" y="58"></rect>
+<text fill="#5A67FF" font-size="9" font-weight="700" text-anchor="middle" x="282" y="74">Portkey Anycast Edge</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="282" y="86">(Portkey's cloud)</text>
+<line stroke="#5A67FF" stroke-width="1.5" x1="282" x2="282" y1="92" y2="108"></line>
+<rect fill="#0a0c24" height="34" rx="5" stroke="#5A67FF" width="130" x="217" y="110"></rect>
+<text fill="#5A67FF" font-size="9" font-weight="700" text-anchor="middle" x="282" y="130">Config + Routing CP</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="282" y="142">All logic in cloud</text>
+<line stroke="#5A67FF" stroke-width="1.5" x1="282" x2="282" y1="144" y2="160"></line>
+<text fill="#10a37f" font-size="9" text-anchor="middle" x="282" y="170">Upstream Providers</text>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="185" y="200">Traffic traverses Portkey-managed edge</text>
+<!-- Hybrid Right -->
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="700" text-anchor="middle" x="555" y="48">HYBRID VPC PATH</text>
+<!-- VPC boundary -->
+<rect fill="#0a0c24" height="100" rx="6" stroke="#5A67FF" stroke-dasharray="5,3" stroke-opacity=".4" width="290" x="385" y="55"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="8" font-weight="600" x="395" y="69">Customer VPC</text>
+<rect fill="#1a2233" height="30" rx="4" stroke="#4a5568" width="120" x="395" y="73"></rect>
+<text fill="#e2e8f0" font-size="9" text-anchor="middle" x="455" y="93">App / Client</text>
+<line stroke="#5A67FF" stroke-width="1.5" x1="515" x2="548" y1="88" y2="88"></line>
+<rect fill="#0d0c24" height="30" rx="4" stroke="#5A67FF" width="115" x="550" y="73"></rect>
+<text fill="#5A67FF" font-size="9" font-weight="700" text-anchor="middle" x="607" y="89">Gateway Data Plane</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="607" y="101">(Helm, your K8s)</text>
+<!-- Prompts stay note -->
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="530" y="128">Prompts + responses stay in VPC</text>
+<!-- Cloud CP outside VPC -->
+<rect fill="#0a0c24" height="34" rx="5" stroke="#5A67FF" stroke-opacity=".6" width="175" x="490" y="165"></rect>
+<text fill="#5A67FF" font-size="9" font-weight="700" text-anchor="middle" x="577" y="181">Portkey Cloud CP</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="577" y="193">Config / Dashboard / Metrics</text>
+<line stroke="#ffa726" stroke-dasharray="4,3" stroke-width="1.5" x1="607" x2="607" y1="155" y2="163"></line>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="555" y="215">⚠ Control plane remains in Portkey's cloud</text>
+</svg>
+</div>
+<div class="img-caption">Portkey's hybrid deployment keeps prompt/completion payloads within the customer VPC. In that hybrid enterprise path, the control plane (config management, dashboard, analytics, and routing configuration) remains in Portkey's cloud infrastructure. Editorial reconstruction based on docs.portkey.ai/docs/enterprise/hybrid2.</div>
+<h3>Scaling</h3>
+<p>In SaaS mode, scaling is automatic and transparent — Portkey's managed Anycast edge handles traffic growth without customer intervention. In hybrid mode, the data plane pods deployed via Helm can be scaled with K8s HPA. Portkey's hybrid deployment documentation does not explicitly characterize the stateless or stateful nature of these pods, so statelessness assumptions should be validated against the latest Helm chart and deployment guidance before designing an HPA strategy around them. Routing configuration changes in hybrid mode still flow through the cloud control surface.</p>
+<div class="callout warn">
+<div class="callout-title">⚠ Caveat — Hybrid vs. Air-Gapped Deployments</div>
+<p>In Portkey's standard hybrid deployment, the control plane (configs, dashboards, analytics) remains in the cloud while the data plane runs in your VPC. Portkey's public docs also describe air-gapped enterprise deployments where the control plane runs entirely within customer infrastructure, and where the Gateway and Backend operate without access to the hosted control plane. Teams with strict sovereignty requirements should explicitly scope and validate that fully private tier rather than assuming the standard hybrid posture.</p>
+</div>
+<hr/>
+<!-- ══════ §5 TRUEFOUNDRY ══════ -->
+<div class="vendor-header tf">
+<span class="vendor-badge">TrueFoundry</span>
+<span class="vendor-title">§5 — K8s-Native Split-Plane: Six Deployment Scenarios &amp; Stateless Gateway Pods</span>
+</div>
+<h3>The Split-Plane Architecture</h3>
+<p>TrueFoundry's deployment story is organized around a formally documented split-plane model: <strong>control plane</strong> (orchestrates config, auth, policy, integrations, and deployment state), <strong>compute plane</strong> (runs model workloads, jobs, and services), <strong>gateway plane</strong> (proxies LLM and MCP traffic with routing, budgets, and observability), and <strong>data plane</strong> (stores models and artifacts). The gateway plane is the operationally critical component for AI inference governance, and its architecture is documented explicitly at <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">truefoundry.com/docs/platform/gateway-plane-architecture</a>.</p>
+<p>The gateway plane is built on the <strong>Hono framework</strong> and is designed with an explicit hot-path contract: <em>no external calls during request handling</em> (unless cache is involved). Rate limit evaluation, load balancing, authentication, and authorization all execute in-memory. Logs and metrics are queued asynchronously, and the docs state that request handling continues even if the external queue is down. This is a materially different architecture from LiteLLM's Python proxy (which needs Redis to coordinate state across replicas at scale) and Portkey's hybrid mode (where routing behavior is configured through a cloud control plane).</p>
+<p>The gateway plane is <strong>stateless</strong>, subscribing to configuration updates via a queue with HTTP fallback. This enables cross-region multi-gateway deployments while configuration is managed centrally — and it is the architectural property that makes clean K8s HPA scaling possible.</p>
+<h3>Deployment Scenarios</h3>
+<p>The <a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">deployment-overview</a> page enumerates six deployment scenarios — an unusually specific breakdown that forces architectural tradeoffs into the open rather than hiding them behind generic capability language:</p>
+<ul>
+<li><strong>Gateway-only SaaS</strong> — Managed gateway plane; minimum infrastructure overhead; fastest path to model governance.</li>
+<li><strong>Gateway-plane-only</strong> — Customer-hosted gateway pods; hosted control plane. Inference path stays within customer network; policy management in TrueFoundry's cloud.</li>
+<li><strong>Full control plane + gateway</strong> — Both control plane and gateway plane within customer infrastructure. Enterprise plan.</li>
+<li><strong>Compute plane + managed gateway</strong> — Self-hosted model serving plus managed inference proxy.</li>
+<li><strong>Compute-only</strong> — Model serving without gateway.</li>
+<li><strong>Fully self-hosted combination</strong> — All planes within customer infrastructure. Maximum control; maximum operational responsibility. Enterprise plan.</li>
+</ul>
+<div class="callout info">
+<div class="callout-title">✅ Why TrueFoundry Stands Out on Deployment Architecture</div>
+<ul>
+<li><strong>SaaS Deployment</strong> — gateway-only SaaS for the lowest operational overhead.</li>
+<li><strong>VPC / On-Prem Deployment</strong> — gateway-plane-only and fuller self-hosted deployment paths are both documented.</li>
+<li><strong>Air-gapped Deployment</strong> — strong sovereign posture, but the public docs are mixed on whether auth/licensing and analytics are fully severed; validate the exact enterprise posture before making a hard air-gap claim.</li>
+<li><strong>Multiple Gateway Planes</strong> — docs explicitly support multiple gateways deployed cross-region with central configuration management.</li>
+<li><strong>GitOps (Infrastructure as Code)</strong> — installation model is OpenTofu / Terraform plus Helm.</li>
+</ul>
+</div>
+<div class="callout info">
+<div class="callout-title">ℹ️ Important Nuance — Public Docs Are Mixed on Air-Gapped Dependencies</div>
+<p>The public docs are not fully consistent here. Architecture pages still describe a global licensing/authentication server and analytics server outside customer infrastructure, and the self-hosted control-plane install guide lists egress access to auth.truefoundry.com, login.truefoundry.com, catalogue.truefoundry.com, and analytics.truefoundry.com. At the same time, installation docs also describe an air-gapped / restricted-network deployment flow, and enterprise docs describe an external SSO option that deploys the control plane without the TrueFoundry Auth Server. For strict air-gap reviews, validate the exact enterprise deployment posture against the latest product guidance rather than relying on a single doc page.</p>
+</div>
+<div class="code-wrap"><pre><span class="cm"># Step 1 — Create K8s Secret for control-plane API key</span>
+<span class="cm"># The gateway plane authenticates to the control plane via this credential</span>
+<span class="kw">apiVersion</span>: v1
+<span class="kw">kind</span>: Secret
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: truefoundry-creds
+<span class="kw">type</span>: Opaque
+<span class="kw">stringData</span>:
+  <span class="kw">TFY_API_KEY</span>: <span class="str">&lt;TFY_API_KEY&gt;</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">truefoundry.com/docs/platform/deploy-gateway-plane</a> — Create K8s Secret section</div>
+<div class="code-wrap"><pre><span class="cm"># Illustrative gateway-plane routing config — typed YAML, first-match-wins rules</span>
+<span class="cm"># Latency-based routing for real-time workload; weight-based canary for staging</span>
+<span class="key">name</span>: <span class="str">production-routing</span>
+<span class="key">type</span>: <span class="str">gateway-load-balancing-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">"voice-latency-prod"</span>
+    <span class="key">type</span>: <span class="str">"latency-based-routing"</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>: [<span class="str">"team:voice-platform"</span>]
+      <span class="key">models</span>: [<span class="str">"realtime-assistant"</span>]
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"production"</span>
+    <span class="key">load_balance_targets</span>:
+      - <span class="key">target</span>: <span class="str">"openai/gpt-5.4"</span>
+        <span class="key">retry_config</span>: { <span class="key">attempts</span>: <span class="num">1</span> }
+      - <span class="key">target</span>: <span class="str">"anthropic/claude-sonnet-4-6"</span>
+        <span class="key">retry_config</span>: { <span class="key">attempts</span>: <span class="num">1</span> }
+
+  - <span class="key">id</span>: <span class="str">"batch-canary-staging"</span>
+    <span class="key">type</span>: <span class="str">"weight-based-routing"</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>: [<span class="str">"team:ai-platform"</span>]
+      <span class="key">models</span>: [<span class="str">"summarizer"</span>]
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"staging"</span>
+    <span class="key">load_balance_targets</span>:
+      - <span class="key">target</span>: <span class="str">"openai/gpt-5.4"</span>
+        <span class="key">weight</span>: <span class="num">90</span>
+      - <span class="key">target</span>: <span class="str">"openai/gpt-5.4-pro"</span>
+        <span class="key">weight</span>: <span class="num">10</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">load-balancing-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">load-balancing-overview</a></div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 270" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="270" width="820"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="410" y="22">TRUEFOUNDRY — SPLIT-PLANE ARCHITECTURE &amp; DEPLOYMENT SCENARIOS</text>
+<!-- Control Plane -->
+<rect fill="#1e0d08" height="185" rx="7" stroke="#FF5533" stroke-opacity=".6" width="175" x="20" y="38"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="107" y="57">Control Plane</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="107" y="70">Config · Policy · Auth</text>
+<rect fill="#2a1508" height="22" rx="3" stroke="#FF5533" stroke-opacity=".3" width="145" x="35" y="80"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="107" y="95">Routing configs</text>
+<rect fill="#2a1508" height="22" rx="3" stroke="#FF5533" stroke-opacity=".3" width="145" x="35" y="106"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="107" y="121">Key + budget policy</text>
+<rect fill="#2a1508" height="22" rx="3" stroke="#FF5533" stroke-opacity=".3" width="145" x="35" y="132"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="107" y="147">Guardrail configs</text>
+<rect fill="#2a1508" height="22" rx="3" stroke="#FF5533" stroke-opacity=".3" width="145" x="35" y="158"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="107" y="173">Audit + analytics</text>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="7.5" text-anchor="middle" x="107" y="210">Self-hosted: Enterprise</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="7.5" text-anchor="middle" x="107" y="222">+2 global services persist</text>
+<!-- Gateway Plane (center, emphasized) -->
+<rect fill="#1e0d08" height="185" rx="7" stroke="#FF5533" stroke-width="2" width="390" x="215" y="38"></rect>
+<text fill="#FF5533" font-size="11" font-weight="700" text-anchor="middle" x="410" y="57">Gateway Plane (Stateless Hono)</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="410" y="72">In-memory hot path · no external calls · async log queue</text>
+<rect fill="#2a1508" height="24" rx="3" stroke="#FF5533" stroke-opacity=".4" width="88" x="230" y="82"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="274" y="98">Auth + Rate limit</text>
+<rect fill="#2a1508" height="24" rx="3" stroke="#FF5533" stroke-opacity=".4" width="88" x="326" y="82"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="370" y="98">Routing (TPOT)</text>
+<rect fill="#2a1508" height="24" rx="3" stroke="#FF5533" stroke-opacity=".4" width="88" x="422" y="82"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="466" y="98">Guardrails</text>
+<rect fill="#2a1508" height="24" rx="3" stroke="#FF5533" stroke-opacity=".4" width="78" x="518" y="82"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="557" y="98">MCP hooks</text>
+<!-- HPA pods -->
+<rect fill="#0d1420" height="38" rx="4" stroke="#FF5533" width="55" x="235" y="118"></rect><text fill="#FF5533" font-size="8" font-weight="700" text-anchor="middle" x="262" y="134">Pod</text><text fill="#4a5568" font-size="7" text-anchor="middle" x="262" y="147">replica 1</text>
+<rect fill="#0d1420" height="38" rx="4" stroke="#FF5533" width="55" x="298" y="118"></rect><text fill="#FF5533" font-size="8" font-weight="700" text-anchor="middle" x="325" y="134">Pod</text><text fill="#4a5568" font-size="7" text-anchor="middle" x="325" y="147">replica 2</text>
+<rect fill="#0d1420" height="38" rx="4" stroke="#FF5533" width="55" x="361" y="118"></rect><text fill="#FF5533" font-size="8" font-weight="700" text-anchor="middle" x="388" y="134">Pod</text><text fill="#4a5568" font-size="7" text-anchor="middle" x="388" y="147">replica 3</text>
+<rect fill="#0d1420" height="38" rx="4" stroke="#FF5533" stroke-dasharray="4,2" width="55" x="424" y="118"></rect><text fill="#4a5568" font-size="8" text-anchor="middle" x="451" y="136">+ HPA</text><text fill="#4a5568" font-size="7" text-anchor="middle" x="451" y="148">scale-out</text>
+<text fill="#4a5568" font-size="18" text-anchor="middle" x="530" y="140">→</text>
+<!-- Config subscription -->
+<path d="M 107 170 Q 107 195 215 195 Q 300 195 235 175" fill="none" stroke="#FF5533" stroke-dasharray="5,3" stroke-opacity=".5" stroke-width="1.2"></path>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="7.5" text-anchor="middle" x="165" y="193">config queue · HTTP fallback</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="410" y="175">Stateless → no sticky sessions → clean K8s HPA</text>
+<text fill="#4a5568" font-size="7.5" text-anchor="middle" x="410" y="188">Policies resolve in-memory per pod at request time</text>
+<!-- Data + Compute Planes -->
+<rect fill="#0d0906" height="90" rx="7" stroke="#FF5533" stroke-opacity=".3" width="175" x="625" y="38"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="712" y="57">Compute Plane</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="712" y="72">Model workloads</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="712" y="85">Jobs · Services</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="712" y="98">Notebooks · Pipelines</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="712" y="114">(Optional — separate from GW)</text>
+<rect fill="#0d0906" height="85" rx="7" stroke="#FF5533" stroke-opacity=".3" width="175" x="625" y="138"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="712" y="157">Data Plane</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="712" y="172">Model registry</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="712" y="185">Artifacts · Storage</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="712" y="208">(Optional for GW-only deploy)</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="410" y="248">6 deployment scenarios: Gateway SaaS → Gateway-plane-only → Full self-hosted (Enterprise)</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="410" y="262">Source: truefoundry.com/docs/platform/gateway-plane-architecture · truefoundry.com/docs/platform/deployment-overview</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's formal split-plane model. The gateway plane is stateless Hono pods — in-memory hot path, async log queue. Config updates arrive via queue with HTTP fallback; each pod resolves policies locally, enabling clean HPA scale-out with no Redis coordination bus. Editorial reconstruction based on TrueFoundry architecture docs.</div>
+<h3>Kubernetes HPA — How Stateless Pods Enable Workload-Specific Scaling</h3>
+<p>TrueFoundry's stateless gateway architecture has a direct and practical consequence for Kubernetes autoscaling. Because each gateway pod evaluates routing policy, rate limits, and auth entirely in-memory at request time — rather than consulting a shared Redis cluster or a remote state store — pods have no coupling to one another. This means the K8s Horizontal Pod Autoscaler can scale the gateway layer based on resource metrics or custom metrics (for example CPU, request rate, or external queue depth) without any concern for state consistency across replicas.</p>
+<p>Different application workloads within the same platform benefit from this in distinct ways:</p>
+<ul>
+<li><strong>Real-time voice agents</strong> require low TTFT and can spike rapidly. Stateless pods can be pre-warmed and aggressively scaled using CPU-based HPA. When a new pod starts, it subscribes to the current config snapshot over the queue — there is no cache warm-up period for routing or policy data.</li>
+<li><strong>Batch summarization jobs</strong> can tolerate higher latency and run at predictable request rates. These can use separate Kubernetes deployments targeting lower replica counts, scaling based on queue depth via an external scaler or scheduled capacity windows. They share the same centrally managed routing and guardrail configs while operating on independent autoscaling targets.</li>
+<li><strong>Interactive API services</strong> with variable intraday traffic patterns benefit from the tight HPA loop — since pod state is exclusively in-memory and ephemeral, scale-down is clean. There is no "draining" of per-pod caches to handle.</li>
+</ul>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 295" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="295" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="22">Stateless Pods → Workload-Specific K8s HPA Profiles</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="410" y="40">Each workload class can use independent HPA targets — all pods share centrally managed config</text>
+<!-- Config subscription bus -->
+<rect fill="#1e0d08" height="28" rx="5" stroke="#FF5533" stroke-width="1.5" width="220" x="300" y="52"></rect>
+<text fill="#FF5533" font-size="9.5" font-weight="700" text-anchor="middle" x="410" y="70">Control Plane Config Queue</text>
+<!-- Arrows down to three workload groups -->
+<line stroke="#FF5533" stroke-dasharray="5,3" stroke-width="1.2" x1="300" x2="150" y1="80" y2="104"></line>
+<line stroke="#FF5533" stroke-dasharray="5,3" stroke-width="1.2" x1="410" x2="410" y1="80" y2="104"></line>
+<line stroke="#FF5533" stroke-dasharray="5,3" stroke-width="1.2" x1="520" x2="670" y1="80" y2="104"></line>
+<!-- Workload 1: Voice -->
+<rect fill="#0a1a14" height="130" rx="7" stroke="#00d4ff" stroke-width="1.5" width="240" x="30" y="105"></rect>
+<text fill="#00d4ff" font-size="10" font-weight="700" text-anchor="middle" x="150" y="124">Real-Time Voice</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="150" y="138">CPU-based HPA · min 4 · max 20</text>
+<rect fill="#0d2237" height="26" rx="4" stroke="#00d4ff" width="50" x="45" y="148"></rect><text fill="#00d4ff" font-size="8" text-anchor="middle" x="70" y="165">Pod</text>
+<rect fill="#0d2237" height="26" rx="4" stroke="#00d4ff" width="50" x="103" y="148"></rect><text fill="#00d4ff" font-size="8" text-anchor="middle" x="128" y="165">Pod</text>
+<rect fill="#0d2237" height="26" rx="4" stroke="#00d4ff" width="50" x="161" y="148"></rect><text fill="#00d4ff" font-size="8" text-anchor="middle" x="186" y="165">Pod</text>
+<rect fill="#0d2237" height="26" rx="4" stroke="#00d4ff" stroke-dasharray="3,2" width="40" x="219" y="148"></rect><text fill="#00d4ff" font-size="8" text-anchor="middle" x="239" y="165">+N</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="150" y="192">Scale fast — no state to warm up</text>
+<text fill="#4a5568" font-size="7.5" text-anchor="middle" x="150" y="204">Config sync begins at pod start</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="150" y="225">✓ Clean scale-out · no Redis coordination</text>
+<!-- Workload 2: Interactive -->
+<rect fill="#0a0c24" height="130" rx="7" stroke="#5A67FF" stroke-width="1.5" width="240" x="290" y="105"></rect>
+<text fill="#5A67FF" font-size="10" font-weight="700" text-anchor="middle" x="410" y="124">Interactive API Service</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="410" y="138">Custom request-rate metric · min 2 · max 10</text>
+<rect fill="#0a0c24" height="26" rx="4" stroke="#5A67FF" width="50" x="305" y="148"></rect><text fill="#5A67FF" font-size="8" text-anchor="middle" x="330" y="165">Pod</text>
+<rect fill="#0a0c24" height="26" rx="4" stroke="#5A67FF" width="50" x="363" y="148"></rect><text fill="#5A67FF" font-size="8" text-anchor="middle" x="388" y="165">Pod</text>
+<rect fill="#0a0c24" height="26" rx="4" stroke="#5A67FF" stroke-dasharray="3,2" width="40" x="421" y="148"></rect><text fill="#5A67FF" font-size="8" text-anchor="middle" x="441" y="165">+N</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="410" y="192">Variable intraday load</text>
+<text fill="#4a5568" font-size="7.5" text-anchor="middle" x="410" y="204">Scale-down is clean — no per-pod cache drain</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="410" y="225">✓ Tight HPA loop · ephemeral pods</text>
+<!-- Workload 3: Batch -->
+<rect fill="#1a1200" height="130" rx="7" stroke="#ffa726" stroke-width="1.5" width="240" x="550" y="105"></rect>
+<text fill="#ffa726" font-size="10" font-weight="700" text-anchor="middle" x="670" y="124">Batch Summarization</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="670" y="138">External queue metric · min 0 · max 6</text>
+<rect fill="#1a1200" height="26" rx="4" stroke="#ffa726" width="50" x="565" y="148"></rect><text fill="#ffa726" font-size="8" text-anchor="middle" x="590" y="165">Pod</text>
+<rect fill="#1a1200" height="26" rx="4" stroke="#ffa726" width="50" x="623" y="148"></rect><text fill="#ffa726" font-size="8" text-anchor="middle" x="648" y="165">Pod</text>
+<rect fill="#1a1200" height="26" rx="4" stroke="#ffa726" stroke-dasharray="3,2" width="40" x="681" y="148"></rect><text fill="#ffa726" font-size="8" text-anchor="middle" x="701" y="165">+N</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="670" y="192">Event-driven batch path; can scale to zero</text>
+<text fill="#4a5568" font-size="7.5" text-anchor="middle" x="670" y="204">Cost-aware scale-down between jobs</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="670" y="225">✓ Scale-to-zero via event-driven scaler</text>
+<!-- Footer note -->
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="410" y="255">All three workload classes share the same centrally managed routing and guardrail policies</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="410" y="270">Each K8s Deployment has its own HPA target · no Redis coordination bus required across replicas</text>
+<text fill="#3a4a5a" font-size="7.5" text-anchor="middle" x="410" y="285">Source: truefoundry.com/docs/platform/gateway-plane-architecture · stateless pod model enables independent HPA targets per workload class</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's stateless gateway pods enable workload-specific autoscaling profiles without a shared Redis coordination bus. Each pod class can scale independently while all pods consume the same centrally pushed routing and guardrail config. CPU-based HPA is straightforward; request-rate and queue-depth examples here imply custom metrics or an event-driven scaler. Illustrative parameters only.</div>
+<div class="callout warn">
+<div class="callout-title">⚠ Limitation — K8s Operational Prerequisite</div>
+<p>The gateway-plane deployment guide requires a running Kubernetes cluster, a domain, a TLS certificate, image-pull credentials, and a control-plane API key before a single request is handled. The platform ships as a combination of OpenTofu / Terraform and Helm charts. For organizations without a dedicated K8s platform engineering function, this is a real adoption barrier. The gateway-only SaaS deployment scenario avoids this entirely.</p>
+</div>
+<hr/>
+<!-- ══════ §6 FEATURE MATRIX ══════ -->
+<h2>§6 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation as of March 2026. ✅ = native/documented, ⚠ = partial / with caveats, ❌ = not available or cloud-dependent in all modes.</p>
+<div class="matrix-wrap">
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th style="color:var(--litellm)">LiteLLM</th>
+<th style="color:var(--kong)">Kong AI GW</th>
+<th style="color:var(--portkey)">Portkey</th>
+<th style="color:var(--tf)">TrueFoundry</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Fully self-hosted deployment</strong></td>
+<td><span class="check">✅</span> Docker, K8s, ECS</td>
+<td><span class="check">✅</span> Self-managed all topologies</td>
+<td><span class="check">✅</span> Supported via air-gapped enterprise deployments</td>
+<td><span class="partial">⚠</span> Enterprise K8s Helm; air-gapped install guidance exists, but public docs are mixed on external services</td>
+</tr>
+<tr>
+<td><strong>SaaS deployment</strong></td>
+<td><span class="cross">❌</span> No managed SaaS</td>
+<td><span class="check">✅</span> Kong Konnect</td>
+<td><span class="check">✅</span> Primary offering</td>
+<td><span class="check">✅</span> Gateway-only SaaS tier</td>
+</tr>
+<tr>
+<td><strong>Formal CP / data-plane split</strong></td>
+<td><span class="cross">❌</span> Monolithic proxy process</td>
+<td><span class="check">✅</span> Konnect CP + self-managed DP</td>
+<td><span class="check">✅</span> Cloud CP + VPC data plane (Hybrid); private installs also documented</td>
+<td><span class="check">✅</span> Explicit 4-plane model</td>
+</tr>
+<tr>
+<td><strong>Self-hosted control plane</strong></td>
+<td><span class="check">✅</span> Proxy is the control surface</td>
+<td><span class="check">✅</span> Self-managed Kong</td>
+<td><span class="check">✅</span> Available in air-gapped enterprise deployments</td>
+<td><span class="check">✅</span> Enterprise plan</td>
+</tr>
+<tr>
+<td><strong>Stateless data-plane pods</strong></td>
+<td><span class="partial">⚠</span> Single-container: no external deps; HA multi-replica: shared Redis+DB required</td>
+<td><span class="check">✅</span> DB-less mode</td>
+<td><span class="partial">⚠</span> Helm-deployed VPC data plane; statelessness not explicitly documented</td>
+<td><span class="check">✅</span> Stateless Hono; in-memory policy at request time</td>
+</tr>
+<tr>
+<td><strong>Hot-path: no external calls</strong></td>
+<td><span class="partial">⚠</span> Redis consulted for rate-limit state at scale</td>
+<td><span class="check">✅</span> DB-less: config in-process</td>
+<td><span class="partial">⚠</span> Hybrid keeps payload path in VPC; air-gapped docs remove hosted-CP dependency</td>
+<td><span class="check">✅</span> All checks in-memory; async logs</td>
+</tr>
+<tr>
+<td><strong>Air-gapped / sovereign hot path</strong></td>
+<td><span class="partial">⚠</span> Possible; no formal support docs</td>
+<td><span class="partial">⚠</span> DB-less self-managed (OSS AI Proxy)</td>
+<td><span class="check">✅</span> Air-gapped enterprise deployments supported</td>
+<td><span class="partial">⚠</span> Air-gapped install guide exists; architecture/install docs are mixed on external auth/licensing/analytics</td>
+</tr>
+<tr>
+<td><strong>VPC / on-prem deployment path</strong></td>
+<td><span class="check">✅</span> Docker, Helm, ECS; self-host in your infra</td>
+<td><span class="check">✅</span> Self-managed Kong in customer infra</td>
+<td><span class="check">✅</span> Helm-deployed VPC data plane or air-gapped install</td>
+<td><span class="check">✅</span> Primary self-hosted deployment model</td>
+</tr>
+<tr>
+<td><strong>K8s HPA — clean scale-out</strong></td>
+<td><span class="partial">⚠</span> HPA possible; HA requires shared Redis + DB across replicas</td>
+<td><span class="check">✅</span> DB-less: clean; Traditional: DB-shared state</td>
+<td><span class="partial">⚠</span> Possible; not detailed in hybrid docs</td>
+<td><span class="check">✅</span> Stateless pods; no coordination bus</td>
+</tr>
+<tr>
+<td><strong>Multiple gateway planes / multi-region</strong></td>
+<td><span class="partial">⚠</span> Manual; shared DB/Redis required</td>
+<td><span class="partial">⚠</span> Konnect; or self-managed per region</td>
+<td><span class="check">✅</span> SaaS Anycast auto-distributes</td>
+<td><span class="check">✅</span> Multiple gateways + central config queue</td>
+</tr>
+<tr>
+<td><strong>GitOps / Infrastructure as Code</strong></td>
+<td><span class="partial">⚠</span> YAML config; no built-in GitOps path</td>
+<td><span class="check">✅</span> decK + Terraform</td>
+<td><span class="partial">⚠</span> API-driven; no native GitOps</td>
+<td><span class="check">✅</span> OpenTofu / Terraform + Helm</td>
+</tr>
+<tr>
+<td><strong>Database requirement</strong></td>
+<td><span class="partial">⚠</span> PostgreSQL required for persistent key/spend/Admin UI state; simple proxy can run without it</td>
+<td><span class="partial">⚠</span> Traditional topology: Postgres/Cassandra; DB-less: none</td>
+<td><span class="partial">⚠</span> Not exposed in public docs; vendor-managed in SaaS mode</td>
+<td><span class="partial">⚠</span> Not exposed in public docs; requirements vary by deployment scenario</td>
+</tr>
+<tr>
+<td><strong>Redis requirement</strong></td>
+<td><span class="partial">⚠</span> Required at &gt;1k RPS</td>
+<td><span class="partial">⚠</span> Optional; used by semantic/cache plugins</td>
+<td><span class="partial">⚠</span> Hybrid docs depict a cache layer; exact Redis requirement is not explicit</td>
+<td><span class="partial">⚠</span> No hot-path Redis requirement documented; architecture uses in-memory checks + async queueing</td>
+</tr>
+<tr>
+<td><strong>Runtime</strong></td>
+<td>Python (GIL-constrained)</td>
+<td>C/Lua (non-blocking)</td>
+<td>Managed SaaS edge; runtime not documented in supplied sources</td>
+<td>Hono-based gateway (stateless pods; JS runtime not emphasized in docs)</td>
+</tr>
+<tr>
+<td><strong>Data residency</strong></td>
+<td><span class="check">✅</span> Full control; self-hosted</td>
+<td><span class="check">✅</span> Full control; self-hosted</td>
+<td><span class="check">✅</span> Full control in air-gapped deployments; hybrid keeps payloads in VPC</td>
+<td><span class="partial">⚠</span> Hot path in-cluster; public docs are mixed on external services in strict air-gap mode</td>
+</tr>
+<tr>
+<td><strong>Documented deployment scenarios</strong></td>
+<td>3 (Docker, K8s, ECS)</td>
+<td>3 topologies + Konnect</td>
+<td>4 public postures (OSS local, SaaS, Hybrid VPC, Air-gapped)</td>
+<td>6 (gateway SaaS → fully self-hosted)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr/>
+<!-- ══════ §7 VERDICT ══════ -->
+<h2>§7 — Editorial Verdict</h2>
+<p>Editorial assessments as of March 10, 2026.</p>
+<div class="verdict-grid">
+<div class="verdict-card litellm">
+<div class="verdict-label">LiteLLM</div>
+<div class="verdict-name">The Self-Hosted Pragmatist</div>
+<div class="verdict-text">Lowest barrier to a fully self-hosted deployment. Docker and Helm paths are well-documented. A single-container deployment has no external state dependencies; the Redis/Postgres coupling arises specifically at HA multi-replica scale. For teams below 1k RPS or with single-region, single-replica footprints, those constraints are manageable.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Fast-moving platform teams, internal tooling, teams that want full self-hosting without K8s expertise and can accept Python-runtime scaling constraints at high concurrency.</div>
+</div>
+<div class="verdict-card kong">
+<div class="verdict-label">Kong AI Gateway</div>
+<div class="verdict-name">The Network Operator's Choice</div>
+<div class="verdict-text">Best deployment-model breadth for teams already on Kong. DB-less topology delivers a genuinely stateless, portable data plane with no external dependencies. Multi-topology flexibility is real, but AI feature availability is tightly coupled to plugin version and license tier.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Existing Kong users, teams wanting a battle-hardened C/Lua runtime, organizations comfortable managing Kong's plugin-version/license matrix.</div>
+</div>
+<div class="verdict-card portkey">
+<div class="verdict-label">Portkey</div>
+<div class="verdict-name">The SaaS-Speed Operator</div>
+<div class="verdict-text">Unmatched time-to-production. The hybrid VPC path addresses data residency for inference, while Portkey's air-gapped enterprise deployment path removes the hosted control-plane dependency for stricter regulatory environments.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Product teams wanting SaaS velocity, or enterprises procuring the fully private / air-gapped tier for strict residency requirements.</div>
+</div>
+<div class="verdict-card tf">
+<div class="verdict-label">TrueFoundry</div>
+<div class="verdict-name">The Platform Engineer's Architecture</div>
+<div class="verdict-text">The most architecturally coherent choice for K8s-native platform teams with data-sovereignty needs. Stateless Hono pods, a formally documented split-plane model, SaaS and VPC / on-prem deployment options, multiple gateway planes, and GitOps-friendly installation make it the strongest deployment story here. The main caveat is not the hot path — which is documented as fully in-cluster — but that the public docs are currently mixed on how auth/licensing and analytics behave in the strictest air-gapped posture.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Regulated or enterprise platform teams that want SaaS-to-self-hosted choice, clean K8s scale-out, multi-region gateway operations, and IaC-driven deployment workflows.</div>
+</div>
+</div>
+<h3>Positioning Map — Deployment Sovereignty ↑ vs. Infrastructure Overhead</h3>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 620 400" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="400" width="620"></rect>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="65" y1="20" y2="330"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="575" y1="330" y2="330"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="65" x2="575" y1="175" y2="175"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="320" x2="320" y1="20" y2="330"></line>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" x="320" y="365">← Lower Infrastructure Overhead — Higher →</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" transform="rotate(-90,14,175)" x="14" y="175">Deployment Sovereignty ↑</text>
+<!-- Portkey: Low overhead, lower sovereignty -->
+<circle cx="160" cy="252" fill="#5A67FF" fill-opacity=".1" r="48" stroke="#5A67FF" stroke-width="1.5"></circle>
+<text fill="#5A67FF" font-size="13" font-weight="700" text-anchor="middle" x="160" y="247">Portkey</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="160" y="263">SaaS · Cloud CP</text>
+<!-- LiteLLM: Medium overhead, high sovereignty -->
+<circle cx="200" cy="110" fill="#00C2CB" fill-opacity=".1" r="44" stroke="#00C2CB" stroke-width="1.5"></circle>
+<text fill="#00C2CB" font-size="13" font-weight="700" text-anchor="middle" x="200" y="105">LiteLLM</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="200" y="121">Python · Self-hosted</text>
+<!-- Kong: Higher overhead, high sovereignty -->
+<circle cx="440" cy="120" fill="#00D27B" fill-opacity=".1" r="50" stroke="#00D27B" stroke-width="1.5"></circle>
+<text fill="#00D27B" font-size="13" font-weight="700" text-anchor="middle" x="440" y="113">Kong</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="440" y="129">C/Lua · Multi-topology</text>
+<!-- TrueFoundry: Highest overhead, highest sovereignty -->
+<circle cx="490" cy="65" fill="#FF5533" fill-opacity=".1" r="54" stroke="#FF5533" stroke-width="1.5"></circle>
+<text fill="#FF5533" font-size="13" font-weight="700" text-anchor="middle" x="490" y="57">TrueFoundry</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="490" y="73">K8s-native · Split-plane</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="490" y="86">6 deployment scenarios</text>
+<!-- Quadrant labels -->
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="190" y="37">LOW OVERHEAD / HIGH SOVEREIGNTY</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="450" y="37">HIGH OVERHEAD / HIGH SOVEREIGNTY</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="190" y="325">LOW OVERHEAD / LOW SOVEREIGNTY</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="450" y="325">HIGH OVERHEAD / LOW SOVEREIGNTY</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Bubble size reflects documented deployment-option breadth. Axes are editorial assessments as of March 2026.</p>
+<hr/>
+<!-- ══════ §8 REFERENCES ══════ -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+<li><a href="https://docs.litellm.ai/docs/proxy/deploy" target="_blank">LiteLLM — Proxy Deployment Guide</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture (Life of a Request)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Settings Reference</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/configs" target="_blank">LiteLLM — Config Overview</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">LiteLLM — Virtual Keys</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/caching" target="_blank">LiteLLM — Caching (Redis, Semantic)</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/" target="_blank">Kong AI Gateway Landing Page</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/get-started/" target="_blank">Kong — Get Started with AI Gateway</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-proxy/" target="_blank">Kong — AI Proxy Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">Kong — AI Proxy Advanced Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">Kong — Plugin Compatibility Reference</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/load-balancing/" target="_blank">Kong — Load Balancing with AI Proxy Advanced</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway" target="_blank">Portkey — AI Gateway Overview</a></li>
+<li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy Portkey in Your Infrastructure (Hybrid)</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Configs</a></li>
+<li><a href="https://portkey.ai/docs/self-hosting/cache-behavior" target="_blank">Portkey — Cache Behavior (Hybrid vs. Air-Gapped)</a></li>
+<li><a href="https://portkey.ai/docs/self-hosting/airgapped/model-pricing" target="_blank">Portkey — Air-Gapped Model Pricing</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/architecture" target="_blank">TrueFoundry — Platform Architecture (Split-Plane Model)</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">TrueFoundry — Deployment Overview (Six Scenarios)</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deploy-control-plane-and-gateway-plane" target="_blank">TrueFoundry — Deploy Control Plane and Gateway Plane</a></li>
+<li><a href="https://www.truefoundry.com/docs/deploy-control-plane-with-external-oauth" target="_blank">TrueFoundry — External SSO (OIDC/SAML)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">TrueFoundry — Load Balancing Overview</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">TrueFoundry — Load Balancing Configuration</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">TrueFoundry — Export OpenTelemetry Data</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview</a></li>
+<li><a href="https://www.truefoundry.com/docs/changelog" target="_blank">TrueFoundry — Changelog</a></li>
+</ol>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 11 of 15  ·  March 10, 2026  ·  All vendor names are trademarks of their respective owners.<br/>
+  Feature claims cross-referenced against official public documentation. Verify before production decisions.
+</p>
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+</body></html>
