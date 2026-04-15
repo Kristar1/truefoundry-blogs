@@ -1,0 +1,1038 @@
+
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway Series #14 — Prompt Playground &amp; Interactive Testing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB; --kong: #00D27B; --portkey: #5A67FF; --tf: #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+  .series-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .tag-pill { display: inline-block; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace; padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase; }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer { background: #1a1200; border: 1px solid #3d2c00; color: var(--warn); font-size: .78rem; padding: .5rem 1rem; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; }
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre { background: #080c12; border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 0; }
+  .copy-btn { position: absolute; top: .55rem; right: .55rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: .68rem; padding: .22rem .55rem; border-radius: 5px; cursor: pointer; transition: all .15s ease; user-select: none; letter-spacing: .03em; line-height: 1.4; }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; } .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note { font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border); }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn { border-color: var(--warn); background: #1a1200; }
+  .callout.info { border-color: #60a5fa; background: #0a1220; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.info .callout-title { color: #60a5fa; }
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+</style>
+</head>
+<body>
+
+<div class="series-bar">
+  <span class="tag-pill">AI Gateway Series</span>
+  <div class="series-dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot active" title="Blog 14 — Prompt Playground &amp; Interactive Testing"></div>
+    <div class="dot"></div>
+  </div>
+  <span class="tag-pill active">Blog 14 of 15</span>
+</div>
+
+<h1>Prompt Playground &amp; Interactive Testing:<br>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 24 min read</span>
+  <span class="meta-item">🗓 March 2026</span>
+  <span class="meta-item">👤 Platform Engineering</span>
+  <div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 10, 2026. Verify against current vendor docs before architectural decisions.</div>
+</div>
+
+<p style="font-size:.82rem; color: var(--muted);">Models referenced throughout this post reflect the production-current landscape as of this writing:</p>
+<div class="model-pills">
+  <span class="mpill openai">gpt-5.4</span>
+  <span class="mpill openai">gpt-5.4-pro</span>
+  <span class="mpill openai">gpt-5.4-mini</span>
+  <span class="mpill anthropic">claude-opus-4-6</span>
+  <span class="mpill anthropic">claude-sonnet-4-6</span>
+  <span class="mpill anthropic">claude-haiku-4-5</span>
+  <span class="mpill google">gemini-3.1-pro-preview</span>
+  <span class="mpill google">gemini-3-flash</span>
+  <span class="mpill google">gemini-3.1-flash-lite</span>
+</div>
+
+<!-- §0 TL;DR -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">🔐 Enterprise Scenario: The Air-Gapped Model Testing Problem</div>
+  <p>A quantitative risk team at a global asset manager has spent six months fine-tuning an internal credit-exposure model. The model runs inside a Tier-3 data center operating under strict regulatory controls: no inbound internet, strict L4 egress firewall rules, inference accessible only via mTLS from pre-approved internal service accounts. Compliance requires every system prompt template to pass a formal change-review board before it touches live position data.</p>
+  <p>The prompt engineering team's workflow is entirely manual: open a change ticket, wait 48 hours for a controlled test window, SSH through a bastion host, execute curl commands against an internal endpoint, and paste JSON output into a spreadsheet for comparison. One prompt iteration consumes three working days.</p>
+  <p>The team evaluates four AI gateways. The core question is not "which gateway supports the most providers" — that problem is already solved. The question is: <strong>which gateway gives prompt engineers a safe, governed, interactive testing surface that respects the fact that their model must never be publicly addressable?</strong> The answers vary dramatically — and two vendors now offer visual playgrounds while only one natively couples the playground to an in-VPC gateway data plane.</p>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-litellm">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">LiteLLM</div>
+    <div class="qp-desc">Admin UI for ops (keys, spend, models). Management CLI for test calls through proxy. No dedicated prompt playground. Public docs reviewed center on a self-hosted proxy/Admin UI rather than a documented Konnect-style cloud control plane.</div>
+  </div>
+  <div class="qp-card c-kong">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Kong AI Gateway</div>
+    <div class="qp-desc">Konnect cloud control plane with self-hosted or cloud-managed data planes. No dedicated prompt playground. Governs Claude Code, Codex CLI, Qwen Code CLI, and Gemini CLI via tool-specific proxy configuration and env vars.</div>
+  </div>
+  <div class="qp-card c-portkey">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Portkey</div>
+    <div class="qp-desc">Prompt Engineering Studio with full playground, versioning, prompt library, Prompt API, and prompt observability. Accesses 1600+ cloud models. Strong for prompt development workflow. Air-gapped model testing requires the self-hosted gateway; the studio itself connects to cloud providers.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">Native gateway-integrated Playground UI. Test prompts, guardrails, and MCP tools through the same in-VPC gateway plane that handles production traffic. Code snippets are generated from the tested config. Cloud UI + stateless in-VPC data plane lets teams test against non-public model endpoints without exposing the model itself on the public internet.</div>
+  </div>
+</div>
+
+<!-- §1 WHY PLAYGROUNDS MATTER -->
+<h2>§1 — Why a Governed Prompt Playground Is an Infrastructure Problem</h2>
+
+<p>The distinction between a prompt development playground and a gateway-native testing surface matters operationally. A prompt development playground — like an IDE with multi-model comparison — lets prompt engineers craft, test, and version prompts efficiently against a wide range of cloud providers. It is an excellent product for prompt development velocity. A gateway-native playground goes a step further: it routes test traffic through the same policy stack that production traffic traverses, so the test result includes not just the model's response but proof of which guardrails fired, which routing decision was made, which model actually handled the request, and how long each stage took.</p>
+
+<p>These are different tools solving adjacent problems. The choice between them depends on where your safety and compliance burden sits:</p>
+
+<ul>
+  <li><strong>Guardrail validation in-loop.</strong> A prompt engineer testing PII detection against a production guardrail policy needs to know whether the guardrail is firing on their prompt, not just whether the model's output looks clean. That requires routing through the gateway stack during the test.</li>
+  <li><strong>Silent fallback visibility.</strong> When a routing rule redirects a request from <code>gpt-5.4</code> to <code>claude-sonnet-4-6</code>, output quality can change materially. The testing surface must expose which model actually handled the call, not just the logical alias.</li>
+  <li><strong>Air-gapped model reachability.</strong> The most sensitive models sit behind the strictest network controls. A playground that requires cloud-accessible model endpoints is architecturally incompatible with the highest-value regulated use cases.</li>
+  <li><strong>Prompt versioning as a production artifact.</strong> Prompts that pass review must be versioned and deployable, not ephemeral. Both the prompt development and gateway-native paths converge here — but via different mechanisms.</li>
+</ul>
+
+<!-- Diagram 1: Overarching topology -->
+<div class="svg-wrap">
+<svg viewBox="0 0 860 410" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="860" height="410" fill="#121826"/>
+  <text x="430" y="26" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Prompt Testing Topology — Four Gateways Compared</text>
+  <text x="430" y="44" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">Architectural differences define what testing surface is available and which models are reachable from the UI</text>
+
+  <!-- Kong -->
+  <rect x="12" y="60" width="188" height="310" rx="8" fill="#001e13" stroke="#00D27B" stroke-opacity=".4"/>
+  <text x="106" y="82" text-anchor="middle" fill="#00D27B" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">KONG</text>
+  <rect x="26" y="94" width="160" height="30" rx="4" fill="#001e13" stroke="#00D27B" stroke-opacity=".6"/>
+  <text x="106" y="110" text-anchor="middle" fill="#00e599" font-size="9" font-weight="600">Konnect (Cloud Control Plane)</text>
+  <text x="106" y="121" text-anchor="middle" fill="#7a8899" font-size="7.5">config · analytics · Visual LLM metrics</text>
+  <rect x="26" y="130" width="160" height="26" rx="4" fill="#001e13" stroke="#00D27B" stroke-opacity=".4"/>
+  <text x="106" y="147" text-anchor="middle" fill="#7a8899" font-size="8">AI CLI Tools (Claude/Codex/Qwen/Gemini)</text>
+  <rect x="26" y="162" width="160" height="48" rx="4" fill="#001e13" stroke="#00D27B"/>
+  <text x="106" y="180" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">Kong Data Plane</text>
+  <text x="106" y="194" text-anchor="middle" fill="#7a8899" font-size="8">self-hosted / cloud-managed</text>
+  <text x="106" y="206" text-anchor="middle" fill="#4a5568" font-size="7.5">auth · rate limit · plugins</text>
+  <rect x="42" y="218" width="130" height="24" rx="4" fill="#0a1a14" stroke="#10a37f" stroke-opacity=".7"/>
+  <text x="106" y="234" text-anchor="middle" fill="#10a37f" font-size="8.5">Cloud Providers / Models</text>
+  <text x="106" y="318" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">Konnect cloud CP</text>
+  <text x="106" y="333" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">No prompt playground</text>
+  <text x="106" y="352" text-anchor="middle" fill="#ffa726" font-size="8">CLI tools as test surface</text>
+
+  <!-- LiteLLM -->
+  <rect x="212" y="60" width="188" height="310" rx="8" fill="#001d1e" stroke="#00C2CB" stroke-opacity=".4"/>
+  <text x="306" y="82" text-anchor="middle" fill="#00C2CB" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">LITELLM</text>
+  <rect x="226" y="94" width="160" height="30" rx="4" fill="#001d1e" stroke="#00C2CB" stroke-opacity=".5"/>
+  <text x="306" y="110" text-anchor="middle" fill="#00d4ff" font-size="9" font-weight="600">Admin UI (/ui) — Self-Hosted</text>
+  <text x="306" y="121" text-anchor="middle" fill="#7a8899" font-size="7.5">keys · spend · models · self-hosted UI</text>
+  <rect x="226" y="130" width="160" height="26" rx="4" fill="#001d1e" stroke="#00C2CB" stroke-opacity=".4"/>
+  <text x="306" y="147" text-anchor="middle" fill="#7a8899" font-size="8">Management CLI (chat requests)</text>
+  <rect x="226" y="162" width="160" height="48" rx="4" fill="#001d1e" stroke="#00C2CB"/>
+  <text x="306" y="180" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="700">LiteLLM Proxy</text>
+  <text x="306" y="194" text-anchor="middle" fill="#7a8899" font-size="8">router · budget · guardrails</text>
+  <text x="306" y="206" text-anchor="middle" fill="#4a5568" font-size="7.5">self-hosted; private network access for UI</text>
+  <rect x="242" y="218" width="130" height="24" rx="4" fill="#0a1a14" stroke="#10a37f" stroke-opacity=".7"/>
+  <text x="306" y="234" text-anchor="middle" fill="#10a37f" font-size="8.5">Cloud Providers / Models</text>
+  <text x="306" y="318" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">Public docs: self-hosted UI</text>
+  <text x="306" y="333" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">private access needed for UI</text>
+  <text x="306" y="352" text-anchor="middle" fill="#ffa726" font-size="8">Ops UI, not prompt testing</text>
+
+  <!-- Portkey -->
+  <rect x="412" y="60" width="210" height="310" rx="8" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".5"/>
+  <text x="517" y="82" text-anchor="middle" fill="#5A67FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">PORTKEY</text>
+  <rect x="426" y="94" width="182" height="48" rx="4" fill="#0a0c24" stroke="#5A67FF" stroke-width="1.5"/>
+  <text x="517" y="112" text-anchor="middle" fill="#5A67FF" font-size="9" font-weight="700">Prompt Engineering Studio</text>
+  <text x="517" y="125" text-anchor="middle" fill="#7a8899" font-size="7.5">playground · versioning · library · Prompt API</text>
+  <text x="517" y="136" text-anchor="middle" fill="#7a8899" font-size="7.5">1600+ cloud models · prompt.new</text>
+  <rect x="426" y="148" width="182" height="26" rx="4" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".5"/>
+  <text x="517" y="162" text-anchor="middle" fill="#7a8899" font-size="8">SaaS Dashboard: logs · traces · analytics</text>
+  <rect x="426" y="180" width="182" height="42" rx="4" fill="#0a0c24" stroke="#5A67FF"/>
+  <text x="517" y="198" text-anchor="middle" fill="#5A67FF" font-size="9" font-weight="700">Portkey Edge (SaaS)</text>
+  <text x="517" y="210" text-anchor="middle" fill="#7a8899" font-size="8">OR: VPC pod via Helm (hybrid)</text>
+  <text x="517" y="220" text-anchor="middle" fill="#4a5568" font-size="7.5">payloads stay in VPC (hybrid path)</text>
+  <rect x="442" y="228" width="150" height="24" rx="4" fill="#0a1a14" stroke="#10a37f" stroke-opacity=".7"/>
+  <text x="517" y="244" text-anchor="middle" fill="#10a37f" font-size="8.5">Cloud Providers (1600+)</text>
+  <rect x="442" y="258" width="150" height="22" rx="4" fill="#1a0d08" stroke="#ff4757" stroke-opacity=".4"/>
+  <text x="517" y="273" text-anchor="middle" fill="#ff6b4a" font-size="8">Air-gapped model: via hybrid VPC pod only</text>
+  <text x="517" y="330" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">Strong prompt studio</text>
+  <text x="517" y="345" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">SaaS + hybrid VPC option</text>
+  <text x="517" y="363" text-anchor="middle" fill="#8b92ff" font-size="8">Prompt dev → gateway deploy</text>
+
+  <!-- TrueFoundry -->
+  <rect x="634" y="60" width="214" height="310" rx="8" fill="#1e0d08" stroke="#FF5533"/>
+  <text x="741" y="82" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">TRUEFOUNDRY</text>
+  <rect x="648" y="94" width="186" height="48" rx="4" fill="#2a1508" stroke="#FF5533" stroke-width="1.5"/>
+  <text x="741" y="112" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="700">Cloud Playground UI</text>
+  <text x="741" y="125" text-anchor="middle" fill="#7a8899" font-size="7.5">guardrail testing · MCP tools · code snippets</text>
+  <text x="741" y="136" text-anchor="middle" fill="#7a8899" font-size="7.5">routes through gateway pipeline</text>
+  <rect x="648" y="148" width="186" height="26" rx="4" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="741" y="162" text-anchor="middle" fill="#7a8899" font-size="8">Control Plane: config queue · TFY_API_KEY</text>
+  <line x1="741" y1="176" x2="741" y2="184" stroke="#FF5533" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="741" y="183" text-anchor="middle" fill="#4a5568" font-size="7">VPC boundary ↓</text>
+  <rect x="648" y="186" width="186" height="44" rx="4" fill="#2a1508" stroke="#FF5533"/>
+  <text x="741" y="204" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="700">Stateless Hono Gateway Plane</text>
+  <text x="741" y="218" text-anchor="middle" fill="#7a8899" font-size="8">in-memory: auth · guardrails · routing</text>
+  <text x="741" y="228" text-anchor="middle" fill="#4a5568" font-size="7.5">(inside customer VPC)</text>
+  <rect x="672" y="238" width="140" height="26" rx="4" fill="#1e0d08" stroke="#ff4757"/>
+  <text x="742" y="254" text-anchor="middle" fill="#ff6b4a" font-size="9" font-weight="600">Air-Gapped Model 🔒</text>
+  <text x="741" y="280" text-anchor="middle" fill="#4a5568" font-size="7.5">No public port required on model</text>
+  <text x="741" y="330" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">Gateway-native playground</text>
+  <text x="741" y="345" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">guardrails tested in-loop</text>
+  <text x="741" y="363" text-anchor="middle" fill="#00e599" font-size="8" font-weight="600">Air-gapped model reachable</text>
+</svg>
+</div>
+<div class="img-caption">Testing topology for all four gateways. Kong has a Konnect cloud control plane but no prompt playground. Portkey and TrueFoundry both provide prompt playgrounds, with a key architectural difference: Portkey's studio connects to cloud providers, while TrueFoundry's playground routes through the in-VPC data plane, enabling air-gapped model testing. Editorial reconstruction.</div>
+
+<hr>
+
+<!-- §2 LITELLM -->
+<div class="vendor-header litellm">
+  <span class="vendor-badge">LiteLLM</span>
+  <span class="vendor-title">§2 — Admin UI and Management CLI as Testing Surfaces</span>
+</div>
+
+<h3>What the Docs Say</h3>
+<p>LiteLLM's testing story begins and ends with its proxy. The <a href="https://docs.litellm.ai/docs/proxy/ui" target="_blank">Admin UI page</a> documents a self-hosted web interface at <code>/ui</code> that can create virtual keys, track spend, and add models. This is an operations surface, not a prompt engineering surface. The public docs describe the UI as being for "creating keys, tracking spend, and adding models" — distinct from testing prompt behavior against a governed policy stack.</p>
+
+<p>The closest analog to interactive prompt testing in LiteLLM is the <a href="https://docs.litellm.ai/docs/proxy/management_cli" target="_blank">management CLI</a>, which can make chat and HTTP requests directly to the proxy. An engineer with CLI access can send test completions through the running gateway and observe responses. This is not a visual surface, but it routes through the same router, budget, and guardrail logic that production traffic traverses. The <a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">logging page</a> notes that <code>x-litellm-call-id</code> is the most useful troubleshooting header, providing a stable identifier to correlate a test call with its callback and log events across components.</p>
+
+<p>For air-gapped model testing specifically, LiteLLM's self-hosted model is both its strength and its constraint. Because the proxy, Admin UI, and all state (Redis, Postgres) are in the same environment as the model, there is no internet exposure of any inference path. However, the public docs reviewed center on a self-hosted proxy/Admin UI rather than a Konnect-style cloud control plane, so prompt engineers typically need private network access such as VPN or bastion access to reach the Admin UI in private deployments, eliminating much of the ergonomic benefit a testing surface is supposed to provide.</p>
+
+<div class="code-wrap"><pre><span class="cm"># LiteLLM config for testing context — Admin UI + management CLI as test paths</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/config_settings · docs.litellm.ai/docs/proxy/ui</span>
+<span class="key">model_list</span>:
+  - <span class="key">model_name</span>: <span class="str">flagship</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">openai/gpt-5.4</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/OPENAI_API_KEY</span>
+  - <span class="key">model_name</span>: <span class="str">secondary</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4-6</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/ANTHROPIC_API_KEY</span>
+
+<span class="key">litellm_settings</span>:
+  <span class="key">master_key</span>: <span class="str">sk-test-1234</span>
+  <span class="key">database_url</span>: <span class="str">postgres://postgres:password@localhost:5432/litellm</span>
+  <span class="cm"># Admin UI at http://localhost:4000/ui — requires master_key + db connected</span>
+  <span class="cm"># Management CLI: see LiteLLM Management CLI docs for the current chat / HTTP request commands</span>
+  <span class="key">success_callback</span>: [<span class="str">"langfuse"</span>]
+  <span class="key">turn_off_message_logging</span>: <span class="kw">false</span> <span class="cm"># keep payloads visible during testing</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">docs.litellm.ai/docs/proxy/config_settings</a> · <a href="https://docs.litellm.ai/docs/proxy/ui" target="_blank">docs.litellm.ai/docs/proxy/ui</a> · <a href="https://docs.litellm.ai/docs/proxy/management_cli" target="_blank">docs.litellm.ai/docs/proxy/management_cli</a></div>
+
+<!-- Diagram 2: LiteLLM Testing Flow -->
+<div class="svg-wrap">
+<svg viewBox="0 0 620 230" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="620" height="230" fill="#121826"/>
+  <text x="310" y="22" text-anchor="middle" fill="#00C2CB" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">LITELLM — SELF-HOSTED TESTING SURFACES</text>
+  <defs><marker id="la" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00C2CB"/></marker></defs>
+  <rect x="12" y="38" width="596" height="160" rx="8" fill="#001d1e" stroke="#00C2CB" stroke-opacity=".2" stroke-dasharray="8,4"/>
+  <text x="28" y="55" fill="#00C2CB" font-size="9" font-weight="600" font-family="IBM Plex Mono, monospace">Self-hosted environment — private network access (e.g. VPN / bastion) typically required</text>
+  <rect x="28" y="65" width="115" height="40" rx="5" fill="#001d1e" stroke="#00C2CB" stroke-opacity=".6"/>
+  <text x="85" y="83" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="700">Admin UI (/ui)</text>
+  <text x="85" y="96" text-anchor="middle" fill="#7a8899" font-size="7.5">keys · spend · models only</text>
+  <rect x="28" y="110" width="115" height="40" rx="5" fill="#001d1e" stroke="#00C2CB" stroke-opacity=".4"/>
+  <text x="85" y="128" text-anchor="middle" fill="#00C2CB" font-size="9" font-weight="700">Management CLI</text>
+  <text x="85" y="141" text-anchor="middle" fill="#7a8899" font-size="7.5">chat + HTTP requests</text>
+  <line x1="143" y1="85" x2="188" y2="108" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)" stroke-opacity=".5"/>
+  <line x1="143" y1="130" x2="188" y2="120" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+  <rect x="192" y="72" width="150" height="80" rx="6" fill="#001d1e" stroke="#00C2CB" stroke-width="1.5"/>
+  <text x="267" y="96" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="700">LiteLLM Proxy</text>
+  <text x="267" y="111" text-anchor="middle" fill="#7a8899" font-size="8">virtual key auth + budget check</text>
+  <text x="267" y="124" text-anchor="middle" fill="#7a8899" font-size="8">router + guardrails + callbacks</text>
+  <text x="267" y="138" text-anchor="middle" fill="#4a5568" font-size="7">x-litellm-call-id for tracing</text>
+  <line x1="342" y1="112" x2="387" y2="112" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+  <rect x="390" y="86" width="90" height="26" rx="4" fill="#0a1a14" stroke="#10a37f"/>
+  <text x="435" y="103" text-anchor="middle" fill="#10a37f" font-size="9">OpenAI / external</text>
+  <rect x="390" y="116" width="90" height="26" rx="4" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="435" y="133" text-anchor="middle" fill="#e8843a" font-size="9">Anthropic / external</text>
+  <rect x="192" y="165" width="65" height="24" rx="4" fill="#080c12" stroke="#1e2d45"/>
+  <text x="224" y="181" text-anchor="middle" fill="#7a8899" font-size="8">Redis (state)</text>
+  <rect x="267" y="165" width="70" height="24" rx="4" fill="#080c12" stroke="#1e2d45"/>
+  <text x="302" y="181" text-anchor="middle" fill="#7a8899" font-size="8">Postgres (meta)</text>
+  <line x1="224" y1="152" x2="224" y2="163" stroke="#1e2d45" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="302" y1="152" x2="302" y2="163" stroke="#1e2d45" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="500" y="88" fill="#ffa726" font-size="8" font-weight="600">⚠ Public docs: self-hosted UI</text>
+  <text x="500" y="101" fill="#7a8899" font-size="7.5">VPN/bastion for UI access</text>
+  <text x="500" y="114" fill="#7a8899" font-size="7.5">No prompt playground</text>
+  <text x="310" y="215" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: docs.litellm.ai/docs/proxy/ui · docs.litellm.ai/docs/proxy/management_cli · docs.litellm.ai/docs/proxy/architecture</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM's testing surface is the self-hosted Admin UI (operations management) and management CLI (test requests through proxy). Access typically requires private network connectivity rather than a public UI. Editorial reconstruction based on LiteLLM proxy and Admin UI docs.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — No Dedicated Prompt Testing Playground</div>
+  <p>LiteLLM's Admin UI is documented for key management, spend tracking, and model registration. The management CLI routes chat requests through the proxy. There is no interactive visual playground for prompt iteration, guardrail testing, or prompt versioning in the public docs reviewed, and those docs center on a self-hosted proxy/Admin UI rather than a Konnect-style cloud control plane.</p>
+</div>
+
+<hr>
+
+<!-- §3 KONG -->
+<div class="vendor-header kong">
+  <span class="vendor-badge">Kong</span>
+  <span class="vendor-title">§3 — Konnect Cloud Control Plane, Developer Tool Governance, No Playground</span>
+</div>
+
+<h3>Architecture</h3>
+<p>Kong's deployment posture differs meaningfully from LiteLLM. <a href="https://developer.konghq.com/ai-gateway/" target="_blank">Konnect</a> provides a unified cloud control plane that manages configuration, plugins, and policies, with data plane nodes deployable self-hosted, on Kubernetes, or as fully managed cloud gateways. The <a href="https://developer.konghq.com/ai-gateway/get-started/" target="_blank">quickstart</a> provisions a Konnect control plane and exports both a control-plane URL (<code>KONNECT_CONTROL_PLANE_URL</code>) and a proxy URL (<code>KONNECT_PROXY_URL</code>), making the separation between management surface and inference path explicit from the first five minutes of use. Kong also supports fully self-managed deployments — the cloud control plane is an option, not a requirement.</p>
+
+<p>However, despite having a cloud control plane, Kong has no dedicated visual prompt playground. Kong's approach to developer testing is through <a href="https://developer.konghq.com/ai-gateway/ai-clis/" target="_blank">AI CLI proxying</a>: routing requests from AI command-line tools — including Claude Code, Codex CLI, Qwen Code CLI, and Gemini CLI — through the gateway so that auth, rate limiting, audit logging, and semantic routing all apply to developer test traffic. For teams that already use these AI coding assistants, Kong becomes the governed conduit without requiring any change to the engineer's existing workflow.</p>
+
+<p>Konnect also provides visualized LLM metrics and a visual traffic map that shows how requests flow between clients and models in real time. This is a monitoring and governance surface, not a prompt iteration surface — but it gives Kong users more operational visibility into test traffic than any purely self-hosted solution.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Route AI CLI tools through Kong for governed testing</span>
+<span class="cm"># Source: developer.konghq.com/ai-gateway/ai-clis/ · developer.konghq.com/ai-gateway/get-started/</span>
+
+<span class="cm"># Step 1 — Bootstrap Kong with Konnect quickstart</span>
+<span class="kw">export</span> <span class="key">KONNECT_TOKEN</span>=<span class="str">'YOUR_KONNECT_PAT'</span>
+curl -Ls https://get.konghq.com/quickstart | bash -s -- -k <span class="str">$KONNECT_TOKEN</span> --deck-output
+<span class="cm"># Exports KONNECT_CONTROL_PLANE_URL and KONNECT_PROXY_URL</span>
+
+<span class="cm"># Step 2 — Point each CLI at Kong using its documented integration</span>
+<span class="cm"># Claude Code example (documented in Kong's Anthropic/OpenAI how-to guides):</span>
+<span class="key">ANTHROPIC_BASE_URL</span>=<span class="str">"$KONNECT_PROXY_URL/anything"</span> \
+<span class="key">ANTHROPIC_MODEL</span>=<span class="str">"claude-sonnet-4-5-20250929"</span> \
+claude
+<span class="cm"># Codex CLI / Qwen Code CLI use OpenAI-compatible base URL settings.</span>
+<span class="cm"># Gemini CLI has its own Gemini-specific proxy configuration.</span>
+
+<span class="cm"># Step 3 — Observe via Konnect: LLM metrics, visual traffic maps, audit logs</span>
+<span class="cm"># ai_requests · ai_cost · ai_tokens · provider latency — per consumer (v3.11+)</span>
+<span class="cm"># config.ai_metrics: true in Prometheus plugin for external Prometheus/Grafana</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/ai-gateway/ai-clis/" target="_blank">developer.konghq.com/ai-gateway/ai-clis/</a> · <a href="https://developer.konghq.com/ai-gateway/get-started/" target="_blank">developer.konghq.com/ai-gateway/get-started/</a> · <a href="https://developer.konghq.com/how-to/use-claude-code-with-ai-gateway-gemini/" target="_blank">Claude Code with Gemini via AI Gateway</a> · <a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">monitor-ai-llm-metrics</a></div>
+
+<!-- Diagram 3: Kong -->
+<div class="svg-wrap">
+<svg viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="720" height="250" fill="#121826"/>
+  <text x="360" y="22" text-anchor="middle" fill="#00D27B" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">KONG — KONNECT CLOUD CP + AI CLI TESTING PATH</text>
+  <defs><marker id="ka" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00D27B"/></marker>
+  <marker id="ka2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#7a8899"/></marker></defs>
+
+  <!-- Konnect Cloud Control Plane -->
+  <rect x="12" y="38" width="220" height="90" rx="6" fill="#001e13" stroke="#00D27B" stroke-opacity=".5" stroke-dasharray="6,3"/>
+  <text x="122" y="57" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace">Konnect — Cloud Control Plane</text>
+  <rect x="24" y="66" width="195" height="20" rx="3" fill="#001e13" stroke="#00D27B" stroke-opacity=".4"/>
+  <text x="121" y="79" text-anchor="middle" fill="#7a8899" font-size="8">config · analytics · Visual LLM metrics</text>
+  <rect x="24" y="90" width="195" height="20" rx="3" fill="#001e13" stroke="#00D27B" stroke-opacity=".4"/>
+  <text x="121" y="103" text-anchor="middle" fill="#7a8899" font-size="8">real-time traffic maps · decK / Admin API</text>
+
+  <!-- AI CLI tools -->
+  <rect x="12" y="145" width="130" height="80" rx="6" fill="#001e13" stroke="#00D27B" stroke-opacity=".3"/>
+  <text x="77" y="163" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">AI CLI Tools</text>
+  <rect x="22" y="171" width="110" height="16" rx="3" fill="#001e13" stroke="#00D27B" stroke-opacity=".4"/>
+  <text x="77" y="182" text-anchor="middle" fill="#7a8899" font-size="8">Claude Code / Codex CLI</text>
+  <rect x="22" y="191" width="110" height="16" rx="3" fill="#001e13" stroke="#00D27B" stroke-opacity=".4"/>
+  <text x="77" y="202" text-anchor="middle" fill="#7a8899" font-size="8">Qwen Code CLI / Gemini CLI</text>
+  <text x="77" y="222" text-anchor="middle" fill="#4a5568" font-size="7.5">tool-specific proxy config</text>
+
+  <!-- Config arrow: Konnect to data plane -->
+  <line x1="232" y1="83" x2="272" y2="140" stroke="#00D27B" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#ka2)"/>
+  <text x="264" y="118" fill="#4a5568" font-size="7.5">config sync</text>
+
+  <!-- CLI to data plane -->
+  <line x1="142" y1="185" x2="278" y2="185" stroke="#00D27B" stroke-width="1.5" marker-end="url(#ka)"/>
+
+  <!-- Kong Data Plane -->
+  <rect x="280" y="130" width="240" height="105" rx="8" fill="#001e13" stroke="#00D27B" stroke-width="1.5"/>
+  <text x="400" y="152" text-anchor="middle" fill="#00D27B" font-size="10" font-weight="700">Kong AI Gateway — Data Plane</text>
+  <text x="400" y="166" text-anchor="middle" fill="#7a8899" font-size="8">(self-hosted, K8s, cloud-managed via Konnect)</text>
+  <text x="400" y="180" text-anchor="middle" fill="#7a8899" font-size="8">auth · rate limit · AI Proxy · audit log</text>
+  <text x="400" y="194" text-anchor="middle" fill="#7a8899" font-size="8">ai_requests · ai_cost · ai_tokens (Prometheus)</text>
+  <text x="400" y="208" text-anchor="middle" fill="#4a5568" font-size="7.5">No visual playground · Testing = API calls through proxy</text>
+  <text x="400" y="226" text-anchor="middle" fill="#4a5568" font-size="7">OTel Gen AI attributes · audit logs</text>
+
+  <!-- Providers -->
+  <line x1="520" y1="172" x2="562" y2="160" stroke="#10a37f" stroke-width="1.2"/>
+  <line x1="520" y1="185" x2="562" y2="185" stroke="#e8843a" stroke-width="1.2"/>
+  <line x1="520" y1="198" x2="562" y2="210" stroke="#6ba3f5" stroke-width="1.2"/>
+  <rect x="566" y="149" width="92" height="20" rx="4" fill="#0a1a14" stroke="#10a37f"/>
+  <text x="612" y="162" text-anchor="middle" fill="#10a37f" font-size="8" font-weight="600">gpt-5.4</text>
+  <rect x="566" y="174" width="92" height="20" rx="4" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="612" y="187" text-anchor="middle" fill="#e8843a" font-size="8" font-weight="600">sonnet-4.6</text>
+  <rect x="566" y="199" width="92" height="20" rx="4" fill="#080e1a" stroke="#6ba3f5"/>
+  <text x="612" y="212" text-anchor="middle" fill="#6ba3f5" font-size="8" font-weight="600">gemini-flash</text>
+
+  <text x="360" y="240" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: developer.konghq.com/ai-gateway/ · developer.konghq.com/ai-gateway/ai-clis/ · developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/</text>
+</svg>
+</div>
+<div class="img-caption">Kong provides Konnect as a cloud control plane with LLM metrics and visual traffic maps. Developer testing happens by pointing AI CLI tools at the proxy endpoint. No dedicated visual prompt playground exists. Editorial reconstruction.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — No Visual Playground, No Prompt Version Management</div>
+  <p>Kong has a cloud control plane (Konnect) with analytics and LLM metrics, but no interactive prompt testing, no per-request guardrail experimentation UI, and no prompt versioning. Kong is a network control plane first. For organisations that govern AI CLI developer tools, this is a strong fit; for teams that need structured prompt iteration UX, external tooling is needed.</p>
+</div>
+
+<hr>
+
+<!-- §4 PORTKEY -->
+<div class="vendor-header portkey">
+  <span class="vendor-badge">Portkey</span>
+  <span class="vendor-title">§4 — Full Prompt Engineering Studio: Playground, Versioning, Prompt API</span>
+</div>
+
+<h3>Architecture</h3>
+<p>Portkey has invested significantly in prompt tooling. The <a href="https://portkey.ai/docs/product/prompt-engineering-studio" target="_blank">Prompt Engineering Studio</a> (accessible at <code>prompt.new</code>) is a full-featured prompt development environment offering: an interactive Prompt Playground, prompt versioning with labeled deployments and rollbacks, a shared prompt library with team access controls, prompt partials for reusable components, prompt observability, and a Prompt API for integrating saved prompts into application code. This is production-grade tooling built for prompt development at scale.</p>
+
+<p>The <a href="https://portkey.ai/docs/product/prompt-engineering-studio/prompt-playground" target="_blank">Prompt Playground</a> is a complete Prompt Engineering IDE. It supports: running prompts on any LLM (1600+ cloud models), side-by-side model comparison in parallel, multimodal input (text and images), tool integration, Mustache-based prompt templates, and AI-assisted prompt improvements. Once a prompt passes review in the playground, it is saved to the prompt library and deployed through the Prompt API — which then routes calls through Portkey's gateway stack with the full config-first routing, fallback, retry, and guardrail machinery applied.</p>
+
+<p>This creates an important architectural distinction: <strong>Portkey's Prompt Engineering Studio is a prompt development environment that connects to cloud providers directly for testing, then deploys via the Portkey gateway for production.</strong> The gateway's guardrail policies, routing rules, and fallback chains are applied when the deployed prompt is invoked via the Prompt API in production, not necessarily during the playground test session itself. This is a deliberate product choice — it prioritizes development velocity (test across 1600+ models instantly) over gateway-policy-in-the-loop testing.</p>
+
+<h3>Prompt Versioning and Prompt API</h3>
+<p>Prompt versioning is a first-class feature: every update to a saved prompt creates a new version, and the docs explicitly state that you can switch back to any older version. Labeled deployments allow stable versions to be promoted to production while experimental versions continue in development. The <a href="https://portkey.ai/docs/product/prompt-engineering-studio/prompt-api" target="_blank">Prompt API</a> provides Completions and Render endpoints, making it straightforward to integrate versioned, tested prompts into application code.</p>
+
+<h3>Hybrid VPC and Air-Gapped Models</h3>
+<p>For infrastructure deployment, Portkey's <a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">hybrid VPC deployment</a> runs the data plane gateway pod inside the customer's network via Helm, with prompt and response payloads staying in the customer's VPC while only metrics leave. The docs' Self-Hosting section also includes a separate Air-Gapped Deployments track. The key nuance is architectural: Prompt Engineering Studio at <code>prompt.new</code> is a SaaS development surface for testing against cloud providers, while testing private or air-gapped model endpoints requires routing through a self-hosted gateway path that the client can actually reach.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Portkey — Prompt Engineering Studio → Prompt API integration pattern</span>
+<span class="cm"># Source: portkey.ai/docs/product/prompt-engineering-studio/prompt-api</span>
+<span class="cm">#         portkey.ai/docs/product/prompt-engineering-studio/prompt-versioning</span>
+
+<span class="cm"># Step 1: Develop and version prompts in the Playground (prompt.new)</span>
+<span class="cm"># Side-by-side compare gpt-5.4 vs claude-sonnet-4-6, save the preferred version.</span>
+<span class="cm"># Each edit creates a new prompt version that can later be labeled for deployment.</span>
+
+<span class="kw">from</span> portkey_ai <span class="kw">import</span> Portkey
+
+portkey = Portkey(<span class="key">api_key</span>=<span class="str">"PORTKEY_API_KEY"</span>)
+exposure_json = {
+    <span class="str">"rating"</span>: <span class="str">"BBB"</span>,
+    <span class="str">"notional_usd"</span>: <span class="num">1250000</span>
+}
+
+<span class="cm"># Step 2: Invoke the saved prompt via Prompt API</span>
+response = portkey.prompts.completions.create(
+    <span class="key">prompt_id</span>=<span class="str">"YOUR_PROMPT_ID"</span>,
+    <span class="key">variables</span>={
+        <span class="str">"customer_id"</span>: <span class="str">"C-12345"</span>,
+        <span class="str">"exposure_data"</span>: exposure_json
+    },
+    <span class="key">max_tokens</span>=<span class="num">250</span>
+)
+
+print(response)
+
+<span class="cm"># Step 3: Observe in Portkey</span>
+<span class="cm"># Logs show cache / retry / fallback state per request.</span>
+<span class="cm"># Prompt Observability tracks version-level usage and performance.</span>
+<span class="cm"># Traces expose span timing via OTel / W3C trace context.</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/prompt-engineering-studio/prompt-api" target="_blank">portkey.ai/docs/product/prompt-engineering-studio/prompt-api</a> · <a href="https://portkey.ai/docs/product/prompt-engineering-studio/prompt-versioning" target="_blank">prompt-versioning</a> · <a href="https://portkey.ai/docs/product/prompt-engineering-studio" target="_blank">prompt-engineering-studio overview</a></div>
+
+<!-- Diagram 4: Portkey Prompt Studio + Hybrid -->
+<div class="svg-wrap">
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="720" height="280" fill="#121826"/>
+  <text x="360" y="22" text-anchor="middle" fill="#5A67FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">PORTKEY — PROMPT ENGINEERING STUDIO + GATEWAY ARCHITECTURE</text>
+  <defs><marker id="pa" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#5A67FF"/></marker>
+  <marker id="pa2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#ffa726"/></marker></defs>
+
+  <!-- Cloud boundary -->
+  <rect x="12" y="38" width="695" height="220" rx="8" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".2" stroke-dasharray="8,4"/>
+  <text x="28" y="56" fill="#5A67FF" font-size="8" font-weight="600" font-family="IBM Plex Mono, monospace">Portkey Cloud Platform</text>
+
+  <!-- Prompt Engineering Studio -->
+  <rect x="28" y="64" width="250" height="120" rx="8" fill="#0a0c24" stroke="#5A67FF" stroke-width="1.5"/>
+  <text x="153" y="84" text-anchor="middle" fill="#5A67FF" font-size="10" font-weight="700">Prompt Engineering Studio</text>
+  <text x="153" y="96" text-anchor="middle" fill="#7a8899" font-size="8">prompt.new · IDE for prompt engineers</text>
+  <rect x="40" y="104" width="115" height="16" rx="3" fill="#1a1a3a" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="97" y="115" text-anchor="middle" fill="#7a8899" font-size="7.5">Playground (1600+ models)</text>
+  <rect x="162" y="104" width="105" height="16" rx="3" fill="#1a1a3a" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="214" y="115" text-anchor="middle" fill="#7a8899" font-size="7.5">Side-by-side compare</text>
+  <rect x="40" y="125" width="115" height="16" rx="3" fill="#1a1a3a" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="97" y="136" text-anchor="middle" fill="#7a8899" font-size="7.5">Versioning + labels</text>
+  <rect x="162" y="125" width="105" height="16" rx="3" fill="#1a1a3a" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="214" y="136" text-anchor="middle" fill="#7a8899" font-size="7.5">Prompt library + partials</text>
+  <rect x="40" y="146" width="115" height="16" rx="3" fill="#1a1a3a" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="97" y="157" text-anchor="middle" fill="#7a8899" font-size="7.5">Mustache templates</text>
+  <rect x="162" y="146" width="105" height="16" rx="3" fill="#1a1a3a" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="214" y="157" text-anchor="middle" fill="#7a8899" font-size="7.5">Prompt API</text>
+  <text x="153" y="180" text-anchor="middle" fill="#ffa726" font-size="8" font-style="italic">⚠ Tests against cloud providers directly</text>
+
+  <!-- Studio tests directly to providers -->
+  <line x1="278" y1="115" x2="378" y2="115" stroke="#7a8899" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#pa2)"/>
+  <text x="328" y="108" text-anchor="middle" fill="#4a5568" font-size="7.5">test calls (direct)</text>
+
+  <!-- Cloud providers -->
+  <rect x="382" y="95" width="115" height="62" rx="5" fill="#0a1a14" stroke="#10a37f"/>
+  <text x="439" y="113" text-anchor="middle" fill="#10a37f" font-size="9" font-weight="600">Cloud Providers</text>
+  <text x="439" y="127" text-anchor="middle" fill="#7a8899" font-size="8">gpt-5.4 · sonnet-4.6</text>
+  <text x="439" y="140" text-anchor="middle" fill="#7a8899" font-size="8">gemini · 1600+ models</text>
+  <text x="439" y="152" text-anchor="middle" fill="#4a5568" font-size="7.5">studio test path</text>
+
+  <!-- Prompt API deploys via gateway -->
+  <line x1="153" y1="184" x2="153" y2="220" stroke="#5A67FF" stroke-width="1.5" marker-end="url(#pa)"/>
+  <text x="170" y="208" fill="#5A67FF" font-size="7.5">deploy via</text>
+  <text x="170" y="218" fill="#5A67FF" font-size="7.5">Prompt API</text>
+
+  <!-- Portkey Edge / Gateway -->
+  <rect x="28" y="220" width="250" height="28" rx="5" fill="#0a0c24" stroke="#5A67FF"/>
+  <text x="153" y="237" text-anchor="middle" fill="#5A67FF" font-size="9" font-weight="700">Portkey Edge (SaaS) / VPC Pod (Hybrid)</text>
+
+  <!-- Gateway applies policies on Prompt API calls -->
+  <line x1="278" y1="234" x2="378" y2="234" stroke="#5A67FF" stroke-width="1.5" marker-end="url(#pa)"/>
+  <text x="328" y="227" text-anchor="middle" fill="#5A67FF" font-size="7.5">Prompt API in prod</text>
+  <rect x="382" y="220" width="115" height="28" rx="5" fill="#0a1a14" stroke="#5A67FF" stroke-opacity=".5"/>
+  <text x="439" y="238" text-anchor="middle" fill="#5A67FF" font-size="8">routing · guardrails · cache</text>
+
+  <!-- Observability -->
+  <rect x="516" y="64" width="175" height="70" rx="6" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".5"/>
+  <text x="603" y="83" text-anchor="middle" fill="#5A67FF" font-size="9" font-weight="700">SaaS Dashboard</text>
+  <text x="603" y="97" text-anchor="middle" fill="#7a8899" font-size="8">Logs: cache · retry · fallback state</text>
+  <text x="603" y="110" text-anchor="middle" fill="#7a8899" font-size="8">Traces: OTel tree · W3C context</text>
+  <text x="603" y="123" text-anchor="middle" fill="#7a8899" font-size="8">Analytics: rescued requests</text>
+
+  <!-- VPC option note -->
+  <rect x="516" y="148" width="175" height="50" rx="5" fill="#1a1200" stroke="#ffa726" stroke-opacity=".6"/>
+  <text x="603" y="165" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="600">Hybrid VPC Option</text>
+  <text x="603" y="178" text-anchor="middle" fill="#7a8899" font-size="7.5">data plane pod in VPC (Helm)</text>
+  <text x="603" y="190" text-anchor="middle" fill="#4a5568" font-size="7.5">payloads stay in VPC · metrics leave</text>
+
+  <text x="360" y="265" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: portkey.ai/docs/product/prompt-engineering-studio · portkey.ai/docs/product/prompt-engineering-studio/prompt-api · portkey.ai/docs/enterprise/hybrid2</text>
+</svg>
+</div>
+<div class="img-caption">Portkey's Prompt Engineering Studio connects directly to 1600+ cloud models for prompt development and testing. Gateway policies (guardrails, routing) apply when prompts are deployed via the Prompt API in production. Hybrid VPC deployment routes inference payloads through an in-VPC pod. Editorial reconstruction based on Portkey docs.</div>
+
+<div class="callout info">
+  <div class="callout-title">ℹ Key Architectural Nuance — Studio vs. Gateway Testing</div>
+  <p>Portkey's Prompt Engineering Studio is a powerful prompt development environment. The crucial distinction for governed use cases: when testing in the playground, calls go directly to cloud providers (testing for model output quality, prompt format, versioning). When prompts are deployed via the <strong>Prompt API</strong>, the Portkey gateway applies routing, guardrails, retries, and caching. These are two separate phases of the prompt lifecycle, which is a deliberate product choice optimizing for development velocity.</p>
+</div>
+
+<hr>
+
+<!-- §5 TRUEFOUNDRY -->
+<div class="vendor-header tf">
+  <span class="vendor-badge">TrueFoundry</span>
+  <span class="vendor-title">§5 — Gateway-Native Playground: Guardrails, Routing, and Air-Gapped Models in One Loop</span>
+</div>
+
+<h3>Architecture</h3>
+<p>TrueFoundry's Playground UI is architecturally distinct from Portkey's Prompt Engineering Studio in one critical dimension: test traffic routes through the same in-VPC gateway data plane that handles production traffic. The <a href="https://www.truefoundry.com/docs/ai-gateway/playground-overview" target="_blank">Playground overview</a> positions the playground as the third step in the production onboarding flow — add providers, <em>validate behavior in the playground</em>, copy generated code snippets — rather than as a separate pre-gateway development environment.</p>
+
+<p>The <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">split-plane design</a> enables this. The cloud control plane hosts the playground UI and distributes configuration. The stateless Hono gateway plane runs inside the customer's Kubernetes cluster, subscribing to configuration updates via queue with HTTP fallback. The gateway plane performs all hot-path evaluations in-memory — authentication, rate limits, routing, guardrails — with async queueing for logs and metrics. This means that when a prompt engineer submits a test from the cloud playground UI, the request flows through the in-VPC gateway plane before reaching the model. Guardrails fire. Routing rules apply. Fallbacks can trigger. The model receives no request from outside the network boundary.</p>
+
+<p>It is worth being precise about data flows: the gateway plane maintains outbound connectivity to the control plane for configuration sync, and in hosted-control-plane deployments request-response data can also be exported to a control-plane ingestion service and backing bucket for logs and analytics. What does not require public exposure is the <em>model endpoint</em> itself — the hot path from gateway plane to model stays inside the VPC, so the model receives no inbound request from the public internet.</p>
+
+<h3>Per-Request Guardrail Testing Without Global Policy Change</h3>
+<p>The <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-getting-started" target="_blank">X-TFY-GUARDRAILS header</a> accepts a four-array JSON object covering all hook points: <code>llm_input_guardrails</code>, <code>llm_output_guardrails</code>, <code>mcp_tool_pre_invoke_guardrails</code>, and <code>mcp_tool_post_invoke_guardrails</code>. A prompt engineer can attach or remove guardrails on a per-request basis from the playground without touching global gateway configuration — exactly the isolation needed for safe A/B testing of safety policies.</p>
+
+<p>The <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">response headers</a> close the feedback loop directly in the playground: <code>x-tfy-resolved-model</code> exposes which physical model actually handled the call (exposing silent fallbacks), <code>x-tfy-applied-configurations</code> lists every control surface that fired, and the <code>server-timing</code> header breaks total latency into per-stage milliseconds across authentication, input guardrails, model call, output guardrails, and logging.</p>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — per-request guardrail override via X-TFY-GUARDRAILS header</span>
+<span class="cm"># Source: truefoundry.com/docs/ai-gateway/guardrails-getting-started</span>
+<span class="cm">#         truefoundry.com/docs/ai-gateway/headers</span>
+<span class="kw">import</span> json, requests
+
+guardrail_config = {
+    <span class="str">"llm_input_guardrails"</span>:  [<span class="str">"testing-group/pii-detector"</span>],
+    <span class="str">"llm_output_guardrails"</span>: [<span class="str">"testing-group/secrets-scan"</span>],
+    <span class="str">"mcp_tool_pre_invoke_guardrails"</span>:  [],
+    <span class="str">"mcp_tool_post_invoke_guardrails"</span>: []
+}
+
+resp = requests.post(
+    <span class="str">"https://gateway.your-org.internal/openai/chat/completions"</span>,
+    <span class="cm"># ↑ internal cluster DNS — model unreachable from public internet</span>
+    headers={
+        <span class="str">"Authorization"</span>:  <span class="str">"Bearer your-api-key"</span>,
+        <span class="str">"x-tfy-metadata"</span>: json.dumps({<span class="str">"environment"</span>: <span class="str">"staging"</span>, <span class="str">"test_run"</span>: <span class="str">"pr-1234"</span>}),
+        <span class="str">"x-tfy-guardrails"</span>: json.dumps(guardrail_config)
+    },
+    json={
+        <span class="str">"model"</span>: <span class="str">"internal-risk-scorer"</span>,  <span class="cm"># logical virtual model alias</span>
+        <span class="str">"messages"</span>: [{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"SSN: 123-45-6789. Summarise."</span>}]
+    }
+)
+
+<span class="cm"># Response headers reveal exactly what fired in the policy stack:</span>
+print(resp.headers.get(<span class="str">"x-tfy-resolved-model"</span>))
+<span class="cm"># e.g. → "anthropic/claude-sonnet-4-6"  (fallback rule fired silently)</span>
+
+print(resp.headers.get(<span class="str">"x-tfy-applied-configurations"</span>))
+<span class="cm"># e.g. → "guardrails-control, ratelimiting-config, air-gapped-routing"</span>
+
+print(resp.headers.get(<span class="str">"server-timing"</span>))
+<span class="cm"># e.g. → auth;dur=0.9, llm-in-guard;dur=0.7, model-call;dur=1350, llm-out-guard;dur=722, log;dur=1.1</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-getting-started" target="_blank">truefoundry.com/docs/ai-gateway/guardrails-getting-started</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">truefoundry.com/docs/ai-gateway/headers</a></div>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry routing config sketch — valid doc schema for an air-gapped internal target</span>
+<span class="cm"># Source: truefoundry.com/docs/ai-gateway/load-balancing-configuration</span>
+<span class="cm">#         truefoundry.com/docs/ai-gateway/virtual-model</span>
+<span class="key">name</span>: <span class="str">air-gapped-routing</span>
+<span class="key">type</span>: <span class="str">gateway-load-balancing-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">"risk-model-staging"</span>
+    <span class="key">type</span>: <span class="str">"weight-based-routing"</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        - <span class="str">"team:quant-research"</span>
+      <span class="key">models</span>:
+        - <span class="str">"internal-risk-scorer"</span>
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"staging"</span>
+    <span class="key">load_balance_targets</span>:
+      - <span class="key">target</span>: <span class="str">"internal/risk-model-v2"</span>
+        <span class="key">weight</span>: <span class="num">100</span>
+        <span class="key">retry_config</span>:
+          <span class="key">attempts</span>: <span class="num">1</span>
+          <span class="cm"># Gateway plane resolves this via internal cluster DNS</span>
+          <span class="cm"># Model endpoint has no public port</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">truefoundry.com/docs/ai-gateway/load-balancing-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">truefoundry.com/docs/ai-gateway/virtual-model</a></div>
+
+<!-- Diagram 5: TrueFoundry Gateway-Native Playground -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="340" fill="#121826"/>
+  <text x="410" y="24" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">TrueFoundry — Gateway-Native Playground with In-VPC Data Plane</text>
+  <text x="410" y="42" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">Playground test traffic routes through the same policy stack as production — guardrails, routing, and fallbacks fire in-loop</text>
+  <defs>
+    <marker id="ta" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#FF5533"/></marker>
+    <marker id="ta2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#7a8899"/></marker>
+  </defs>
+  <!-- Cloud Control Plane -->
+  <rect x="12" y="56" width="360" height="230" rx="8" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".3" stroke-dasharray="8,4"/>
+  <text x="28" y="74" fill="#FF5533" font-size="9" font-weight="600" font-family="IBM Plex Mono, monospace">TrueFoundry Cloud — Control Plane</text>
+  <!-- Playground UI -->
+  <rect x="28" y="82" width="330" height="130" rx="8" fill="#2a1508" stroke="#FF5533" stroke-width="1.5"/>
+  <text x="193" y="102" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700">Playground UI</text>
+  <text x="193" y="116" text-anchor="middle" fill="#7a8899" font-size="9">test prompts · guardrails · MCP tools · code snippets</text>
+  <rect x="44" y="126" width="140" height="20" rx="3" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="114" y="140" text-anchor="middle" fill="#7a8899" font-size="8">Prompt save + versioning</text>
+  <rect x="196" y="126" width="150" height="20" rx="3" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="271" y="140" text-anchor="middle" fill="#7a8899" font-size="8">X-TFY-GUARDRAILS per-request</text>
+  <rect x="44" y="152" width="140" height="20" rx="3" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="114" y="166" text-anchor="middle" fill="#7a8899" font-size="8">MCP tool trace visibility</text>
+  <rect x="196" y="152" width="150" height="20" rx="3" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="271" y="166" text-anchor="middle" fill="#7a8899" font-size="8">Multi-SDK code snippets</text>
+  <rect x="44" y="178" width="302" height="22" rx="3" fill="#0a0e16" stroke="#ffa726" stroke-opacity=".5"/>
+  <text x="195" y="193" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="600">↓ Test requests route through in-VPC gateway (same as production)</text>
+  <!-- Config -->
+  <rect x="28" y="224" width="330" height="38" rx="6" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="193" y="240" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="700">Config Distribution</text>
+  <text x="193" y="255" text-anchor="middle" fill="#7a8899" font-size="8">config queue + TFY_API_KEY auth · HTTP fallback · central management</text>
+  <!-- Arrow crosses VPC boundary -->
+  <line x1="193" y1="264" x2="193" y2="285" stroke="#FF5533" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#ta)"/>
+  <text x="220" y="278" fill="#4a5568" font-size="8" font-style="italic">VPC boundary ↓</text>
+  <!-- VPC strip -->
+  <rect x="12" y="292" width="800" height="32" rx="4" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".2"/>
+  <text x="28" y="312" fill="#FF5533" font-size="8.5" font-weight="600" font-family="IBM Plex Mono, monospace">Customer VPC / Kubernetes Cluster</text>
+  <!-- Gateway plane -->
+  <rect x="390" y="56" width="270" height="230" rx="8" fill="#2a1508" stroke="#FF5533"/>
+  <text x="525" y="78" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700">Stateless Hono Gateway Plane</text>
+  <text x="525" y="92" text-anchor="middle" fill="#7a8899" font-size="8.5">No external calls on hot path · in-memory eval</text>
+  <rect x="404" y="104" width="118" height="24" rx="4" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="463" y="120" text-anchor="middle" fill="#7a8899" font-size="8">Auth + Rate Limits</text>
+  <rect x="532" y="104" width="116" height="24" rx="4" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="590" y="120" text-anchor="middle" fill="#7a8899" font-size="8">Routing (TPOT)</text>
+  <rect x="404" y="133" width="118" height="24" rx="4" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="463" y="149" text-anchor="middle" fill="#7a8899" font-size="8">Input Guardrails</text>
+  <rect x="532" y="133" width="116" height="24" rx="4" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="590" y="149" text-anchor="middle" fill="#7a8899" font-size="8">Output Guardrails</text>
+  <!-- Response headers box -->
+  <rect x="404" y="165" width="245" height="54" rx="4" fill="#0a0e16" stroke="#ffa726" stroke-opacity=".5"/>
+  <text x="527" y="182" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="700">Response Headers (visible in playground)</text>
+  <text x="527" y="196" text-anchor="middle" fill="#50fa7b" font-size="8" font-family="IBM Plex Mono, monospace">x-tfy-resolved-model</text>
+  <text x="527" y="209" text-anchor="middle" fill="#50fa7b" font-size="8" font-family="IBM Plex Mono, monospace">x-tfy-applied-configurations</text>
+  <text x="527" y="222" text-anchor="middle" fill="#50fa7b" font-size="8" font-family="IBM Plex Mono, monospace">server-timing (per-stage ms)</text>
+  <!-- Request arrow: playground to gateway -->
+  <line x1="374" y1="155" x2="388" y2="155" stroke="#FF5533" stroke-width="2" marker-end="url(#ta)"/>
+  <text x="381" y="148" text-anchor="middle" fill="#ffa726" font-size="8">test req</text>
+  <!-- Air-gapped model -->
+  <rect x="676" y="130" width="132" height="64" rx="8" fill="#1e0d08" stroke="#ff4757" stroke-width="1.5"/>
+  <text x="742" y="156" text-anchor="middle" fill="#ff6b4a" font-size="11" font-weight="700">Air-Gapped</text>
+  <text x="742" y="171" text-anchor="middle" fill="#ff6b4a" font-size="11" font-weight="700">Model 🔒</text>
+  <text x="742" y="186" text-anchor="middle" fill="#4a5568" font-size="8">no public port</text>
+  <line x1="660" y1="162" x2="674" y2="162" stroke="#FF5533" stroke-width="2" marker-end="url(#ta)"/>
+  <text x="410" y="324" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: truefoundry.com/docs/ai-gateway/playground-overview · truefoundry.com/docs/platform/gateway-plane-architecture · truefoundry.com/docs/ai-gateway/headers</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry playground test traffic routes through the in-VPC Hono gateway plane, firing real guardrails and routing rules. The model endpoint itself needs no public port. Configuration sync leaves the cluster, and hosted-control-plane deployments can also export request-response data for logs and analytics. Editorial reconstruction based on TrueFoundry architecture and deployment docs.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — Kubernetes Operational Prerequisite</div>
+  <p>The <a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">deploy-gateway-plane guide</a> requires a running Kubernetes cluster, a domain, a TLS certificate, image-pull credentials, and a control-plane API key before any test traffic can flow through the in-VPC gateway plane. For teams without a dedicated Kubernetes platform function, this is a significant adoption barrier. The air-gapped testing capability is architecturally elegant; the operational prerequisite is substantial.</p>
+</div>
+
+<hr>
+
+<!-- §6 FEATURE MATRIX -->
+<h2>§6 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation as of March 2026. ✅ = native and documented, ⚠ = partial or with important caveats, ❌ = not natively supported or not documented.</p>
+
+<div class="matrix-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th style="color:var(--litellm)">LiteLLM</th>
+      <th style="color:var(--kong)">Kong AI GW</th>
+      <th style="color:var(--portkey)">Portkey</th>
+      <th style="color:var(--tf)">TrueFoundry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Dedicated visual prompt playground</strong></td>
+      <td><span class="cross">❌</span> Admin UI is ops-only (keys, spend, models)</td>
+      <td><span class="cross">❌</span> Not documented</td>
+      <td><span class="check">✅</span> Prompt Engineering Studio: playground IDE, 1600+ models, multimodal, side-by-side compare</td>
+      <td><span class="check">✅</span> Native Playground UI; test traffic routes through the gateway policy stack</td>
+    </tr>
+    <tr>
+      <td><strong>Prompt save and version from UI</strong></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="check">✅</span> Version history, labeled deployments, rollbacks, prompt library with team access</td>
+      <td><span class="check">✅</span> Prompt management: create, test, save, version via gateway-integrated playground</td>
+    </tr>
+    <tr>
+      <td><strong>Playground testing through gateway policy stack</strong></td>
+      <td><span class="partial">⚠</span> CLI sends calls through proxy; no visual playground</td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="partial">⚠</span> Studio tests directly against cloud providers; gateway policies apply on Prompt API calls in production</td>
+      <td><span class="check">✅</span> Playground routes through in-VPC gateway plane; guardrails, routing, fallbacks fire during test</td>
+    </tr>
+    <tr>
+      <td><strong>Interactive guardrail testing in UI</strong></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="partial">⚠</span> Guardrails tested on Prompt API calls (production); not directly in studio test session</td>
+      <td><span class="check">✅</span> Test LLM input/output guardrails and MCP hook guardrails in playground</td>
+    </tr>
+    <tr>
+      <td><strong>Per-request guardrail override (no config change)</strong></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="cross">❌</span> Prompt parameter overrides are documented; a TrueFoundry-style per-request guardrail override is not</td>
+      <td><span class="check">✅</span> <code>X-TFY-GUARDRAILS</code> header — all four hooks configurable per-request</td>
+    </tr>
+    <tr>
+      <td><strong>Generated code snippets from playground</strong></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="check">✅</span> Native — Prompt Playground docs show app-ready Node/Python examples after saving a prompt, and Model Catalog docs list ready-to-use code snippets</td>
+      <td><span class="check">✅</span> OpenAI, LangChain, Python, Node.js, LangGraph, LlamaIndex, Google ADK, curl</td>
+    </tr>
+    <tr>
+      <td><strong>Cloud control plane</strong></td>
+      <td><span class="cross">❌</span> Public docs reviewed center on a self-hosted proxy/Admin UI; no Konnect-style cloud control plane is documented here</td>
+      <td><span class="check">✅</span> Konnect: unified cloud control plane; LLM metrics, visual traffic maps, decK</td>
+      <td><span class="check">✅</span> SaaS dashboard: logs, traces, analytics, Prompt Engineering Studio</td>
+      <td><span class="check">✅</span> Cloud control plane: playground UI, config distribution, analytics</td>
+    </tr>
+    <tr>
+      <td><strong>Cloud UI + in-VPC data plane (air-gapped model testing)</strong></td>
+      <td><span class="cross">❌</span> Public docs reviewed describe a self-hosted UI; private network access is typically needed to reach it in private deployments</td>
+      <td><span class="partial">⚠</span> Konnect cloud CP + self-hosted data plane available, but no playground UI</td>
+      <td><span class="partial">⚠</span> Hybrid VPC pod handles inference; Studio tests cloud models directly, while private/internal endpoints need a reachable self-hosted gateway path</td>
+      <td><span class="check">✅</span> Cloud playground routes test calls through in-VPC stateless gateway plane; model endpoint needs no public port</td>
+    </tr>
+    <tr>
+      <td><strong>Per-stage latency instrumentation</strong></td>
+      <td><span class="partial">⚠</span> <code>x-litellm-call-id</code> for call correlation; no per-stage breakdown header</td>
+      <td><span class="partial">⚠</span> Provider latency in Prometheus metrics; OTel Gen AI attributes for tracing</td>
+      <td><span class="partial">⚠</span> OTel trace spans; gateway strategy state in log status column</td>
+      <td><span class="check">✅</span> <code>server-timing</code>: auth, in-guard, model call, out-guard, log — per-stage ms</td>
+    </tr>
+    <tr>
+      <td><strong>Resolved-model response header</strong></td>
+      <td><span class="partial">⚠</span> Correlate via <code>x-litellm-call-id</code> through logs</td>
+      <td><span class="partial">⚠</span> Provider visible via OTel attributes and audit logs</td>
+      <td><span class="partial">⚠</span> Fallback/routing state visible in Logs dashboard status column</td>
+      <td><span class="check">✅</span> <code>x-tfy-resolved-model</code> + <code>x-tfy-applied-configurations</code> per response</td>
+    </tr>
+    <tr>
+      <td><strong>AI CLI tool governance (Claude, Codex, Qwen, Gemini CLI)</strong></td>
+      <td><span class="cross">❌</span> Not documented</td>
+      <td><span class="check">✅</span> Native: route Claude Code, Codex CLI, Qwen Code CLI, and Gemini CLI through Kong for auth, rate limit, audit</td>
+      <td><span class="partial">⚠</span> Any OpenAI-compatible client can use Portkey endpoint</td>
+      <td><span class="partial">⚠</span> Any OpenAI-compatible client can use gateway endpoint</td>
+    </tr>
+    <tr>
+      <td><strong>Post-call observability for test debugging</strong></td>
+      <td><span class="check">✅</span> OTel, Langfuse, callbacks; <code>turn_off_message_logging</code> for payload control</td>
+      <td><span class="check">✅</span> Konnect analytics, audit logs, Prometheus metrics, OTel Gen AI attributes</td>
+      <td><span class="check">✅</span> Logs (status: cache/retry/fallback), OTel traces, analytics (rescued requests), prompt observability</td>
+      <td><span class="check">✅</span> Analytics dashboard, OTEL export, server-timing headers, x-tfy-applied-configurations</td>
+    </tr>
+    <tr>
+      <td><strong>Data residency during testing</strong></td>
+      <td><span class="check">✅</span> In the documented self-hosted proxy/Admin UI setup, payloads can remain on-prem</td>
+      <td><span class="check">✅</span> Data plane self-hosted; Konnect config/analytics in cloud</td>
+      <td><span class="partial">⚠</span> Hybrid: payloads in VPC pod; studio test calls go to cloud providers; metrics to Portkey cloud</td>
+      <td><span class="partial">⚠</span> Hot-path LLM traffic stays in your infra, but hosted-control-plane deployments can also export request-response data for logs and analytics</td>
+    </tr>
+    <tr>
+      <td><strong>Operational posture (Editorial)</strong></td>
+      <td>Python runtime; fully self-hosted; Redis at scale; private access for UI</td>
+      <td>Konnect cloud CP + self-hosted/cloud data plane; C/Lua; enterprise plugins</td>
+      <td>SaaS prompt studio; SaaS or hybrid VPC gateway; strong prompt development UX</td>
+      <td>K8s prerequisite; stateless Hono pods; gateway-native playground + in-VPC data plane</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<hr>
+
+<!-- §7 VERDICT -->
+<h2>§7 — Editorial Verdict</h2>
+<p>Editorial assessments as of March 10, 2026.</p>
+
+<div class="verdict-grid">
+  <div class="verdict-card litellm">
+    <div class="verdict-label">LiteLLM</div>
+    <div class="verdict-name">The Operations Console</div>
+    <div class="verdict-text">LiteLLM's Admin UI excels at key management, spend visibility, and model registration. Testing happens through the management CLI or direct API calls — routed through the real proxy policy stack, but without a visual surface. The public docs reviewed center on a self-hosted proxy/Admin UI, so access in private deployments typically requires private network connectivity such as VPN or bastion. For teams comfortable in a terminal, this is workable; for structured prompt engineering workflows, external tooling is required.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Platform ops teams that manage the gateway programmatically. Not suited as a standalone prompt engineering workspace.</div>
+  </div>
+  <div class="verdict-card kong">
+    <div class="verdict-label">Kong AI Gateway</div>
+    <div class="verdict-name">The Developer Tool Enforcer</div>
+    <div class="verdict-text">Kong's Konnect cloud control plane provides LLM metrics, visual traffic maps, and decK-based configuration management. Its distinct contribution to the testing problem is AI CLI proxying: governing Claude Code, Codex CLI, Qwen Code CLI, and Gemini CLI traffic through the same plugin pipeline as production. For organisations where AI coding assistants are the primary test surface, this is the cleanest fit. For teams needing structured prompt iteration UI, Kong is deliberately out of scope.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Organisations governing AI developer tool usage at scale, already invested in the Kong/Konnect ecosystem.</div>
+  </div>
+  <div class="verdict-card portkey">
+    <div class="verdict-label">Portkey</div>
+    <div class="verdict-name">The Prompt Development Powerhouse</div>
+    <div class="verdict-text">Portkey's Prompt Engineering Studio is the most complete prompt development environment in this comparison. Side-by-side model comparison across 1600+ models, versioning with labeled deployments, collaborative prompt libraries, Mustache templates, and the Prompt API make it the strongest choice for teams whose primary workflow is prompt iteration and cross-model evaluation. The key nuance: studio testing goes to cloud providers directly; gateway guardrails and routing apply on Prompt API production calls. Excellent for prompt development; the hybrid VPC path addresses data residency for inference; air-gapped model testing via the studio requires a reachable self-hosted gateway path.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Product engineering teams needing rapid cross-model prompt iteration, versioning, and a clean path from playground to production via Prompt API.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">TrueFoundry</div>
+    <div class="verdict-name">The Gateway-Native Testing Platform</div>
+    <div class="verdict-text">TrueFoundry's playground is architecturally distinct: test traffic routes through the same in-VPC gateway plane as production. Guardrails fire during the test. The <code>x-tfy-resolved-model</code> header exposes silent fallbacks. <code>server-timing</code> shows per-stage latency. Per-request <code>X-TFY-GUARDRAILS</code> overrides enable safe A/B testing of safety policies. Code snippets generated from the playground reflect the exact gateway configuration tested. The cloud UI + stateless in-VPC data plane architecture makes TrueFoundry the most direct fit in this comparison for testing models whose endpoints are not publicly exposed.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> K8s-native platform teams building governed, interactive prompt engineering workflows for air-gapped models, regulated industries, or agentic/MCP workloads requiring policy-in-the-loop testing.</div>
+  </div>
+</div>
+
+<h3>Positioning Map — Playground Depth vs. Gateway-Policy Integration</h3>
+<div class="svg-wrap">
+<svg viewBox="0 0 630 430" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="630" height="430" fill="#121826"/>
+  <line x1="65" y1="20" x2="65" y2="350" stroke="#1e2d45" stroke-width="1"/>
+  <line x1="65" y1="350" x2="580" y2="350" stroke="#1e2d45" stroke-width="1"/>
+  <line x1="65" y1="185" x2="580" y2="185" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="322" y1="20" x2="322" y2="350" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="322" y="390" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono, monospace">← Minimal Playground — Rich Playground UI →</text>
+  <text x="14" y="185" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono, monospace" transform="rotate(-90,14,185)">Gateway Policy Integration in Testing</text>
+  <!-- Quadrant labels -->
+  <text x="193" y="348" text-anchor="middle" fill="#1e2d45" font-size="9" font-family="IBM Plex Mono, monospace">CLI / API TESTING ONLY</text>
+  <text x="450" y="348" text-anchor="middle" fill="#1e2d45" font-size="9" font-family="IBM Plex Mono, monospace">RICH UI / MINIMAL POLICY</text>
+  <text x="193" y="40" text-anchor="middle" fill="#1e2d45" font-size="9" font-family="IBM Plex Mono, monospace">CLI / POLICY IN LOOP</text>
+  <text x="450" y="40" text-anchor="middle" fill="#1e2d45" font-size="9" font-family="IBM Plex Mono, monospace">RICH UI + POLICY IN LOOP</text>
+
+  <!-- LiteLLM — CLI testing, policy in loop (via proxy), minimal UI -->
+  <circle cx="155" cy="130" r="44" fill="#00d4ff" fill-opacity=".1" stroke="#00d4ff" stroke-width="1.5"/>
+  <text x="155" y="124" text-anchor="middle" fill="#00d4ff" font-size="13" font-weight="700">LiteLLM</text>
+  <text x="155" y="141" text-anchor="middle" fill="#00d4ff" font-size="9.5" font-family="IBM Plex Mono, monospace">CLI → proxy · no cloud CP</text>
+
+  <!-- Kong — CLI tool governance, Konnect CP, no playground -->
+  <circle cx="165" cy="235" r="44" fill="#00e599" fill-opacity=".1" stroke="#00e599" stroke-width="1.5"/>
+  <text x="165" y="228" text-anchor="middle" fill="#00e599" font-size="13" font-weight="700">Kong</text>
+  <text x="165" y="245" text-anchor="middle" fill="#00e599" font-size="9.5" font-family="IBM Plex Mono, monospace">Konnect CP · AI CLI gov</text>
+  <text x="165" y="259" text-anchor="middle" fill="#7a8899" font-size="8.5">no prompt playground</text>
+
+  <!-- Portkey — rich playground UI, prompt dev focus, policy applied in production -->
+  <circle cx="460" cy="250" r="52" fill="#7b61ff" fill-opacity=".1" stroke="#7b61ff" stroke-width="1.5"/>
+  <text x="460" y="243" text-anchor="middle" fill="#7b61ff" font-size="13" font-weight="700">Portkey</text>
+  <text x="460" y="260" text-anchor="middle" fill="#7b61ff" font-size="9.5" font-family="IBM Plex Mono, monospace">Prompt Eng. Studio</text>
+  <text x="460" y="274" text-anchor="middle" fill="#7a8899" font-size="8.5">1600+ models · versioning</text>
+  <text x="460" y="286" text-anchor="middle" fill="#7a8899" font-size="8.5">policy on Prompt API calls</text>
+
+  <!-- TrueFoundry — rich UI + full gateway policy in test loop + air-gapped -->
+  <circle cx="475" cy="95" r="60" fill="#ff6b35" fill-opacity=".1" stroke="#ff6b35" stroke-width="1.5"/>
+  <text x="475" y="82" text-anchor="middle" fill="#ff6b35" font-size="13" font-weight="700">TrueFoundry</text>
+  <text x="475" y="99" text-anchor="middle" fill="#ff6b35" font-size="9.5" font-family="IBM Plex Mono, monospace">Gateway-native playground</text>
+  <text x="475" y="113" text-anchor="middle" fill="#ff6b35" font-size="9.5" font-family="IBM Plex Mono, monospace">guardrails fire in test loop</text>
+  <text x="475" y="127" text-anchor="middle" fill="#7a8899" font-size="8.5">air-gapped model testing</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Bubble size reflects relative interactive testing feature breadth. Portkey and TrueFoundry both have rich playgrounds; the key differentiation is whether gateway policies fire during the test session itself. Axes are editorial assessments as of March 2026.</p>
+
+<hr>
+
+<!-- §8 REFERENCES -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://docs.litellm.ai/docs/proxy/ui" target="_blank">LiteLLM — Admin UI</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/management_cli" target="_blank">LiteLLM — Proxy Management CLI</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">LiteLLM — Logging and x-litellm-call-id</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Settings Reference</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/" target="_blank">Kong — AI Gateway Landing Page (Konnect control plane)</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/ai-clis/" target="_blank">Kong — Proxy AI CLI Tools Through AI Gateway</a></li>
+  <li><a href="https://developer.konghq.com/how-to/use-claude-code-with-ai-gateway-gemini/" target="_blank">Kong — Claude Code with Gemini via AI Gateway</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/get-started/" target="_blank">Kong — Get Started with AI Gateway (Konnect quickstart)</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM Metrics</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank">Kong — Gen AI OpenTelemetry Attributes Reference</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/ai-audit-log-reference/" target="_blank">Kong — AI Gateway Audit Log Reference</a></li>
+  <li><a href="https://portkey.ai/docs/product/prompt-engineering-studio" target="_blank">Portkey — Prompt Engineering Studio Overview</a></li>
+  <li><a href="https://portkey.ai/docs/product/prompt-engineering-studio/prompt-playground" target="_blank">Portkey — Prompt Playground</a></li>
+  <li><a href="https://portkey.ai/docs/product/prompt-engineering-studio/prompt-versioning" target="_blank">Portkey — Prompt Versioning &amp; Labels</a></li>
+  <li><a href="https://portkey.ai/docs/product/prompt-engineering-studio/prompt-library" target="_blank">Portkey — Prompt Library</a></li>
+  <li><a href="https://portkey.ai/docs/product/prompt-engineering-studio/prompt-api" target="_blank">Portkey — Prompt API</a></li>
+  <li><a href="https://portkey.ai/docs/product/observability/logs" target="_blank">Portkey — Logs</a></li>
+  <li><a href="https://portkey.ai/docs/product/observability/traces" target="_blank">Portkey — Tracing</a></li>
+  <li><a href="https://portkey.ai/docs/product/observability/analytics" target="_blank">Portkey — Analytics</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Configs</a></li>
+  <li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy in Your Infrastructure (Hybrid)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/playground-overview" target="_blank">TrueFoundry — Playground Overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/quick-start" target="_blank">TrueFoundry — AI Gateway Quick Start</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">TrueFoundry — Request and Response Headers</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-getting-started" target="_blank">TrueFoundry — Guardrails Getting Started (X-TFY-GUARDRAILS)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/prompt-management" target="_blank">TrueFoundry — Prompt Management</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">TrueFoundry — Load Balancing Configuration</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">TrueFoundry — Virtual Model</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">TrueFoundry — Export OpenTelemetry Data</a></li>
+</ol>
+
+<hr>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 14 of 15 &nbsp;·&nbsp; March 10, 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
+  Feature claims cross-referenced against official public documentation as of March 10, 2026. Verify before production decisions.
+</p>
+
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+</body></html>
