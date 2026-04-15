@@ -1,0 +1,941 @@
+
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Gateway Series #9 — MCP Gateway &amp; Tool Call Governance</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB;
+    --kong:    #00D27B;
+    --portkey: #5A67FF;
+    --tf:      #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+
+  .series-bar {
+    display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap;
+  }
+  .tag-pill {
+    display: inline-block; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace;
+    padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase;
+  }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer {
+    background: #1a1200; border: 1px solid #3d2c00; color: var(--warn);
+    font-size: .78rem; padding: .5rem 1rem; border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre {
+    background: #080c12; border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto;
+    font-size: .83rem; line-height: 1.6; margin: 0;
+  }
+  .copy-btn {
+    position: absolute; top: .55rem; right: .55rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    font-size: .68rem; padding: .22rem .55rem; border-radius: 5px;
+    cursor: pointer; transition: all .15s ease; user-select: none;
+    letter-spacing: .03em; line-height: 1.4;
+  }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+  .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note {
+    font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border);
+  }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn { border-color: var(--warn); background: #1a1200; }
+  .callout.info { border-color: #60a5fa; background: #0a1220; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.info .callout-title { color: #60a5fa; }
+
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; min-width: 0; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
+  .qp-desc code { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+
+  .hook-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: .7rem; margin: 1rem 0 1.5rem; }
+  .hook-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .8rem 1rem; }
+  .hook-card .hname { font-family: 'IBM Plex Mono', monospace; font-size: .8rem; font-weight: 700; color: var(--tf); margin-bottom: .25rem; }
+  .hook-card .hdesc { font-size: .78rem; color: var(--muted); line-height: 1.45; }
+  .hook-card .htype { font-family: 'IBM Plex Mono', monospace; font-size: .67rem; color: #3a4a5a; margin-top: .3rem; }
+</style>
+</head>
+<body>
+<!-- ══════ HEADER ══════ -->
+<div class="series-bar">
+<span class="tag-pill">AI Gateway Series</span>
+<div class="series-dots">
+<div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div>
+<div class="dot active" title="Blog 9 — MCP Gateway &amp; Tool Call Governance"></div>
+<div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div>
+</div>
+<span class="tag-pill active">Blog 9 of 15</span>
+</div>
+<h1>MCP Gateway &amp; Tool Call Governance:<br/>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+<div class="meta">
+<span class="meta-item">⏱ 22 min read</span>
+<span class="meta-item">🗓 March 2026</span>
+<span class="meta-item">👤 Platform Engineering</span>
+<div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 25, 2026. Verify against current vendor docs before architectural decisions.</div>
+</div>
+<p style="font-size:.82rem; color: var(--muted);">Models referenced throughout this post reflect the production landscape as of this writing (note: some Google SKUs are preview-tier):</p>
+<div class="model-pills">
+<span class="mpill openai">gpt-5.4</span>
+<span class="mpill openai">gpt-5.4-pro</span>
+<span class="mpill anthropic">claude-opus-4-6</span>
+<span class="mpill anthropic">claude-sonnet-4-6</span>
+<span class="mpill anthropic">claude-haiku-4-5</span>
+<span class="mpill google">gemini-3.1-pro-preview</span>
+<span class="mpill google">gemini-3-flash-preview</span>
+</div>
+<!-- ══════ §0 TL;DR ══════ -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<div class="scenario">
+<div class="scenario-title">🔐 Enterprise Scenario: The HR Assistant Credential Leak</div>
+<p>A large financial institution deploys an AI HR assistant powered by <code>claude-sonnet-4-6</code>. The assistant handles benefit queries from 6,000 employees and is wired to an internal PostgreSQL HR database via a Model Context Protocol tool: <code>query_employee_record(employee_id, fields)</code>. The connection string — <code>postgresql://hrapp:V@ult#2026@pg-prod.internal:5432/hr_db</code> — lives in the system prompt so the LLM can construct the tool call.</p>
+<p>Six weeks after launch, the security team's routine audit surfaces three problems simultaneously. First, a log aggregation pipeline is capturing raw LLM request payloads, which means the database password is now replicated across four SIEM systems. Second, a red-team exercise demonstrates that <em>prompt injection through a malicious PDF attachment</em> can elicit the connection string in a response. Third, the model's own output traces show it briefly echoing configuration fragments when asked to "explain your available tools." None of this required an attacker — just a naive integration.</p>
+<p>The root failure is architectural: <strong>the gateway was not acting as a credential broker</strong>. In a correctly-designed MCP architecture, the LLM should only ever see a logical tool name and its safe parameters. Credentials should be managed at the infrastructure layer — vaulted at the platform or MCP-server level — so that the database password has no path into the LLM context window at any point in the chain.</p>
+<p>This is the MCP gateway problem — and it is distinct from standard API gateway work. Model Context Protocol tool calls are stateful execution requests with trust, permission, and data-sensitivity semantics that standard HTTP proxies were not designed to reason about.</p>
+</div>
+<div class="quickpick-grid">
+<div class="qp-card c-litellm">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">LiteLLM</div>
+<div class="qp-desc">LiteLLM now documents an MCP Gateway with permission management by key/team/org, tool-level filtering via <code>allowed_tools</code>/<code>allowed_params</code>, and MCP guardrails at <code>pre_mcp_call</code>/<code>during_mcp_call</code>. Gateway-side downstream secret injection remains undocumented.</div>
+</div>
+<div class="qp-card c-kong">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Kong AI Gateway</div>
+<div class="qp-desc">Kong now documents AI MCP Proxy, native per-tool ACLs, and AI MCP OAuth2 for listener/passthrough-listener modes. Treat direct MCP proxying separately from LLM-side AI-plugin flows: the docs warn not to stack AI MCP Proxy with other AI plugins on the same route.</div>
+</div>
+<div class="qp-card c-portkey">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Portkey</div>
+<div class="qp-desc">Dedicated MCP Gateway + Registry handle routing, auth, and observability. Features Team Provisioning, Tool Provisioning, OAuth 2.1 for Cursor/Claude Desktop, and a broader BYO-webhook extensibility path for custom validation. <span style="white-space:normal;">(Dedicated MCP Gateway guardrails are coming soon / early access).</span></div>
+</div>
+<div class="qp-card c-tf">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">TrueFoundry</div>
+<div class="qp-desc">Purpose-built MCP control plane: dedicated <code>mcp_tool_pre_invoke</code> / <code>mcp_tool_post_invoke</code> hooks, support for public/self-hosted/custom MCPs, Virtual MCP Servers for curated tool exposure, documented MCP auth/authz flows, and MCP logging + metrics. Secret Groups support a platform-level credential-isolation pattern.</div>
+</div>
+</div>
+<!-- ══════ §1 WHY MCP GATEWAY IS DIFFERENT ══════ -->
+<h2>§1 — Why an MCP Gateway Is a Distinct Problem</h2>
+<p>Model Context Protocol gives LLMs the ability to invoke external tools: query databases, call APIs, read files, trigger workflows. Every major frontier model — <code>gpt-5.4</code>, <code>claude-sonnet-4-6</code>, <code>gemini-3.1-pro-preview</code> — supports tool calling natively in 2026. The enterprise adoption of agentic patterns has made MCP a critical infrastructure surface, and consequently a critical security surface.</p>
+<p>What makes MCP governance different from LLM routing or rate limiting?</p>
+<ul>
+<li><strong>Credentials must not reach the LLM context window.</strong> If a system prompt or tool definition carries a database connection string, that string is now inside a model known to be susceptible to prompt injection, instruction following, and context extraction. Any log of the request replicates the credential. The correct approach is to keep credentials at the infrastructure layer, consumed only by the MCP server.</li>
+<li><strong>Tool call parameters are unsanitized user-derived data.</strong> An <code>employee_id</code> parameter that looks like <code>1 OR 1=1; DROP TABLE employees;--</code> is a SQL injection attempt that a naive MCP server will execute. The gateway must validate parameters before they reach any execution layer.</li>
+<li><strong>Tool results can contain sensitive data that must not return to the LLM.</strong> A <code>query_employee_record</code> call that returns a Social Security Number, salary, or health-related fields should have those fields redacted before the model sees the response. Otherwise the LLM can echo them in any subsequent turn.</li>
+<li><strong>Permissions are workload-scoped, not just user-scoped.</strong> An HR assistant should be allowed to call <code>query_employee_record</code> but not <code>delete_employee</code>. A customer service bot should not call any HR tools at all. This is a fine-grained access control requirement at the tool-call level.</li>
+<li><strong>MCP servers are not identical to upstream HTTP services.</strong> They are stateful execution brokers that can spawn side effects — write operations, file mutations, external API calls. Governing them requires awareness of the <em>tool call lifecycle</em>, not just request/response shapes.</li>
+</ul>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 330" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="330" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="24">The MCP Credential Exposure Problem vs. Platform-Level Credential Management</text>
+<!-- LEFT: UNSAFE -->
+<rect fill="#180808" height="270" rx="8" stroke="#ff4757" stroke-opacity=".5" stroke-width="1" width="385" x="15" y="40"></rect>
+<text fill="#ff4757" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="207" y="62">WITHOUT CREDENTIAL MANAGEMENT</text>
+<rect fill="#1a2233" height="38" rx="5" stroke="#4a5568" width="100" x="30" y="78"></rect>
+<text fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle" x="80" y="97">Application</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="80" y="110">AI Agent</text>
+<rect fill="#0e0505" height="80" rx="5" stroke="#ff4757" stroke-opacity=".7" width="234" x="148" y="72"></rect>
+<text fill="#ff4757" font-size="8" font-weight="700" x="158" y="90">SYSTEM PROMPT</text>
+<text fill="#f1fa8c" font-family="IBM Plex Mono, monospace" font-size="8" x="158" y="105">tool: query_employee_record</text>
+<text fill="#ff6b6b" font-family="IBM Plex Mono, monospace" font-size="8" x="158" y="119">  connstr: "pg://hr:P@ss@prod:5432/hr"</text>
+<text fill="#ff4757" font-size="7.5" x="158" y="133">⚠ credential in LLM context window</text>
+<defs>
+<marker id="ua" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#4a5568" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="red1" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ff4757" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="grn1" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00D27B" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="ora1" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ffa726" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<line marker-end="url(#ua)" stroke="#4a5568" stroke-width="1.5" x1="130" x2="146" y1="97" y2="97"></line>
+<rect fill="#130505" height="40" rx="5" stroke="#ff4757" stroke-opacity=".6" width="180" x="30" y="185"></rect>
+<text fill="#e8843a" font-size="10" font-weight="600" text-anchor="middle" x="120" y="205">claude-sonnet-4-6</text>
+<text fill="#ff4757" font-size="8" text-anchor="middle" x="120" y="218">can echo creds · logs capture context</text>
+<line marker-end="url(#red1)" stroke="#ff4757" stroke-dasharray="5,3" stroke-opacity=".7" stroke-width="1.5" x1="265" x2="120" y1="152" y2="184"></line>
+<rect fill="#1a2233" height="40" rx="5" stroke="#4a5568" width="120" x="248" y="185"></rect>
+<text fill="#7a8899" font-size="9" font-weight="600" text-anchor="middle" x="308" y="205">MCP Server</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="308" y="218">DB direct · no param validation</text>
+<line marker-end="url(#red1)" stroke="#ff4757" stroke-opacity=".6" stroke-width="1.5" x1="210" x2="246" y1="205" y2="205"></line>
+<text fill="#ff4757" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="207" y="255">⚠ Prompt injection · Log replication · SQL injection</text>
+<text fill="#ff4757" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="207" y="270">⚠ PII echoed in responses · No audit trail</text>
+<!-- Divider -->
+<line stroke="#2d3f5a" stroke-dasharray="6,4" stroke-width="1" x1="410" x2="410" y1="44" y2="306"></line>
+<text fill="#2d3f5a" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="410" y="320">vs.</text>
+<!-- RIGHT: SAFE -->
+<rect fill="#050f0a" height="270" rx="8" stroke="#00D27B" stroke-opacity=".5" stroke-width="1" width="385" x="420" y="40"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="612" y="62">WITH PLATFORM CREDENTIAL MANAGEMENT</text>
+<rect fill="#081208" height="60" rx="5" stroke="#00D27B" stroke-opacity=".5" width="150" x="435" y="78"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="510" y="96">LLM Context (clean)</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="510" y="111">tool: query_employee_record</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="510" y="124">  args: (employee_id, fields)</text>
+<text fill="#00D27B" font-size="7.5" text-anchor="middle" x="510" y="137">✓ no credentials in context</text>
+<rect fill="#081208" height="60" rx="6" stroke="#00D27B" stroke-width="1.5" width="160" x="435" y="175"></rect>
+<text fill="#00D27B" font-size="10" font-weight="700" text-anchor="middle" x="515" y="198">MCP Gateway + Guardrails</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="515" y="212">param validation · pre/post hooks</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="515" y="224">PII redaction · audit log</text>
+<line marker-end="url(#grn1)" stroke="#00D27B" stroke-width="1.5" x1="510" x2="510" y1="138" y2="174"></line>
+<rect fill="#0a0d04" height="60" rx="6" stroke="#ffa726" stroke-opacity=".7" width="155" x="625" y="175"></rect>
+<text fill="#ffa726" font-size="9" font-weight="700" text-anchor="middle" x="702" y="198">🔒 Platform Secret Store</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="702" y="212">DB creds consumed by MCP server</text>
+<text fill="#ffa726" font-size="8" text-anchor="middle" x="702" y="224">never passed to LLM layer</text>
+<line marker-end="url(#ora1)" stroke="#ffa726" stroke-dasharray="4,2" stroke-width="1.5" x1="595" x2="623" y1="205" y2="205"></line>
+<rect fill="#1a2233" height="35" rx="5" stroke="#4a5568" width="120" x="530" y="270"></rect>
+<text fill="#7a8899" font-size="9" font-weight="600" text-anchor="middle" x="590" y="287">MCP Server + DB</text>
+<text fill="#50fa7b" font-size="8" text-anchor="middle" x="590" y="300">consumes creds at infra level</text>
+<line marker-end="url(#grn1)" stroke="#00D27B" stroke-width="1.5" x1="515" x2="575" y1="235" y2="268"></line>
+</svg>
+</div>
+<div class="img-caption">Left: without platform credential management, credentials live in the LLM context — exposed to logs, injection, and model echoing. Right: credentials are managed at the infrastructure layer and consumed only by the MCP server; the LLM context carries only logical tool names and safe arguments.</div>
+<p>Every AI gateway covered in this series has some answer to the MCP problem. But the depth of that answer varies dramatically — from basic access control over which keys can reach which MCP servers, to purpose-built pre/post-tool guardrail hooks with documented secret management primitives. The sections below examine each platform's specific implementation posture, with particular attention to what exactly happens between the model issuing a tool call and the tool executing against real infrastructure.</p>
+<hr/>
+<!-- ══════ §2 LITELLM ══════ -->
+<div class="vendor-header litellm">
+<span class="vendor-badge">LiteLLM</span>
+<span class="vendor-title">§2 — MCP Gateway with Permission Management</span>
+</div>
+<h3>Architecture</h3>
+<p>LiteLLM's current MCP story is broader than the older Access Groups + AI Hub framing alone. The current public docs describe an <strong>MCP Gateway</strong> with a fixed endpoint for MCP tools plus permission management by <strong>key, team, or organization</strong>. The permission-management docs go further and document tool-level filtering with <code>allowed_tools</code> / <code>disallowed_tools</code> and parameter allowlists via <code>allowed_params</code>. That makes LiteLLM a real MCP-aware control plane, not just a catalog of published servers.</p>
+<p>Access Groups and AI Hub still matter as administrative surfaces, but the more important current capability is that LiteLLM can decide which MCP servers, tools, and even parameters are available when a caller attempts to list or invoke tools. In practice, that gives platform teams a concrete answer to “which identities may call which MCP tools, with which arguments?”</p>
+<p>On safety, the current docs now explicitly document <strong>MCP guardrails</strong> with <code>pre_mcp_call</code> and <code>during_mcp_call</code> modes. That is materially stronger than the earlier generic <code>pre_call</code>/<code>post_call</code> framing. The remaining gap in the public docs I checked is different: I did <em>not</em> find a documented <code>post_mcp_call</code> hook for tool-result redaction before the model sees the response, and I did not find a gateway-side mechanism that injects downstream MCP server credentials at proxy time. LiteLLM clearly has MCP-aware permissions and pre/during-call controls; it still does not document a downstream secret-broker model.</p>
+<div class="code-wrap"><pre><span class="cm"># LiteLLM config.yaml — MCP Gateway permissions + MCP guardrails</span>
+<span class="cm"># Current public docs document tool filtering, parameter allowlists, and pre_mcp_call guardrails</span>
+<span class="key">mcp_servers</span>:
+  <span class="key">github_mcp</span>:
+    <span class="key">url</span>: <span class="str">"https://api.githubcopilot.com/mcp"</span>
+    <span class="key">auth_type</span>: <span class="str">oauth2</span>
+    <span class="key">authorization_url</span>: <span class="str">https://github.com/login/oauth/authorize</span>
+    <span class="key">token_url</span>: <span class="str">https://github.com/login/oauth/access_token</span>
+    <span class="key">client_id</span>: <span class="str">os.environ/GITHUB_OAUTH_CLIENT_ID</span>
+    <span class="key">client_secret</span>: <span class="str">os.environ/GITHUB_OAUTH_CLIENT_SECRET</span>
+    <span class="key">scopes</span>: [<span class="str">"public_repo"</span>, <span class="str">"user:email"</span>]
+    <span class="key">allowed_tools</span>: [<span class="str">"create_issue"</span>, <span class="str">"list_issues"</span>, <span class="str">"search_issues"</span>]
+    <span class="key">allowed_params</span>:
+      <span class="key">create_issue</span>: [<span class="str">"title"</span>, <span class="str">"body"</span>, <span class="str">"labels"</span>]
+      <span class="key">list_issues</span>: [<span class="str">"state"</span>, <span class="str">"sort"</span>, <span class="str">"perPage"</span>]
+      <span class="key">search_issues</span>: [<span class="str">"query"</span>, <span class="str">"sort"</span>, <span class="str">"order"</span>, <span class="str">"perPage"</span>]
+
+<span class="key">guardrails</span>:
+  - <span class="key">guardrail_name</span>: <span class="str">"mcp-input-validation"</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">guardrail</span>: <span class="str">presidio</span>
+      <span class="key">mode</span>: <span class="str">"pre_mcp_call"</span>
+      <span class="key">pii_entities_config</span>:
+        <span class="key">CREDIT_CARD</span>: <span class="str">"BLOCK"</span>
+        <span class="key">EMAIL_ADDRESS</span>: <span class="str">"MASK"</span>
+        <span class="key">PHONE_NUMBER</span>: <span class="str">"MASK"</span>
+      <span class="key">default_on</span>: <span class="kw">true</span>
+
+<span class="key">general_settings</span>:
+  <span class="key">master_key</span>: <span class="str">"sk-1234"</span>
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/mcp_control" target="_blank">mcp_control</a> · <a href="https://docs.litellm.ai/docs/mcp_guardrail" target="_blank">mcp_guardrail</a> · <a href="https://docs.litellm.ai/docs/mcp" target="_blank">mcp</a></div>
+<div class="code-wrap"><pre><span class="cm"># Test LiteLLM MCP guardrails on a tool-enabled chat completion</span>
+<span class="cm"># Based on the current MCP guardrails docs</span>
+curl http://localhost:4000/chat/completions   -H <span class="str">"Content-Type: application/json"</span>   -H <span class="str">"Authorization: Bearer sk-1234"</span>   -d <span class="str">'{
+    "model": "gpt-3.5-turbo",
+    "messages": [{"role": "user", "content": "Send an email to 555-123-4567 with my SSN 123-45-6789"}],
+    "tools": [{"type": "mcp", "server_label": "litellm", "server_url": "litellm_proxy"}],
+    "guardrails": ["mcp-input-validation"]
+  }'</span>
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/mcp_guardrail" target="_blank">docs.litellm.ai/docs/mcp_guardrail</a> — MCP tool-call guardrails example</div>
+<!-- LiteLLM SVG -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 640 230" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="230" width="640"></rect>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="320" y="22">LITELLM — MCP GATEWAY + PERMISSION MANAGEMENT</text>
+<defs>
+<marker id="la1" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00C2CB" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#1a2233" height="50" rx="5" stroke="#4a5568" width="86" x="20" y="60"></rect>
+<text fill="#7a8899" font-size="9" font-weight="600" text-anchor="middle" x="63" y="82">API Key</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="63" y="96">team / org</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="63" y="108">caller identity</text>
+<line marker-end="url(#la1)" stroke="#00C2CB" stroke-width="1.5" x1="106" x2="128" y1="85" y2="85"></line>
+<rect fill="#001d1e" height="78" rx="6" stroke="#00C2CB" stroke-width="1.5" width="150" x="130" y="46"></rect>
+<text fill="#00C2CB" font-size="10" font-weight="700" text-anchor="middle" x="205" y="68">Permission Layer</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="205" y="83">allowed MCP servers</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="205" y="95">allowed_tools / blocked tools</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="205" y="108">tool filtering / arg rules</text>
+<line marker-end="url(#la1)" stroke="#00C2CB" stroke-width="1.5" x1="280" x2="304" y1="72" y2="55"></line>
+<line marker-end="url(#la1)" stroke="#00C2CB" stroke-width="1.5" x1="280" x2="304" y1="98" y2="112"></line>
+<rect fill="#0a1a14" height="35" rx="4" stroke="#10a37f" width="112" x="306" y="38"></rect>
+<text fill="#10a37f" font-size="9" font-weight="600" text-anchor="middle" x="362" y="57">LLM Provider</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="362" y="68">tool-enabled models</text>
+<rect fill="#1a0f06" height="35" rx="4" stroke="#e8843a" width="112" x="306" y="93"></rect>
+<text fill="#e8843a" font-size="9" font-weight="600" text-anchor="middle" x="362" y="111">MCP Server</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="362" y="122">filtered at gateway</text>
+<rect fill="#001d1e" height="86" rx="6" stroke="#00C2CB" stroke-opacity=".5" width="178" x="440" y="44"></rect>
+<text fill="#00C2CB" font-size="9" font-weight="700" text-anchor="middle" x="529" y="67">MCP Guardrails</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="529" y="82">pre_mcp_call / during_mcp_call</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="529" y="95">validation · masking · blocking</text>
+<text fill="#ffa726" font-size="7.5" text-anchor="middle" x="529" y="108">⚠ no documented post_mcp_call hook</text>
+<line marker-end="url(#la1)" stroke="#00C2CB" stroke-dasharray="4,2" stroke-width="1.2" x1="418" x2="438" y1="85" y2="85"></line>
+<rect fill="#001d1e" height="40" rx="5" stroke="#00C2CB" stroke-opacity=".4" width="210" x="130" y="156"></rect>
+<text fill="#00C2CB" font-size="9" font-weight="700" text-anchor="middle" x="235" y="175">MCP Gateway</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="235" y="187">fixed endpoint · tool discovery · auth</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="320" y="218">Source: docs.litellm.ai/docs/mcp · mcp_control · mcp_guardrail</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM now documents an MCP Gateway, permission management by key/team/org, tool filtering and argument-level rules, and MCP guardrails for pre/during-call validation. The main remaining gap in the public docs I checked is a documented post-MCP-result guardrail mode or gateway-side downstream secret broker.</div>
+<div class="callout warn">
+<div class="callout-title">⚠ Remaining Gap — No Documented Post-MCP Hook or Gateway Secret Broker</div>
+<p>LiteLLM's current public docs do describe MCP-aware permissions and <code>pre_mcp_call</code> / <code>during_mcp_call</code> guardrails. What they do not clearly describe is a separate <code>post_mcp_call</code> hook for redacting tool results before they re-enter model context, or a gateway-side mechanism that injects downstream MCP server credentials at proxy time. Teams that need those guarantees should plan to implement result redaction and secret isolation inside the MCP server or adjacent infrastructure.</p>
+</div>
+<hr/>
+<!-- ══════ §3 KONG ══════ -->
+<div class="vendor-header kong">
+<span class="vendor-badge">Kong</span>
+<span class="vendor-title">§3 — Direct MCP Routing with Native Auth &amp; Tool ACLs</span>
+</div>
+<h3>Architecture</h3>
+<p>Kong's current MCP documentation is stronger and more specific than a generic “HTTP adaptation” story. The <strong>AI MCP Proxy</strong> plugin sits directly in the MCP request path and converts MCP requests into standard HTTP calls so Kong can apply authentication, rate limiting, logging/tracing, request/response transformation, and ACL policies to MCP endpoints. Current examples also document <strong>per-tool access control</strong> using consumer groups and tool-level ACL rules.</p>
+<p>The most important nuance is architectural: the docs say AI MCP Proxy is part of an <em>MCP request flow</em>, not an LLM request flow, and explicitly warn not to configure AI MCP Proxy together with other AI plugins on the same Service or Route. That means teams should keep the <strong>direct MCP proxy pattern</strong> separate from the <strong>AI Proxy Advanced + Prompt Guard</strong> examples Kong shows for LLM traffic governance. Both are valid Kong patterns, but they are not the same pipeline.</p>
+<p>Kong's MCP surface also now includes <strong>AI MCP OAuth2</strong>, which the docs describe as a security layer for protecting MCP servers in listener or passthrough-listener modes. For direct MCP traffic, the better framing is therefore: Kong gives you inbound auth, per-tool ACLs, rate limiting, logging, and HTTP-level traffic control around MCP endpoints. For credential management, Kong's vault references still operate at configuration level — useful for keeping secrets out of declarative config, but not the same thing as runtime injection of downstream database credentials into tool calls.</p>
+<p>For content and PII controls, Kong does document AI Prompt Guard and AI PII Sanitizer. But these belong to Kong's AI-plugin ecosystem more broadly, and the AI MCP Proxy docs require care when mixing plugin topologies. A safe technical reading is: Kong has strong governance building blocks, including native MCP auth and tool ACLs, but you must choose the right route topology instead of assuming every AI plugin stacks directly on the same MCP route.</p>
+<div class="code-wrap"><pre># Kong declarative config — AI MCP Proxy + Key Auth + per-tool ACLs
+# This follows the passthrough-listener ACL examples instead of mixing AI MCP Proxy with other AI plugins
+_format_version: "3.0"
+
+services:
+  - name: mcp-acl-service
+    url: http://host.docker.internal:3001/mcp
+
+routes:
+  - name: mcp-acl-route
+    paths:
+      - /mcp
+    service:
+      name: mcp-acl-service
+
+plugins:
+  - name: key-auth
+    config:
+      key_names:
+        - apikey
+
+  - name: ai-mcp-proxy
+    service: mcp-acl-service
+    config:
+      mode: passthrough-listener
+      tools:
+        - description: List users
+          name: list_users
+          acl:
+            allow:
+              - admin
+            deny:
+              - developer
+        - description: Get user
+          name: get_user
+          acl:
+            allow:
+              - admin
+              - developer
+
+consumer_groups:
+  - name: admin
+  - name: developer
+
+consumers:
+  - username: alice
+    groups:
+      - name: admin
+    keyauth_credentials:
+      - key: alice-key
+  - username: bob
+    groups:
+      - name: developer
+    keyauth_credentials:
+      - key: bob-key
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-mcp-proxy/" target="_blank">ai-mcp-proxy</a> · <a href="https://developer.konghq.com/plugins/ai-mcp-proxy/examples/passthrough-listener-acls/" target="_blank">passthrough-listener ACL examples</a> · <a href="https://developer.konghq.com/plugins/ai-mcp-oauth2/" target="_blank">ai-mcp-oauth2</a></div>
+<!-- Kong SVG -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="240" width="720"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="360" y="22">KONG — DIRECT MCP ROUTE WITH AUTH + TOOL ACLS</text>
+<defs>
+<marker id="ka1" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00D27B" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="ka2" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#4a5568" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#1a2233" height="50" rx="5" stroke="#4a5568" width="72" x="16" y="70"></rect>
+<text fill="#7a8899" font-size="9" font-weight="600" text-anchor="middle" x="52" y="90">MCP</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="52" y="103">Client</text>
+<text fill="#4a5568" font-size="7.5" text-anchor="middle" x="52" y="115">tool calls</text>
+<line marker-end="url(#ka2)" stroke="#4a5568" stroke-width="1.5" x1="88" x2="108" y1="95" y2="95"></line>
+<rect fill="#001e13" height="78" rx="6" stroke="#00D27B" stroke-opacity=".6" width="118" x="110" y="55"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="169" y="78">Inbound Auth</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="169" y="92">Key Auth / OIDC</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="169" y="105">AI MCP OAuth2</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="169" y="118">passthrough-listener / listener</text>
+<line marker-end="url(#ka1)" stroke="#00D27B" stroke-width="1.5" x1="228" x2="246" y1="94" y2="94"></line>
+<rect fill="#001e13" height="78" rx="6" stroke="#00D27B" stroke-opacity=".6" width="118" x="248" y="55"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="307" y="78">AI MCP Proxy</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="307" y="92">MCP ↔ HTTP adapter</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="307" y="105">direct MCP request flow</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="307" y="118">do not stack other AI plugins here</text>
+<line marker-end="url(#ka1)" stroke="#00D27B" stroke-width="1.5" x1="366" x2="384" y1="94" y2="94"></line>
+<rect fill="#001e13" height="78" rx="6" stroke="#00D27B" stroke-opacity=".6" width="118" x="386" y="55"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="445" y="78">Tool ACLs</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="445" y="92">consumer groups</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="445" y="105">allow / deny per tool</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="445" y="118">list_users vs search_orders</text>
+<line marker-end="url(#ka1)" stroke="#00D27B" stroke-width="1.5" x1="504" x2="522" y1="94" y2="94"></line>
+<rect fill="#001e13" height="78" rx="6" stroke="#00D27B" stroke-opacity=".6" width="94" x="524" y="55"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="571" y="78">Ops Controls</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="571" y="92">rate limiting</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="571" y="105">logging / tracing</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="571" y="118">request transforms</text>
+<line marker-end="url(#ka1)" stroke="#00D27B" stroke-width="1.5" x1="618" x2="638" y1="94" y2="94"></line>
+<rect fill="#1a2233" height="50" rx="5" stroke="#4a5568" width="62" x="640" y="68"></rect>
+<text fill="#e2e8f0" font-size="9" font-weight="600" text-anchor="middle" x="671" y="89">MCP</text>
+<text fill="#e2e8f0" font-size="9" text-anchor="middle" x="671" y="103">Server</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="671" y="114">governed</text>
+<rect fill="#0a0d04" height="52" rx="5" stroke="#ffa726" stroke-opacity=".5" width="500" x="110" y="154"></rect>
+<text fill="#ffa726" font-size="8.5" font-weight="700" text-anchor="middle" x="360" y="171">Vault refs protect Kong config secrets;</text>
+<text fill="#ffa726" font-size="8.5" font-weight="700" text-anchor="middle" x="360" y="184">downstream tool credentials still belong to the MCP server</text>
+<text fill="#7a8899" font-size="7.5" text-anchor="middle" x="360" y="197">Use separate AI Proxy / Prompt Guard routes for LLM-side controls</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="360" y="224">Source: developer.konghq.com/plugins/ai-mcp-proxy/ · passthrough-listener ACL examples · ai-mcp-oauth2</text>
+</svg>
+</div>
+<div class="img-caption">Kong's current MCP docs support a direct MCP route with AI MCP Proxy, inbound auth, per-tool ACLs, and standard gateway controls like rate limiting and logging. Keep that topology separate from Kong's LLM-side AI-plugin flows; the direct AI MCP Proxy route should not be stacked with other AI plugins on the same Service or Route.</div>
+<div class="callout warn">
+<div class="callout-title">⚠ Important Constraint — Separate Direct MCP Routes from LLM-Side AI Plugin Routes</div>
+<p>Kong now documents native MCP tool ACLs and AI MCP OAuth2, so the platform is stronger here than older summaries suggested. The key implementation constraint is route topology: the AI MCP Proxy docs explicitly say not to configure AI MCP Proxy together with other AI plugins on the same Service or Route. Use direct MCP routes for MCP auth / ACL / traffic control, and separate AI-plugin routes when you want Prompt Guard or other LLM-flow controls. Kong still does not document downstream credential injection into tool parameters; vault references remain a configuration-level secret-management pattern.</p>
+</div>
+<hr/>
+<!-- ══════ §4 PORTKEY ══════ -->
+<div class="vendor-header portkey">
+<span class="vendor-badge">Portkey</span>
+<span class="vendor-title">§4 — Dedicated MCP Registry with Provisioning, Auth, and Observability</span>
+</div>
+<h3>Architecture</h3>
+<p>Portkey now treats MCP as a first-class control plane through its dedicated <a href="https://docs.portkey.ai/docs/product/mcp-gateway" target="_blank">MCP Gateway</a> and <a href="https://docs.portkey.ai/docs/product/mcp-gateway/mcp-registry" target="_blank">MCP Registry</a>. Rather than describing MCP mainly as standard LLM traffic flowing through generic configs, the current docs position the Registry as the central place to add internal or external MCP servers, configure authentication, monitor connection health, and control which teams can access which servers.</p>
+<p>That control plane is deeper than the earlier config-first framing. <a href="https://docs.portkey.ai/docs/product/mcp-gateway/access-control" target="_blank">Team Provisioning</a> controls which workspaces and users can access a server; <a href="https://docs.portkey.ai/docs/product/mcp-gateway/tool-provisioning" target="_blank">Tool Provisioning</a> lets admins enable or disable individual tools, resources, and prompts at organization or workspace scope; and the authentication docs cover API keys, built-in OAuth 2.1, external OAuth, JWT validation, and identity forwarding for upstream servers.</p>
+<p>Guardrails need a careful distinction. Portkey now documents a dedicated <a href="https://docs.portkey.ai/docs/product/mcp-gateway/guardrails" target="_blank">Guardrails</a> surface under MCP Gateway, but that page currently says MCP guardrails are coming soon and offers early access. The broader Portkey AI Gateway still documents generic guardrails and webhook-based custom checks, so webhook validation is best described as an adjacent extensibility path today — not as a fully shipped, dedicated MCP guardrail layer in the current public MCP docs.</p>
+<p>Credential handling is also stronger than the prior draft implied. The MCP Gateway docs say Portkey authenticates the client once, checks server and tool access, then injects the appropriate upstream credentials — OAuth tokens for services like GitHub or Slack, API keys for public servers, or identity headers for internal servers. The same docs and quickstarts also emphasize full request/response logging and MCP observability, including tool-call monitoring with full context and logs.</p>
+<div class="code-wrap"><pre>{
+  "mcpServers": {
+    "linear": {
+      "url": "https://mcp.portkey.ai/linear/mcp"
+    }
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.portkey.ai/docs/product/mcp-gateway/authentication/oauth" target="_blank">MCP Gateway OAuth</a> · <a href="https://docs.portkey.ai/docs/integrations/mcp-clients/claude" target="_blank">Claude Desktop</a> · <a href="https://docs.portkey.ai/docs/integrations/mcp-clients/cursor" target="_blank">Cursor</a>. Omitting an API key lets Portkey trigger OAuth 2.1 when needed.</div>
+<!-- Portkey SVG -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 640 240" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="240" width="640"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="320" y="22">PORTKEY — MCP REGISTRY + PROVISIONING CONTROL PLANE</text>
+<defs>
+<marker id="pk1" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#5A67FF" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#1a2233" height="54" rx="6" stroke="#4a5568" width="96" x="20" y="76"></rect>
+<text fill="#e2e8f0" font-size="9" font-weight="600" text-anchor="middle" x="68" y="98">MCP Client</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="68" y="112">Claude / Cursor</text>
+<line marker-end="url(#pk1)" stroke="#5A67FF" stroke-width="1.5" x1="116" x2="152" y1="103" y2="103"></line>
+<rect fill="#0a0c24" height="132" rx="8" stroke="#5A67FF" stroke-dasharray="6,3" width="338" x="152" y="42"></rect>
+<text fill="#5A67FF" font-size="10" font-weight="700" text-anchor="middle" x="321" y="61">Portkey MCP Gateway + Registry</text>
+<rect fill="#1a2233" height="36" rx="5" stroke="#5A67FF" stroke-opacity=".45" width="146" x="168" y="72"></rect>
+<text fill="#e2e8f0" font-size="8.5" font-weight="600" text-anchor="middle" x="241" y="88">MCP Registry</text>
+<text fill="#7a8899" font-size="7.5" text-anchor="middle" x="241" y="100">internal / external servers</text>
+<rect fill="#1a2233" height="36" rx="5" stroke="#5A67FF" stroke-opacity=".45" width="148" x="326" y="72"></rect>
+<text fill="#e2e8f0" font-size="8.5" font-weight="600" text-anchor="middle" x="400" y="88">Provisioning</text>
+<text fill="#7a8899" font-size="7.5" text-anchor="middle" x="400" y="100">team + tool toggles</text>
+<rect fill="#1a2233" height="40" rx="5" stroke="#5A67FF" stroke-opacity=".45" width="146" x="168" y="116"></rect>
+<text fill="#e2e8f0" font-size="8.5" font-weight="600" text-anchor="middle" x="241" y="133">Auth / Identity</text>
+<text fill="#7a8899" font-size="7.4" text-anchor="middle" x="241" y="145">OAuth 2.1 · JWT validation</text>
+<text fill="#7a8899" font-size="7.4" text-anchor="middle" x="241" y="154">identity forwarding</text>
+<rect fill="#1a2233" height="40" rx="5" stroke="#5A67FF" stroke-opacity=".45" width="148" x="326" y="116"></rect>
+<text fill="#e2e8f0" font-size="8.5" font-weight="600" text-anchor="middle" x="400" y="133">Observability</text>
+<text fill="#7a8899" font-size="7.4" text-anchor="middle" x="400" y="145">full request/response logs</text>
+<text fill="#7a8899" font-size="7.4" text-anchor="middle" x="400" y="154">tool-call context + traces</text>
+<line marker-end="url(#pk1)" stroke="#5A67FF" stroke-width="1.5" x1="490" x2="526" y1="103" y2="103"></line>
+<rect fill="#1a2233" height="54" rx="6" stroke="#4a5568" width="94" x="526" y="76"></rect>
+<text fill="#e2e8f0" font-size="9" font-weight="600" text-anchor="middle" x="573" y="98">MCP Server</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="573" y="112">proxied + governed</text>
+<rect fill="#0a0d04" height="28" rx="5" stroke="#ffa726" stroke-opacity=".55" width="416" x="112" y="191"></rect>
+<text fill="#ffa726" font-size="8.6" font-weight="700" text-anchor="middle" x="320" y="208">Dedicated MCP guardrails are documented as coming soon / early access</text>
+<text fill="#3a4a5a" font-size="7.5" text-anchor="middle" x="320" y="228">Source: portkey.ai/docs/product/mcp-gateway · mcp-registry · access-control · tool-provisioning · authentication · observability</text>
+</svg>
+</div>
+<div class="img-caption">Portkey's current MCP docs center on the MCP Gateway + Registry control plane: server onboarding, team/tool provisioning, auth, and observability. Dedicated MCP guardrails are documented as coming soon; the broader AI Gateway webhook model remains an adjacent extensibility path for custom validation.</div>
+<div class="callout info">
+<div class="callout-title">ℹ Custom Validation: Adjacent Path, Not Yet the Native MCP Layer</div>
+<p>Portkey's broader AI Gateway docs still document Bring Your Own Guardrail webhooks with structured request/response payloads for custom validation. That is useful if you already have a webhook-based safety pipeline. But the dedicated MCP Gateway docs currently describe native MCP guardrails as coming soon / early access, so it is more accurate to treat webhooks as an adjacent extensibility mechanism than as Portkey's fully shipped MCP guardrail layer today.</p>
+</div>
+<hr/>
+<!-- ══════ §5 TRUEFOUNDRY ══════ -->
+<div class="vendor-header tf">
+<span class="vendor-badge">TrueFoundry</span>
+<span class="vendor-title">§5 — K8s-Native MCP Control Plane with Four-Hook Security, Virtual MCPs, and Platform Secret Management</span>
+</div>
+<h3>Architecture: Gateway as the Policy-Bearing MCP Proxy</h3>
+<p>TrueFoundry's <a href="https://www.truefoundry.com/docs/ai-gateway/intro-to-llm-gateway" target="_blank">AI Gateway overview</a> makes an unusually direct statement: the gateway is the proxy layer between applications and <em>both LLM providers and MCP servers</em>. The gateway is positioned as the coordination layer for model and tool interactions — not just inference. Because all MCP traffic flows through the gateway, the gateway can reason about it at the tool-call-semantic level, not just at the HTTP level.</p>
+<p>The <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway plane architecture</a> describes a stateless, Kubernetes-native data plane built on the Hono framework. The hot path has no external calls except cache — rate limits, load balancing, authentication, authorization, and guardrails are all evaluated in-memory. Logs and metrics are queued asynchronously. This architectural design, combined with the platform's K8s deployment model, makes it feasible for MCP servers to run as in-cluster workloads network-adjacent to the gateway, though the specific MCP-server-as-K8s-pod deployment pattern represents an architectural possibility enabled by the documented platform model rather than a prescribed single configuration.</p><h3>Coverage Beyond Basic MCP Proxying</h3><div class="callout info"><div class="callout-title">ℹ What TrueFoundry Explicitly Documents for MCPs</div><ul><li><strong>Coverage of MCPs, including custom MCPs:</strong> the docs cover public MCP servers, self-hosted MCP servers, custom remote MCP servers, and deploying your own MCP servers from code or from package-based runtimes such as <code>npx</code> / <code>uvx</code>.</li><li><strong>Virtual MCP Servers:</strong> TrueFoundry documents a Virtual MCP Server abstraction that lets teams curate a safer logical server by combining selected tools from multiple underlying MCP servers without standing up another custom broker.</li><li><strong>Authentication / authorization:</strong> the MCP docs separate inbound gateway auth from outbound auth to MCP servers and document PAT / VAT, OAuth2, header-based auth, token passthrough, and tool-level access control with RBAC / ABAC-style policy surfaces.</li><li><strong>Observability:</strong> the docs explicitly cover MCP request logs, per-tool metrics, latency and failure metrics, method-call breakdowns, and OpenTelemetry export — which is closer to an MCP operations surface than a generic LLM request log.</li></ul></div>
+<h3>The Four-Hook Guardrail System</h3>
+<p>TrueFoundry's <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrails overview</a> defines a four-hook execution model that is the most MCP-specific guardrail architecture documented across the four platforms in this comparison. The hooks are: <strong>LLM input</strong>, <strong>LLM output</strong>, <strong>MCP pre-tool</strong>, and <strong>MCP post-tool</strong>. The distinction between LLM-level hooks and MCP-tool-level hooks matters enormously in practice.</p>
+<div class="hook-grid">
+<div class="hook-card">
+<div class="hname">llm_input_guardrails</div>
+<div class="hdesc">Fires before the model call. Use for prompt injection detection, PII masking in the user message, and content moderation.</div>
+<div class="htype">Hook: LLM Input</div>
+</div>
+<div class="hook-card">
+<div class="hname">llm_output_guardrails</div>
+<div class="hdesc">Fires on the model response. Use for hallucination checks, secrets detection in model output, output validation.</div>
+<div class="htype">Hook: LLM Output</div>
+</div>
+<div class="hook-card">
+<div class="hname">mcp_tool_pre_invoke</div>
+<div class="hdesc">Fires when the model issues a tool call, before the tool executes. Use for SQL injection checks, parameter validation, permission checks, sanitization.</div>
+<div class="htype">Hook: MCP Pre-Tool — critical for agentic workflows per TrueFoundry docs</div>
+</div>
+<div class="hook-card">
+<div class="hname">mcp_tool_post_invoke</div>
+<div class="hdesc">Fires on the tool result before it returns to the model. Use for code safety checks, secrets detection, PII redaction from tool results.</div>
+<div class="htype">Hook: MCP Post-Tool — data residency / leak prevention</div>
+</div>
+</div>
+<p>The docs are explicit that the MCP hooks are <em>critical for agentic workflows where a model autonomously invokes tools</em>. The <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-getting-started" target="_blank">guardrails-getting-started</a> page documents the <code>X-TFY-GUARDRAILS</code> request header, which includes all four hook arrays — giving callers the ability to specify guardrails per-request dynamically, not only through gateway-wide configuration.</p>
+<h3>Platform Secret Management: Keeping DB Passwords Out of LLM Context</h3>
+<p>The <a href="https://www.truefoundry.com/docs/manage-secrets" target="_blank">secret management</a> documentation describes Secret Groups as a first-class platform primitive for credential management. Secret Groups are not merely encrypted key-value stores — they are governed credential namespaces that can be attached to workloads and referenced by gateway configurations via the platform's identity system. The architectural implication for MCP security: MCP server workloads deployed on the TrueFoundry platform can consume database credentials from Secret Groups via the platform's secret reference mechanism. In this pattern, the LLM sees only the logical tool name and schema; the connection string is consumed by the MCP server pod at runtime through the platform layer, rather than being passed through the LLM context. This represents a well-documented architectural pattern enabled by the combination of the platform's Secret Groups and Kubernetes deployment model — teams should evaluate their specific deployment topology against the <a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">deployment overview</a> docs.</p>
+<p>The <a href="https://www.truefoundry.com/docs/changelog" target="_blank">changelog</a> documents continued active investment in MCP governance: Cedar-based guardrails for MCP tools and OAuth inbound authentication for the MCP Gateway are both noted in the v0.121.x changelog window (early 2026). Cedar-based policy is particularly significant for MCP because Cedar is a structured policy language that can reason about named principals calling named actions on named resources — the semantic model needed for fine-grained MCP tool permission governance.</p>
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — gateway guardrail config with dedicated MCP hooks</span>
+<span class="cm"># mcp_tool_pre_invoke_guardrails: fires before tool executes (param validation, SQL injection)</span>
+<span class="cm"># mcp_tool_post_invoke_guardrails: fires on tool result before LLM sees it (PII, secrets)</span>
+<span class="key">name</span>: <span class="str">hr-mcp-guardrails</span>
+<span class="key">type</span>: <span class="str">gateway-guardrails-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">hr-tool-safety-prod</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        - <span class="str">"team:hr-platform"</span>
+      <span class="key">models</span>:
+        - <span class="str">"hr-assistant"</span>
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"production"</span>
+    <span class="key">llm_input_guardrails</span>:
+      - <span class="str">mcp-guards/prompt-injection-check</span>
+    <span class="key">llm_output_guardrails</span>:
+      - <span class="str">mcp-guards/secrets-detection</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>:
+      - <span class="str">mcp-guards/sql-injection-check</span>
+      - <span class="str">mcp-guards/param-validation</span>
+      - <span class="str">mcp-guards/permission-check</span>
+    <span class="key">mcp_tool_post_invoke_guardrails</span>:
+      - <span class="str">mcp-guards/pii-redaction</span>
+      - <span class="str">mcp-guards/result-sanitization</span>
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">guardrails-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrails-overview</a> — config type, rule structure, and all four hook arrays verified against public docs</div>
+<div class="code-wrap"><pre>{
+  "llm_input_guardrails": [
+    "mcp-guards/prompt-injection-check"
+  ],
+  "llm_output_guardrails": [
+    "mcp-guards/secrets-detection"
+  ],
+  "mcp_tool_pre_invoke_guardrails": [
+    "mcp-guards/sql-injection-check",
+    "mcp-guards/param-validation"
+  ],
+  "mcp_tool_post_invoke_guardrails": [
+    "mcp-guards/pii-redaction"
+  ]
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">truefoundry.com/docs/ai-gateway/headers</a> — X-TFY-GUARDRAILS header schema, all four hook arrays</div>
+<div class="code-wrap"><pre># TrueFoundry Create Secret Group — documented current API shape
+# Secret values are created via the Secret Group API; workloads consume them through platform references
+curl --request POST   --url "https://${TRUEFOUNDRY_CONTROL_PLANE_URL}/api/svc/v1/secret-groups"   --header "Authorization: Bearer ${TFY_API_KEY}"   --header "Content-Type: application/json"   --data '{
+    "name": "hr-db-creds",
+    "integrationId": "&lt;your-secret-provider-integration-id&gt;",
+    "secrets": [
+      {"key": "DB_HOST", "value": "pg-prod.internal.corp"},
+      {"key": "DB_PORT", "value": "5432"},
+      {"key": "DB_NAME", "value": "hr_records"},
+      {"key": "DB_PASSWORD", "value": "&lt;stored-secret-value&gt;"}
+    ]
+  }'
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/api-reference/secret-groups/create-secret-group" target="_blank">truefoundry.com/docs/api-reference/secret-groups/create-secret-group</a> — current Secret Group create API</div>
+<!-- TrueFoundry Architecture SVG -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 300" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="300" width="820"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="700" letter-spacing="1" text-anchor="middle" x="410" y="22">TRUEFOUNDRY — K8S-NATIVE MCP GATEWAY + MCP POLICY LAYER</text>
+<rect fill="#0d0906" height="245" rx="8" stroke="#FF5533" stroke-opacity=".3" stroke-width="1" width="790" x="15" y="36"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600" x="40" y="54">Kubernetes cluster</text>
+<rect fill="#1a0f06" height="55" rx="5" stroke="#e8843a" width="120" x="30" y="65"></rect>
+<text fill="#e8843a" font-size="10" font-weight="600" text-anchor="middle" x="90" y="87">LLM Provider</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="90" y="100">claude-sonnet-4-6</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="90" y="112">tool call issued →</text>
+<defs>
+<marker id="tfa" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#FF5533" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="tfb" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ffa726" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="tfc" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="150" x2="198" y1="93" y2="93"></line>
+<rect fill="#1e0d08" height="200" rx="8" stroke="#FF5533" stroke-width="1.5" width="340" x="200" y="50"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="370" y="73">Stateless Hono Gateway Pod</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="370" y="87">In-memory policy evaluation · No external calls on hot path</text>
+<rect fill="#2a1508" height="40" rx="4" stroke="#FF5533" stroke-opacity=".5" width="70" x="215" y="100"></rect>
+<text fill="#7a8899" font-size="7.5" font-weight="600" text-anchor="middle" x="250" y="117">LLM Input</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="250" y="130">guardrails</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1" x1="285" x2="297" y1="120" y2="120"></line>
+<rect fill="#2a1508" height="40" rx="4" stroke="#FF5533" stroke-opacity=".5" width="70" x="298" y="100"></rect>
+<text fill="#7a8899" font-size="7.5" font-weight="600" text-anchor="middle" x="333" y="117">LLM Output</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="333" y="130">guardrails</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1" x1="368" x2="380" y1="120" y2="120"></line>
+<rect fill="#1e0805" height="40" rx="4" stroke="#FF5533" width="72" x="382" y="100"></rect>
+<text fill="#FF5533" font-size="7.5" font-weight="700" text-anchor="middle" x="418" y="114">MCP Pre-Tool</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="418" y="125">SQL injection</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="418" y="135">param validate</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="454" x2="464" y1="120" y2="120"></line>
+<rect fill="#1e0805" height="40" rx="4" stroke="#FF5533" width="62" x="465" y="100"></rect>
+<text fill="#FF5533" font-size="7.5" font-weight="700" text-anchor="middle" x="496" y="114">MCP Post</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="496" y="125">PII redact</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="496" y="135">secrets scan</text>
+<rect fill="#0a0804" height="42" rx="4" stroke="#ffa726" stroke-opacity=".6" width="312" x="215" y="158"></rect>
+<text fill="#ffa726" font-size="9" font-weight="700" text-anchor="middle" x="371" y="175">🔒 Secret Groups + MCP deployment primitives</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="371" y="188">supports secret-backed MCP server patterns</text>
+<text fill="#FF5533" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="8" x="215" y="222">Virtual MCP · OAuth / PAT / VAT auth flows</text>
+<text fill="#7a8899" font-size="7.5" x="215" y="236">MCP metrics/logging · OTEL export · applied-config headers</text>
+<rect fill="#0a0d04" height="60" rx="6" stroke="#ffa726" stroke-opacity=".7" width="140" x="572" y="65"></rect>
+<text fill="#ffa726" font-size="10" font-weight="700" text-anchor="middle" x="642" y="88">🔒 Secret Group</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="642" y="103">hr-db-creds</text>
+<text fill="#ffa726" font-size="8" text-anchor="middle" x="642" y="115">credential stored here</text>
+<line marker-end="url(#tfb)" stroke="#ffa726" stroke-dasharray="4,2" stroke-width="1.5" x1="542" x2="610" y1="175" y2="125"></line>
+<rect fill="#1e0d08" height="55" rx="6" stroke="#FF5533" stroke-opacity=".7" width="140" x="572" y="155"></rect>
+<text fill="#FF5533" font-size="10" font-weight="600" text-anchor="middle" x="642" y="178">MCP / Virtual MCP</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="642" y="191">public · self-hosted · custom</text>
+<text fill="#50fa7b" font-size="8" text-anchor="middle" x="642" y="203">server-side auth / token handling</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="540" x2="571" y1="120" y2="168"></line>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="410" y="292">Source: truefoundry.com/docs/platform/gateway-plane-architecture · guardrails-overview · manage-secrets · changelog</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's K8s-native gateway acts as the policy-bearing MCP layer with dedicated pre/post-tool hooks. The broader MCP docs also cover public, self-hosted, and custom remote MCPs, Virtual MCP Servers for curated tool exposure, documented MCP auth/authz flows, and MCP metrics/logging. Secret Groups are a platform primitive that supports secret-backed MCP server deployment patterns, but the exact credential flow depends on your server topology. Editorial reconstruction based on TrueFoundry public docs.</div>
+<!-- TrueFoundry Four-Hook Detail SVG -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 290" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="290" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="24">TrueFoundry Four-Hook Security Pipeline — MCP Tool Call Lifecycle</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="410" y="42">Each hook fires at a distinct point in the LLM ↔ MCP tool call lifecycle</text>
+<defs>
+<marker id="th1" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#FF5533" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#1a2233" height="45" rx="5" stroke="#4a5568" width="80" x="20" y="100"></rect>
+<text fill="#7a8899" font-size="9" font-weight="600" text-anchor="middle" x="60" y="120">User</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="60" y="133">Request</text>
+<line marker-end="url(#th1)" stroke="#FF5533" stroke-width="1.5" x1="100" x2="120" y1="123" y2="123"></line>
+<rect fill="#1e0d08" height="85" rx="6" stroke="#FF5533" stroke-width="1.5" width="120" x="122" y="80"></rect>
+<text fill="#FF5533" font-size="9" font-weight="700" text-anchor="middle" x="182" y="103">① LLM Input</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="182" y="118">Prompt injection detect</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="182" y="131">PII mask in user msg</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="182" y="144">Content moderation</text>
+<text fill="#4a5568" font-size="7.5" text-anchor="middle" x="182" y="157">llm_input_guardrails</text>
+<line marker-end="url(#th1)" stroke="#FF5533" stroke-width="1.5" x1="242" x2="268" y1="123" y2="123"></line>
+<rect fill="#1a0f06" height="45" rx="5" stroke="#e8843a" width="80" x="270" y="100"></rect>
+<text fill="#e8843a" font-size="9" font-weight="600" text-anchor="middle" x="310" y="120">LLM</text>
+<text fill="#4a5568" font-size="8" text-anchor="middle" x="310" y="133">issues tool call</text>
+<line marker-end="url(#th1)" stroke="#FF5533" stroke-width="1.5" x1="350" x2="370" y1="123" y2="123"></line>
+<rect fill="#1e0d08" height="105" rx="6" stroke="#FF5533" stroke-width="2" width="128" x="372" y="70"></rect>
+<text fill="#FF5533" font-size="9" font-weight="700" text-anchor="middle" x="436" y="93">③ MCP Pre-Tool</text>
+<text fill="#ffa726" font-size="8" font-weight="600" text-anchor="middle" x="436" y="107">→ CRITICAL HOOK ←</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="436" y="120">SQL injection check</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="436" y="133">Parameter validation</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="436" y="146">Permission check</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="436" y="159">Fires before tool executes</text>
+<text fill="#4a5568" font-size="7.5" text-anchor="middle" x="436" y="170">mcp_tool_pre_invoke_guardrails</text>
+<line marker-end="url(#th1)" stroke="#FF5533" stroke-width="1.5" x1="500" x2="526" y1="123" y2="123"></line>
+<rect fill="#1e0d08" height="45" rx="5" stroke="#FF5533" stroke-opacity=".7" width="80" x="528" y="100"></rect>
+<text fill="#FF5533" font-size="9" font-weight="600" text-anchor="middle" x="568" y="120">MCP Server</text>
+<text fill="#50fa7b" font-size="8" text-anchor="middle" x="568" y="133">executes tool</text>
+<line marker-end="url(#th1)" stroke="#FF5533" stroke-width="1.5" x1="608" x2="626" y1="123" y2="123"></line>
+<rect fill="#1e0d08" height="85" rx="6" stroke="#FF5533" stroke-width="1.5" width="120" x="628" y="80"></rect>
+<text fill="#FF5533" font-size="9" font-weight="700" text-anchor="middle" x="688" y="103">④ MCP Post-Tool</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="688" y="118">PII / PHI redaction</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="688" y="131">Secrets scan in result</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="688" y="144">Result sanitization</text>
+<text fill="#4a5568" font-size="7.5" text-anchor="middle" x="688" y="157">mcp_tool_post_invoke_guardrails</text>
+<path d="M 688 165 Q 688 230 310 230 Q 182 230 182 200" fill="none" marker-end="url(#th1)" stroke="#FF5533" stroke-dasharray="4,3" stroke-width="1.2"></path>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="435" y="245">sanitized result returned → ② LLM Output hook fires (secrets-detection, hallucination check)</text>
+<rect fill="#1e0d08" height="24" rx="3" stroke="#FF5533" stroke-opacity=".6" width="60" x="152" y="195"></rect>
+<text fill="#FF5533" font-size="7.5" font-weight="600" text-anchor="middle" x="182" y="211">② LLM Output</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="410" y="275">Source: truefoundry.com/docs/ai-gateway/guardrails-overview · guardrails-getting-started · guardrails-configuration</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's four-hook pipeline fires at distinct points in the LLM ↔ MCP lifecycle. Hooks ③ and ④ are dedicated MCP-tool-call hooks that sit immediately before and after tool execution. This is the most MCP-specific guardrail architecture documented across the four platforms in this comparison. Source: TrueFoundry public guardrails docs.</div>
+<div class="callout warn">
+<div class="callout-title">⚠ Limitation — Kubernetes Operational Prerequisite</div>
+<p>TrueFoundry's gateway-plane deployment requires a running Kubernetes cluster, domain, TLS certificate, and image-pull credentials as documented in the <a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">deploy-gateway-plane guide</a>. For teams without a K8s platform engineering function, this is a real adoption barrier. The feature depth is the highest in this comparison; the operational prerequisites are equally the highest.</p>
+</div>
+<hr/>
+<!-- ══════ §6 FEATURE MATRIX ══════ -->
+<h2>§6 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation as of March 2026. The matrix explicitly covers MCP breadth, auth/authz, virtual MCP capabilities, and MCP logging/metrics in addition to guardrails. ✅ = native first-party feature, ⚠ = possible with customization / partial support / architectural pattern enabled by documented primitives, ❌ = not documented in public docs.</p>
+<div class="matrix-wrap">
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th style="color:var(--litellm)">LiteLLM</th>
+<th style="color:var(--kong)">Kong AI GW</th>
+<th style="color:var(--portkey)">Portkey</th>
+<th style="color:var(--tf)">TrueFoundry</th>
+</tr>
+</thead>
+<tbody><tr><td><strong>MCP request proxying</strong></td><td><span class="check">✅</span> MCP Gateway provides a fixed endpoint for MCP tools with permission management by key/team/org</td><td><span class="check">✅</span> <code>ai-mcp-proxy</code> adapts MCP↔HTTP; native per-tool ACL examples and standard gateway controls are documented</td><td><span class="check">✅</span> Native. Dedicated MCP Gateway + Registry provide centralized routing, auth, and observability for internal / external servers</td><td><span class="check">✅</span> Native MCP proxy layer; gateway is documented as proxy between applications, LLMs, and MCP servers</td></tr><tr><td><strong>MCP coverage (public, self-hosted, custom)</strong></td><td><span class="check">✅</span> MCP servers can be registered in config and exposed through the LiteLLM MCP Gateway</td><td><span class="check">✅</span> Listener and passthrough-listener patterns cover direct MCP server fronting and governance</td><td><span class="check">✅</span> Registry supports catalog + custom-URL servers, and the docs separately cover internal and external MCP server onboarding</td><td><span class="check">✅</span> Docs cover public MCPs, self-hosted MCPs, custom remote MCPs, and deploying your own MCP servers from code or packages</td></tr><tr><td><strong>Virtual MCP server / curated aggregation</strong></td><td><span class="cross">❌</span> I did not find a documented virtual-MCP abstraction</td><td><span class="partial">⚠</span> Kong can front and govern MCP routes, but I did not find a comparable curated multi-server virtual-MCP abstraction</td><td><span class="cross">❌</span> I did not find a documented virtual-MCP abstraction</td><td><span class="check">✅</span> Virtual MCP Servers are documented for curating selected tools from multiple MCP servers into one logical server</td></tr><tr><td><strong>Authentication / authorization for MCPs</strong></td><td><span class="check">✅</span> MCP permissions by key/team/org plus OAuth-based MCP server integration and tool / parameter allowlists</td><td><span class="check">✅</span> AI MCP OAuth2, Key Auth / OIDC patterns, and native per-tool ACLs are documented for MCP routes</td><td><span class="check">✅</span> Native. API keys, OAuth 2.1, external OAuth, JWT validation, identity forwarding, and server-level claim-based authorization are documented; tool-level auth and authz webhooks are coming soon</td><td><span class="check">✅</span> Docs separate inbound vs outbound auth and cover PAT / VAT, OAuth2, header auth, token passthrough, and tool-level access control</td></tr><tr><td><strong>Dedicated MCP pre-tool guardrail hook</strong></td><td><span class="check">✅</span> Current docs explicitly document <code>pre_mcp_call</code> guardrails for MCP tool inputs</td><td><span class="partial">⚠</span> Prompt Guard applies to HTTP-adapted request body; not a named MCP-tool-invocation hook</td><td><span class="partial">⚠</span> Dedicated MCP guardrails are documented, but the public MCP docs say they are coming soon / early access rather than GA</td><td><span class="check">✅</span> Dedicated <code>mcp_tool_pre_invoke_guardrails</code> hook; explicitly documented as MCP-specific</td></tr><tr><td><strong>Dedicated MCP post-tool guardrail hook</strong></td><td><span class="partial">⚠</span> A custom post-MCP hook is documented for callbacks / cost tracking, but I did not find a documented <code>post_mcp_call</code> guardrail mode for result redaction</td><td><span class="partial">⚠</span> Response plugins apply to HTTP-adapted response; not named as an MCP tool-result hook</td><td><span class="partial">⚠</span> Dedicated MCP guardrails are documented, but the public MCP docs say they are coming soon / early access rather than GA</td><td><span class="check">✅</span> Dedicated <code>mcp_tool_post_invoke_guardrails</code> hook; fires on tool result before LLM sees it</td></tr><tr><td><strong>DB credential isolation from LLM context</strong></td><td><span class="partial">⚠</span> <code>os.environ/</code> refs keep creds out of config files; no documented gateway-level MCP tool credential injection</td><td><span class="partial">⚠</span> <code>{vault://aws/...}</code> refs in plugin config; credential management at configuration level; MCP servers manage their own downstream creds</td><td><span class="partial">⚠</span> MCP Gateway injects upstream OAuth tokens, API keys, or identity headers at runtime; stronger than config aliases alone, but not a universal DB-secret-isolation guarantee for every custom topology</td><td><span class="partial">⚠</span> Secret Groups are a first-class platform primitive; documented pattern enables MCP server workloads to consume creds via the platform layer, not the LLM context — verify against deployment topology</td></tr><tr><td><strong>SQL injection / param validation on tool calls</strong></td><td><span class="partial">⚠</span> <code>pre_mcp_call</code> guardrails plus <code>allowed_params</code> support input validation and parameter restriction; still not a full schema broker</td><td><span class="partial">⚠</span> Prompt Guard deny patterns on adapted HTTP body; regex-based, not schema-aware</td><td><span class="partial">⚠</span> Generic Portkey guardrails / webhooks can help, but dedicated MCP input validation is currently documented as coming soon / early access</td><td><span class="check">✅</span> MCP pre-tool hook: SQL injection check + parameter validation (per guardrails overview)</td></tr><tr><td><strong>PII / PHI redaction on tool results</strong></td><td><span class="partial">⚠</span> Generic response-time guardrails exist, but I did not find a documented MCP-result redaction guardrail mode</td><td><span class="partial">⚠</span> AI PII Sanitizer is documented, but direct AI MCP Proxy routes must respect plugin-topology constraints when mixing AI plugins</td><td><span class="partial">⚠</span> Generic PII redaction exists on the broader Portkey stack, but dedicated MCP result guardrails are currently documented as coming soon / early access</td><td><span class="check">✅</span> MCP post-tool hook: PII / PHI redaction before tool result returns to the LLM</td></tr><tr><td><strong>Cedar-based policy for MCP tools</strong></td><td><span class="cross">❌</span></td><td><span class="cross">❌</span></td><td><span class="cross">❌</span></td><td><span class="check">✅</span> Cedar-based guardrails for MCP tools (documented in the 2026 changelog window)</td></tr><tr><td><strong>OAuth inbound auth for MCP Gateway</strong></td><td><span class="partial">⚠</span> MCP server OAuth flows are documented; I did not find equally explicit docs for inbound OAuth on the LiteLLM MCP Gateway surface itself</td><td><span class="check">✅</span> AI MCP OAuth2 is documented for listener / passthrough-listener MCP routes</td><td><span class="check">✅</span> Native. Portkey OAuth 2.1 triggers automatically for clients like Claude Desktop or Cursor when no API key or bearer token is provided</td><td><span class="check">✅</span> OAuth inbound authentication for MCP Gateway (changelog)</td></tr><tr><td><strong>MCP server access control by team / model</strong></td><td><span class="check">✅</span> Permissions can be scoped by key/team/org with tool filtering and parameter allowlists</td><td><span class="check">✅</span> Native per-tool ACLs by consumer / consumer group are documented for MCP routes</td><td><span class="check">✅</span> Native. Team Provisioning controls workspace/user access, and Tool Provisioning toggles individual tools, resources, and prompts at org/workspace scope</td><td><span class="check">✅</span> <code>when.subjects</code> / <code>when.models</code> / <code>when.metadata</code> scoping in guardrail rules</td></tr><tr><td><strong>Rate limiting on MCP traffic</strong></td><td><span class="partial">⚠</span> Global TPM/RPM and key-level policy exist; I did not find an equally explicit MCP-route-specific rate-limit doc</td><td><span class="check">✅</span> <code>ai-rate-limiting-advanced</code> per consumer on adapted MCP route</td><td><span class="check">✅</span> Config-level rate limits and workspace credit ceilings</td><td><span class="check">✅</span> <code>gateway-rate-limiting-config</code> with <code>rate_limit_applies_per</code> metadata scoping</td></tr><tr><td><strong>MCP observability: tool-call logging &amp; metrics</strong></td><td><span class="partial">⚠</span> Call IDs, callbacks, and OTel integrations are documented, but I did not find equally rich MCP-native per-tool dashboards in public docs</td><td><span class="check">✅</span> AI audit logs, Prometheus AI metrics, and GenAI OTel attributes can be applied to MCP routes</td><td><span class="check">✅</span> Native. Dedicated MCP observability docs plus quickstarts call out full-context logging, traces spanning LLM calls and tool use, and tool-call monitoring</td><td><span class="check">✅</span> Docs cover MCP logs, per-tool metrics, latency/failure metrics, method breakdowns, and OpenTelemetry export</td></tr><tr><td><strong>Webhook / extensible MCP enforcement</strong></td><td><span class="partial">⚠</span> Custom auth hook and pluggable guardrail providers are documented</td><td><span class="partial">⚠</span> Lua scripting in the Kong data plane and custom plugin development</td><td><span class="partial">⚠</span> BYO webhook guardrails are documented on the broader AI Gateway; dedicated MCP Gateway guardrails / webhooks are not yet GA</td><td><span class="partial">⚠</span> External guardrail integrations are documented, but the built-in four-hook system covers most MCP scenarios natively</td></tr><tr><td><strong>Operational posture (Editorial)</strong></td><td><span class="partial">⚠</span> Python runtime; Redis and control-plane components matter at scale; low barrier to MCP adoption</td><td><span class="partial">⚠</span> High concurrency and mature gateway primitives; strongest fit when you already want Kong-style route/plugin operations</td><td><span class="partial">⚠</span> SaaS-managed and low-ops; webhook extensibility compensates for lower hook specificity</td><td><span class="partial">⚠</span> Kubernetes prerequisite; deepest documented MCP-specific governance plus virtual-MCP, auth/authz, and observability depth</td></tr></tbody>
+</table>
+</div>
+<hr/>
+<!-- ══════ §7 EDITORIAL VERDICT ══════ -->
+<h2>§7 — Editorial Verdict</h2>
+<p>Editorial assessments as of March 25, 2026.</p>
+<div class="verdict-grid">
+<div class="verdict-card litellm">
+<div class="verdict-label">LiteLLM</div>
+<div class="verdict-name">The MCP Gateway Generalist</div>
+<div class="verdict-text">LiteLLM now has a materially stronger MCP story than earlier drafts credited: an MCP Gateway, permission management by key/team/org, tool and parameter filtering, and MCP-aware guardrails via <code>pre_mcp_call</code> / <code>during_mcp_call</code>. That makes it a credible default choice for teams already standardized on LiteLLM. The main documented gaps I found are the absence of a clearly documented <code>post_mcp_call</code> hook and no documented gateway-side broker for downstream tool secrets.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams already on LiteLLM that want a single MCP gateway with permissions, tool filtering, and pre-call safety controls. Less suitable when post-tool-result redaction or gateway-brokered downstream secrets are hard requirements.</div>
+</div>
+<div class="verdict-card kong">
+<div class="verdict-label">Kong AI Gateway</div>
+<div class="verdict-name">The Plugin-Stack Adaptor</div>
+<div class="verdict-text">Kong's current MCP offering is stronger than a simple adaptor story: AI MCP Proxy, per-tool ACLs, and AI MCP OAuth2 give it a real native MCP control surface. The tradeoff is architectural discipline. Kong is excellent when you want MCP traffic inside the same auth / ACL / rate-limit / observability envelope as the rest of your gateway estate, but you must keep direct MCP routes separate from incompatible LLM-side AI-plugin flows.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Existing Kong Gateway users that want native MCP auth, per-tool ACLs, and strong ops controls on direct MCP routes, and are comfortable managing route topology carefully.</div>
+</div>
+<div class="verdict-card portkey">
+<div class="verdict-label">Portkey</div>
+<div class="verdict-name">The MCP Registry Control Plane</div>
+<div class="verdict-text">Portkey's current MCP story is stronger than a config-first wrapper. Its dedicated MCP Gateway + Registry give teams central server onboarding, Team Provisioning, Tool Provisioning, built-in OAuth 2.1, JWT/identity-forwarding options, runtime credential brokering, and MCP observability. The main caveat is guardrails: native MCP guardrails are still coming soon / early access, so custom validation is better understood as an adjacent webhook path than as a fully mature first-class MCP policy engine.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Product and platform teams that want low-ops MCP onboarding, provisioning, auth, and observability without running a Kubernetes gateway, and can tolerate MCP-native guardrails still maturing.</div>
+</div>
+<div class="verdict-card tf">
+<div class="verdict-label">TrueFoundry</div>
+<div class="verdict-name">The Purpose-Built MCP Security Platform</div>
+<div class="verdict-text">TrueFoundry remains the most purpose-built MCP governance surface in this comparison. The public docs cover dedicated MCP pre/post-tool guardrail hooks, support for public/self-hosted/custom MCPs, Virtual MCP Servers, explicit MCP auth/authz patterns, and MCP-specific observability. Secret Groups and the K8s deployment model support a strong credential-isolation architecture, while Cedar-based policy and inbound OAuth for the MCP Gateway show continued investment in enterprise MCP control.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Platform teams that want the deepest documented MCP control surface — especially when custom MCP onboarding, curated virtual tool exposure, enterprise auth/authz, and MCP auditability matter as much as raw model routing.</div>
+</div>
+</div>
+<h3>Positioning Map — MCP Governance Depth vs. Operational Complexity</h3>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 620 400" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="400" width="620"></rect>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="65" y1="20" y2="330"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="575" y1="330" y2="330"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="65" x2="575" y1="175" y2="175"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="320" x2="320" y1="20" y2="330"></line>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" x="320" y="370">← Low MCP Governance Depth — High →</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" transform="rotate(-90,14,175)" x="14" y="175">Operational Complexity</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="192" y="340">LOW DEPTH / LOW COMPLEXITY</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="448" y="340">HIGH DEPTH / LOW COMPLEXITY</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="192" y="44">LOW DEPTH / HIGH COMPLEXITY</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="448" y="44">HIGH DEPTH / HIGH COMPLEXITY</text>
+<circle cx="215" cy="220" fill="#00C2CB" fill-opacity=".1" r="50" stroke="#00C2CB" stroke-width="1.5"></circle>
+<text fill="#00C2CB" font-size="13" font-weight="700" text-anchor="middle" x="215" y="215">LiteLLM</text>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="215" y="232">MCP Gateway · permissions</text>
+<circle cx="390" cy="248" fill="#5A67FF" fill-opacity=".1" r="50" stroke="#5A67FF" stroke-width="1.5"></circle>
+<text fill="#5A67FF" font-size="13" font-weight="700" text-anchor="middle" x="390" y="243">Portkey</text>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="390" y="260">MCP Registry · Tool Provisioning</text>
+<circle cx="432" cy="122" fill="#00D27B" fill-opacity=".1" r="46" stroke="#00D27B" stroke-width="1.5"></circle>
+<text fill="#00D27B" font-size="13" font-weight="700" text-anchor="middle" x="432" y="117">Kong</text>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="9.2" text-anchor="middle" x="432" y="133">Auth + tool ACLs</text>
+<circle cx="510" cy="78" fill="#FF5533" fill-opacity=".12" r="54" stroke="#FF5533" stroke-width="1.5"></circle>
+<text fill="#FF5533" font-size="13" font-weight="700" text-anchor="middle" x="510" y="70">TrueFoundry</text>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="9.2" text-anchor="middle" x="510" y="87">4-hook · Virtual MCP</text>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="8.8" text-anchor="middle" x="510" y="101">authz / metrics · K8s-native</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Bubble size reflects relative MCP-specific governance feature breadth. Axes are editorial assessments as of March 2026.</p>
+<hr/>
+<!-- ══════ §8 REFERENCES ══════ -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/intro-to-llm-gateway" target="_blank">TrueFoundry — AI Gateway Overview (proxy layer for LLMs and MCP servers)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview (four-hook model, MCP pre/post-tool)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-getting-started" target="_blank">TrueFoundry — Guardrails Getting Started (X-TFY-GUARDRAILS header with MCP hook arrays)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">TrueFoundry — Guardrails Configuration (YAML config structure, mcp_tool hooks)</a></li>
+<li><a href="https://www.truefoundry.com/docs/manage-secrets" target="_blank">TrueFoundry — Secret Management (Secret Groups, API endpoint)</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture (K8s-native, Hono, stateless, in-memory hot path)</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane (K8s prerequisites)</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">TrueFoundry — Deployment Overview</a></li>
+<li><a href="https://www.truefoundry.com/docs/changelog" target="_blank">TrueFoundry — Changelog (Cedar-based MCP guardrails, OAuth inbound auth for MCP Gateway)</a></li>
+<li><a href="https://developer.konghq.com/mcp/" target="_blank">Kong — MCP Traffic Gateway</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-mcp-proxy/" target="_blank">Kong — AI MCP Proxy Plugin</a></li>
+<li><a href="https://developer.konghq.com/mcp/govern-mcp-traffic/" target="_blank">Kong — Govern MCP Traffic (AI Proxy Advanced + Prompt Guard, separate LLM-flow pattern)</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-prompt-guard/" target="_blank">Kong — AI Prompt Guard Plugin (deny_patterns, Unicode injection best practices)</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-sanitizer/" target="_blank">Kong — AI PII Sanitizer Plugin (request/response sanitization)</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-mcp-oauth2/" target="_blank">Kong — AI MCP OAuth2 Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-mcp-proxy/examples/passthrough-listener-acls/" target="_blank">Kong — AI MCP Proxy per-tool ACL examples</a></li>
+<li><a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">Kong — Plugin Compatibility Reference</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway" target="_blank">Portkey — AI Gateway (MCP support listed)</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/mcp-gateway" target="_blank">Portkey — MCP Gateway (centralized auth, access control, observability, credential injection)</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/mcp-gateway/mcp-registry" target="_blank">Portkey — MCP Registry (server onboarding, auth config, health, team access)</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/mcp-gateway/access-control" target="_blank">Portkey — Team Provisioning (workspace and user access control)</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/mcp-gateway/tool-provisioning" target="_blank">Portkey — Tool Provisioning (toggle tools/resources/prompts)</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/mcp-gateway/authentication" target="_blank">Portkey — MCP Authentication (API keys, OAuth 2.1, JWT, external OAuth)</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/mcp-gateway/authorization" target="_blank">Portkey — MCP Authorization (server-level claims; future tool/webhook authz)</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/mcp-gateway/observability" target="_blank">Portkey — MCP Observability</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/mcp-gateway/guardrails" target="_blank">Portkey — MCP Guardrails (coming soon / early access)</a></li>
+
+<li><a href="https://portkey.ai/docs/product/guardrails" target="_blank">Portkey — Guardrails</a></li>
+<li><a href="https://portkey.ai/docs/product/guardrails/creating-raw-guardrails-in-json" target="_blank">Portkey — Creating Raw Guardrails in JSON (hook format, deny flag)</a></li>
+<li><a href="https://portkey.ai/docs/product/guardrails/pii-redaction" target="_blank">Portkey — PII Redaction</a></li>
+<li><a href="https://portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails" target="_blank">Portkey — Bring Your Own Guardrails (webhook contract)</a></li>
+<li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy in Your Infrastructure (hybrid VPC)</a></li>
+<li><a href="https://docs.litellm.ai/docs/mcp" target="_blank">LiteLLM — MCP Overview (fixed endpoint MCP Gateway)</a></li>
+<li><a href="https://docs.litellm.ai/docs/mcp_control" target="_blank">LiteLLM — MCP Permission Management (allowed_tools, allowed_params, key/team/org controls)</a></li>
+<li><a href="https://docs.litellm.ai/docs/mcp_guardrail" target="_blank">LiteLLM — MCP Guardrails (pre_mcp_call, during_mcp_call)</a></li>
+<li><a href="https://docs.litellm.ai/docs/mcp_usage" target="_blank">LiteLLM — Using MCP (allowed_tools usage)</a></li>
+<li><a href="https://docs.litellm.ai/docs/mcp_cost_tracking" target="_blank">LiteLLM — MCP Cost Tracking (custom post-MCP hook / callback surface)</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/mcp/overview" target="_blank">TrueFoundry — MCP Overview (public/self-hosted MCPs, enterprise access control)</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/mcp/virtual-mcp-server" target="_blank">TrueFoundry — Virtual MCP Server</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/mcp/auth-security" target="_blank">TrueFoundry — MCP Auth &amp; Security (inbound vs outbound auth, PAT/VAT)</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/mcp/getting-started" target="_blank">TrueFoundry — MCP Getting Started (custom remote MCP, auth options)</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/mcp/metrics" target="_blank">TrueFoundry — MCP Metrics</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/mcp/logs" target="_blank">TrueFoundry — MCP Logs</a></li></ol>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 9 of 15  ·  March 25, 2026  ·  All vendor names are trademarks of their respective owners.<br/>
+  All feature claims are cross-referenced against official public documentation. Verify against current vendor docs before production architecture decisions.
+</p>
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+</body></html>
