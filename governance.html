@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway Series #6 — Governance &amp; Policy Enforcement</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg:#0b0e17;--surface:#121826;--surface2:#1a2233;--border:#1e2d45;
+    --litellm:#00C2CB;--kong:#00D27B;--portkey:#5A67FF;--tf:#FF5533;
+    --text:#e2e8f0;--muted:#7a8899;--danger:#ff4757;--warn:#ffa726;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.75;max-width:900px;margin:0 auto;padding:2rem 1.5rem 6rem;}
+  code,pre,.mono{font-family:'IBM Plex Mono',monospace;}
+  h1{font-size:2.2rem;font-weight:700;line-height:1.2;margin-bottom:1rem;}
+  h2{font-size:1.5rem;font-weight:700;margin:3rem 0 1rem;padding-bottom:.4rem;border-bottom:1px solid var(--border);}
+  h3{font-size:1.15rem;font-weight:600;margin:1.8rem 0 .6rem;}
+  p{margin-bottom:1rem;}
+  a{color:#60a5fa;text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  ul,ol{padding-left:1.5rem;margin-bottom:1rem;}
+  li{margin-bottom:.3rem;}
+
+  .series-bar{display:flex;align-items:center;gap:.6rem;margin-bottom:1.2rem;flex-wrap:wrap;}
+  .tag-pill{display:inline-block;background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:.72rem;font-family:'IBM Plex Mono',monospace;padding:.25rem .7rem;border-radius:999px;letter-spacing:.05em;text-transform:uppercase;}
+  .tag-pill.active{background:#0f1d2e;border-color:#60a5fa;color:#60a5fa;}
+  .series-dots{display:flex;gap:.3rem;align-items:center;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--border);}
+  .dot.active{background:#60a5fa;}
+  .meta{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap;}
+  .meta-item{font-size:.82rem;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+
+  .methodology{background:#0a1220;border:1px solid #1e3a5f;color:#94b8d8;font-size:.8rem;padding:.8rem 1.2rem;border-radius:8px;font-family:'IBM Plex Mono',monospace;line-height:1.7;}
+  .methodology strong{color:#60a5fa;}
+
+  .code-wrap{position:relative;margin:1rem 0 .4rem;}
+  .code-wrap pre{background:#080c12;border:1px solid var(--border);border-radius:8px;padding:1.2rem 1.4rem;padding-right:3.2rem;overflow-x:auto;font-size:.83rem;line-height:1.6;margin:0;}
+  .copy-btn{position:absolute;top:.55rem;right:.55rem;background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:.68rem;padding:.22rem .55rem;border-radius:5px;cursor:pointer;transition:all .15s ease;user-select:none;letter-spacing:.03em;line-height:1.4;}
+  .copy-btn:hover{background:var(--border);color:var(--text);border-color:#2e4060;}
+  .copy-btn.copied{color:#50fa7b;border-color:#50fa7b44;background:#0a1a10;}
+  .kw{color:#ff79c6;}.str{color:#f1fa8c;}.cm{color:#6272a4;}.key{color:#50fa7b;}.num{color:#bd93f9;}
+  .source-note{font-size:.74rem;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:1.4rem;padding:.3rem .8rem;border-left:2px solid var(--border);}
+  .source-note a{color:#7a8899;}
+  .source-note a:hover{color:#60a5fa;}
+
+  .callout{border-left:3px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;padding:1rem 1.2rem;margin:1.2rem 0;}
+  .callout.danger{border-color:var(--danger);background:#1a0a0a;}
+  .callout.warn{border-color:var(--warn);background:#1a1200;}
+  .callout.info{border-color:#60a5fa;background:#0a1220;}
+  .callout.ok{border-color:#50fa7b;background:#091510;}
+  .callout-title{font-size:.75rem;font-weight:700;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.4rem;}
+  .callout.danger .callout-title{color:var(--danger);}
+  .callout.warn .callout-title{color:var(--warn);}
+  .callout.info .callout-title{color:#60a5fa;}
+  .callout.ok .callout-title{color:#50fa7b;}
+
+  .quickpick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0;}
+  .qp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.1rem;}
+  .qp-label{font-size:.7rem;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;}
+  .qp-name{font-size:1.05rem;font-weight:700;margin-bottom:.3rem;}
+  .qp-desc{font-size:.82rem;color:var(--muted);line-height:1.5;}
+  .c-litellm{color:var(--litellm);border-top:3px solid var(--litellm);}
+  .c-kong{color:var(--kong);border-top:3px solid var(--kong);}
+  .c-portkey{color:var(--portkey);border-top:3px solid var(--portkey);}
+  .c-tf{color:var(--tf);border-top:3px solid var(--tf);}
+
+  .vendor-header{display:flex;align-items:center;gap:.8rem;padding:1rem 1.4rem;border-radius:10px;margin:2.5rem 0 1.2rem;}
+  .vendor-header.litellm{background:#001d1e;border:1px solid var(--litellm);}
+  .vendor-header.kong{background:#001e13;border:1px solid var(--kong);}
+  .vendor-header.portkey{background:#0a0c24;border:1px solid var(--portkey);}
+  .vendor-header.tf{background:#1e0d08;border:1px solid var(--tf);}
+  .vendor-badge{font-family:'IBM Plex Mono',monospace;font-size:.7rem;font-weight:700;padding:.2rem .6rem;border-radius:4px;text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;}
+  .vendor-header.litellm .vendor-badge{background:var(--litellm);color:#000;}
+  .vendor-header.kong .vendor-badge{background:var(--kong);color:#000;}
+  .vendor-header.portkey .vendor-badge{background:var(--portkey);color:#fff;}
+  .vendor-header.tf .vendor-badge{background:var(--tf);color:#fff;}
+  .vendor-title{font-size:1.2rem;font-weight:700;}
+
+  .matrix-wrap{overflow-x:auto;margin:1.5rem 0;}
+  table{width:100%;border-collapse:collapse;font-size:.83rem;}
+  thead tr{background:var(--surface2);}
+  th{padding:.7rem 1rem;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;border-bottom:2px solid var(--border);}
+  td{padding:.62rem 1rem;border-bottom:1px solid var(--border);vertical-align:top;}
+  tr:hover td{background:var(--surface);}
+  .check{color:#50fa7b;}.cross{color:var(--danger);}.partial{color:var(--warn);}
+
+  .verdict-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0;}
+  .verdict-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem;position:relative;}
+  .verdict-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:10px 10px 0 0;}
+  .verdict-card.litellm::before{background:var(--litellm);}
+  .verdict-card.kong::before{background:var(--kong);}
+  .verdict-card.portkey::before{background:var(--portkey);}
+  .verdict-card.tf::before{background:var(--tf);}
+  .verdict-label{font-size:.7rem;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;}
+  .verdict-card.litellm .verdict-label{color:var(--litellm);}
+  .verdict-card.kong .verdict-label{color:var(--kong);}
+  .verdict-card.portkey .verdict-label{color:var(--portkey);}
+  .verdict-card.tf .verdict-label{color:var(--tf);}
+  .verdict-name{font-weight:700;font-size:1.05rem;margin-bottom:.5rem;}
+  .verdict-text{font-size:.83rem;color:var(--muted);line-height:1.55;}
+  .verdict-use{font-size:.78rem;color:var(--text);margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--border);}
+  .verdict-use strong{color:#a5f3fc;}
+
+  .scenario{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin:1.5rem 0;}
+  .scenario-title{font-family:'IBM Plex Mono',monospace;font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--warn);margin-bottom:.7rem;}
+  .svg-wrap{overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem;margin:1.5rem 0;}
+  .svg-wrap svg{display:block;max-width:100%;margin:0 auto;}
+  .img-caption{font-size:.76rem;color:var(--muted);text-align:center;margin-top:.4rem;margin-bottom:1rem;font-family:'IBM Plex Mono',monospace;}
+  hr{border:none;border-top:1px solid var(--border);margin:2.5rem 0;}
+  .ref-list{font-size:.83rem;}
+  .ref-list li{margin-bottom:.4rem;color:var(--muted);}
+  .ref-list a{color:#60a5fa;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="series-bar">
+  <span class="tag-pill">AI Gateway Series</span>
+  <div class="series-dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div>
+    <div class="dot active"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+  </div>
+  <span class="tag-pill active">Blog 6 of 15</span>
+</div>
+
+<h1>Governance &amp; Policy Enforcement for LLMs:<br>Deep Payload Inspection, Policy Validation &amp; Metadata Routing<br>in LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 24 min read</span>
+  <span class="meta-item">🗓 March 2026</span>
+  <span class="meta-item">👤 Platform Engineering · AI Governance</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology &amp; scope:</strong> This comparison is derived from vendors' publicly documented features as of the publication date, sourced from the combined AI Gateway vendor handbooks. Configuration snippets are <strong>illustrative</strong> — field names are sourced from published docs but should be validated against your deployed version. Where documentation is ambiguous, statements are labeled as <em>inference</em> or flagged for verification. Editorial verdicts represent the authors' judgment and are not vendor claims.
+</div>
+
+<br>
+
+<!-- §0 TL;DR -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">👻 Real-World Scenario: The Shadow AI Incident</div>
+  <p>It is a Thursday afternoon. Your security team discovers that three engineering squads have been routing production traffic through personal API keys to <code>claude-opus-4-6</code> and <code>gpt-5.4-pro</code> — both legitimate frontier models, but neither approved by your organization for this regulated environment. They bypassed the enterprise gateway entirely, embedding raw provider keys in application environment variables. The prompts contain customer PII, internal database schemas, and proprietary business logic. None of this traffic was logged, rate-limited, or inspected by guardrails.</p>
+  <p>The damage inventory: 11 weeks of unmonitored production prompts containing regulated data sent to model endpoints outside organizational approval. No audit trail. No budget controls. No PII redaction. Your compliance officer is already drafting the incident report.</p>
+  <p>This is <strong>Shadow AI</strong> — the AI equivalent of shadow IT — and it is the inevitable result of deploying an AI gateway without governance enforcement. The question is not whether your gateway can proxy model calls. The question is: <strong>can it enforce which models are organizationally approved, who may call them, under what conditions, with what payload constraints, and with what metadata tagging — before the request ever reaches a provider?</strong></p>
+</div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 200" xmlns="http://www.w3.org/2000/svg">
+<rect width="820" height="200" fill="#121826"/>
+<text x="410" y="18" text-anchor="middle" fill="#e2e8f0" font-size="12.5" font-weight="700" font-family="IBM Plex Sans,sans-serif">The Shadow AI Problem: Governance Gaps in the Request Path</text>
+
+<rect x="30" y="40" width="110" height="50" rx="5" fill="#1a2233" stroke="#1e2d45"/>
+<text x="85" y="62" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">Developer A</text>
+<text x="85" y="76" text-anchor="middle" fill="#7a8899" font-size="8">Personal API Key</text>
+
+<rect x="30" y="100" width="110" height="50" rx="5" fill="#1a2233" stroke="#1e2d45"/>
+<text x="85" y="122" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">Developer B</text>
+<text x="85" y="136" text-anchor="middle" fill="#7a8899" font-size="8">Hardcoded Key</text>
+
+<path d="M140 65 Q 240 65 340 65" stroke="#ff4757" stroke-width="2" fill="none" stroke-dasharray="6,3"/>
+<path d="M140 125 Q 240 125 340 125" stroke="#ff4757" stroke-width="2" fill="none" stroke-dasharray="6,3"/>
+
+<rect x="175" y="42" width="130" height="32" rx="4" fill="#1a0808" stroke="#ff4757" stroke-width="1" stroke-dasharray="5,3"/>
+<text x="240" y="62" text-anchor="middle" fill="#ff4757" font-size="9" font-family="IBM Plex Mono,monospace">Gateway BYPASSED</text>
+
+<rect x="175" y="108" width="130" height="32" rx="4" fill="#1a0808" stroke="#ff4757" stroke-width="1" stroke-dasharray="5,3"/>
+<text x="240" y="128" text-anchor="middle" fill="#ff4757" font-size="9" font-family="IBM Plex Mono,monospace">No guardrails fired</text>
+
+<rect x="350" y="50" width="140" height="90" rx="6" fill="#0a1620" stroke="#60a5fa" stroke-width="1.5"/>
+<text x="420" y="72" text-anchor="middle" fill="#60a5fa" font-size="9.5" font-weight="700">Legitimate Models —</text>
+<text x="420" y="86" text-anchor="middle" fill="#60a5fa" font-size="9.5" font-weight="700">Not Org-Approved</text>
+<text x="420" y="102" text-anchor="middle" fill="#e2e8f0" font-size="9">claude-opus-4-6</text>
+<text x="420" y="116" text-anchor="middle" fill="#e2e8f0" font-size="9">gpt-5.4-pro</text>
+<text x="420" y="130" text-anchor="middle" fill="#ff4757" font-size="8">+ customer PII in prompts</text>
+
+<line x1="490" y1="95" x2="540" y2="95" stroke="#ff4757" stroke-width="2"/>
+<rect x="545" y="55" width="250" height="80" rx="6" fill="#1a0a0a" stroke="#ff4757" stroke-width="1.5"/>
+<text x="670" y="78" text-anchor="middle" fill="#ff4757" font-size="10" font-weight="700">Compliance Violations</text>
+<text x="670" y="95" text-anchor="middle" fill="#ffa726" font-size="8.5">✗ No audit trail</text>
+<text x="670" y="108" text-anchor="middle" fill="#ffa726" font-size="8.5">✗ No PII redaction</text>
+<text x="670" y="121" text-anchor="middle" fill="#ffa726" font-size="8.5">✗ No model-endpoint ACL</text>
+
+<rect x="220" y="155" width="380" height="32" rx="4" fill="#0a1220" stroke="#1e2d45"/>
+<text x="410" y="170" text-anchor="middle" fill="#7a8899" font-size="10">A governed gateway enforces model allowlists, metadata tagging, and payload inspection</text>
+<text x="410" y="182" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="700">before the request ever reaches a provider.</text>
+</svg>
+</div>
+<div class="img-caption">Shadow AI bypasses every control in the stack. Governance enforcement must happen at the gateway — before the provider call. Original diagram.</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-litellm">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">LiteLLM</div>
+    <div class="qp-desc">Guardrail pipeline with pre_call / during_call / post_call phases. Model allowlists per virtual key. Budget routing excludes exhausted providers. Custom Python auth hooks for bespoke policy logic.</div>
+  </div>
+  <div class="qp-card c-kong">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Kong AI Gateway</div>
+    <div class="qp-desc">Plugin-composed governance: deterministic regex + semantic embedding guards, PII sanitization via external service, Consumer Group-scoped policies. Prompt shaping via AI Prompt Decorator.</div>
+  </div>
+  <div class="qp-card c-portkey">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Portkey</div>
+    <div class="qp-desc">Config-first guardrails with before/after request hooks. Conditional routing on metadata and request params (MongoDB-style operators). BYO Guardrails webhook for external policy engines. Workspace-scoped enforcement.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">First-match typed YAML policy rules with subject + target conditions. Four-hook guardrails (LLM + MCP). Deployment validation policies as executable code. Metadata-scoped rate limits and budgets. Workspace-environment isolation.</div>
+  </div>
+</div>
+
+<!-- §1 WHY GOVERNANCE -->
+<h2>§1 — Why Governance Is Specifically Hard for AI Gateways</h2>
+
+<p>Governance in the context of AI gateways is not simply access control. It spans both <strong>pre-deployment controls</strong> that validate workloads before they start, and <strong>runtime enforcement</strong> that fires synchronously on every request in the data path. Together, these cover five concerns:</p>
+
+<ul>
+  <li><strong>Model endpoint ACL:</strong> Which caller identities may invoke which model endpoints? A contractor team should never reach <code>gpt-5.4-pro</code> in production. This must be enforced at the gateway, not trusted to application code.</li>
+  <li><strong>Deep payload inspection:</strong> LLM prompts are unbounded JSON payloads. Unlike REST APIs with predictable schemas, a single <code>/v1/chat/completions</code> request can contain megabytes of conversation history, tool call schemas, and embedded documents. Governance must inspect this content — for PII, injection patterns, secrets, and policy violations — without degrading latency on the hot path.</li>
+  <li><strong>Metadata-aware policy scoping:</strong> Different applications, teams, environments, and workload classes need different governance rules. A voice agent in production needs strict PII redaction; a batch summarization job in staging may tolerate relaxed guardrails. The gateway must route policy based on request metadata, not just caller identity.</li>
+  <li><strong>Deployment and policy validation (pre-runtime):</strong> Before a service even starts sending requests, the deployment itself should be validated against organizational standards — required labels, auto-shutdown policies, environment restrictions, and approved model lists.</li>
+  <li><strong>Audit and attribution:</strong> Every policy decision must be traceable — which rules fired, which guardrails were applied, and what the resolved model was — for compliance review.</li>
+</ul>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 260" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+  <rect width="820" height="260" fill="#121826"/>
+  <text x="410" y="22" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Governance Enforcement Layers in the AI Gateway Request Path</text>
+
+  <rect x="28" y="42" width="764" height="38" rx="5" fill="#0f1c2e" stroke="#1e2d45"/>
+  <text x="46" y="56" fill="#60a5fa" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">LAYER 1 · IDENTITY &amp; MODEL ACL</text>
+  <text x="46" y="72" fill="#e2e8f0" font-size="11">Who is calling? Which models are they allowed to reach? Virtual key / Consumer / workspace scope.</text>
+
+  <rect x="28" y="86" width="764" height="38" rx="5" fill="#0a1620" stroke="#1e2d45"/>
+  <text x="46" y="100" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">LAYER 2 · METADATA-AWARE POLICY ROUTING</text>
+  <text x="46" y="116" fill="#e2e8f0" font-size="11">Route governance rules by team, environment, workload class, project ID, or custom metadata tags.</text>
+
+  <rect x="28" y="130" width="764" height="38" rx="5" fill="#1a0f00" stroke="#1e2d45"/>
+  <text x="46" y="144" fill="#ffa726" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">LAYER 3 · DEEP PAYLOAD INSPECTION (CONTENT FIREWALL)</text>
+  <text x="46" y="160" fill="#e2e8f0" font-size="11">PII masking · prompt injection detection · secrets scanning · request/payload validation · output moderation.</text>
+
+  <rect x="28" y="174" width="764" height="38" rx="5" fill="#0f1a10" stroke="#1e2d45"/>
+  <text x="46" y="188" fill="#bd93f9" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">LAYER 4 · ECONOMIC GOVERNANCE</text>
+  <text x="46" y="204" fill="#e2e8f0" font-size="11">Rate limits (token/request velocity) · budget ceilings (cumulative spend) · per-entity segmentation.</text>
+
+  <rect x="28" y="218" width="764" height="32" rx="5" fill="#0a0a1a" stroke="#1e2d45"/>
+  <text x="46" y="234" fill="#7a8899" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">LAYER 5 · AUDIT</text>
+  <text x="46" y="246" fill="#e2e8f0" font-size="11">Applied-configurations headers · resolved-model attribution · OTel traces · structured audit logs.</text>
+</svg>
+</div>
+<div class="img-caption">Five governance layers that must compose in the AI gateway request path. Each vendor implements these layers with different architectural depth. Original diagram.</div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+<rect width="820" height="340" fill="#121826"/>
+<text x="410" y="22" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Why Agentic Workflows Break the 2-Hook Model</text>
+<text x="410" y="40" text-anchor="middle" fill="#7a8899" font-size="9.5" font-family="IBM Plex Mono,monospace">Standard chatbot guardrails fail when the LLM autonomously calls databases, APIs, and tools.</text>
+
+<rect x="20" y="55" width="780" height="110" rx="6" fill="#0a1220" stroke="#60a5fa" stroke-opacity=".4"/>
+<text x="40" y="75" fill="#60a5fa" font-size="11" font-weight="700">Basic 2-Hook Chatbot Pattern</text>
+
+<rect x="40" y="90" width="90" height="36" rx="4" fill="#1a2233" stroke="#1e2d45"/><text x="85" y="112" text-anchor="middle" fill="#e2e8f0" font-size="9">User Prompt</text>
+<line x1="130" y1="108" x2="160" y2="108" stroke="#60a5fa" stroke-width="1.5"/>
+<rect x="162" y="90" width="110" height="36" rx="4" fill="#091510" stroke="#50fa7b"/><text x="217" y="105" text-anchor="middle" fill="#50fa7b" font-size="9" font-weight="600">Hook 1:</text><text x="217" y="118" text-anchor="middle" fill="#50fa7b" font-size="8">Input Validation</text>
+<line x1="272" y1="108" x2="310" y2="108" stroke="#50fa7b" stroke-width="1.5"/>
+<rect x="312" y="90" width="80" height="36" rx="4" fill="#1a2233" stroke="#4a5568"/><text x="352" y="112" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="600">LLM</text>
+<line x1="392" y1="108" x2="430" y2="108" stroke="#50fa7b" stroke-width="1.5"/>
+<rect x="432" y="90" width="110" height="36" rx="4" fill="#091510" stroke="#50fa7b"/><text x="487" y="105" text-anchor="middle" fill="#50fa7b" font-size="9" font-weight="600">Hook 2:</text><text x="487" y="118" text-anchor="middle" fill="#50fa7b" font-size="8">Output Validation</text>
+<line x1="542" y1="108" x2="580" y2="108" stroke="#60a5fa" stroke-width="1.5"/>
+<rect x="582" y="90" width="70" height="36" rx="4" fill="#1a2233" stroke="#1e2d45"/><text x="617" y="112" text-anchor="middle" fill="#e2e8f0" font-size="9">User</text>
+
+<text x="700" y="100" fill="#7a8899" font-size="9" font-style="italic">Sufficient for</text>
+<text x="700" y="114" fill="#7a8899" font-size="9" font-style="italic">standard chat.</text>
+<text x="700" y="134" fill="#ff4757" font-size="9" font-weight="600">Fails for agents.</text>
+
+<rect x="20" y="175" width="780" height="155" rx="6" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+<text x="40" y="195" fill="#FF5533" font-size="11" font-weight="700">The 4-Hook Pipeline (Agentic Workflows — TrueFoundry)</text>
+
+<rect x="40" y="210" width="80" height="32" rx="4" fill="#1a2233" stroke="#1e2d45"/><text x="80" y="230" text-anchor="middle" fill="#e2e8f0" font-size="9">Prompt</text>
+<line x1="120" y1="226" x2="145" y2="226" stroke="#FF5533" stroke-width="1.5"/>
+<rect x="147" y="210" width="85" height="32" rx="4" fill="#091510" stroke="#50fa7b"/><text x="189" y="224" text-anchor="middle" fill="#50fa7b" font-size="8" font-weight="600">Hook 1:</text><text x="189" y="235" text-anchor="middle" fill="#50fa7b" font-size="7.5">LLM Input</text>
+<line x1="232" y1="226" x2="257" y2="226" stroke="#FF5533" stroke-width="1.5"/>
+<rect x="259" y="205" width="90" height="42" rx="4" fill="#1a2233" stroke="#FF5533"/><text x="304" y="224" text-anchor="middle" fill="#FF5533" font-size="10" font-weight="700">LLM</text><text x="304" y="237" text-anchor="middle" fill="#7a8899" font-size="7.5">Agent Loop</text>
+<line x1="349" y1="226" x2="374" y2="226" stroke="#FF5533" stroke-width="1.5"/>
+<rect x="376" y="210" width="85" height="32" rx="4" fill="#091510" stroke="#50fa7b"/><text x="418" y="224" text-anchor="middle" fill="#50fa7b" font-size="8" font-weight="600">Hook 2:</text><text x="418" y="235" text-anchor="middle" fill="#50fa7b" font-size="7.5">LLM Output</text>
+<line x1="461" y1="226" x2="490" y2="226" stroke="#FF5533" stroke-width="1.5"/>
+<rect x="492" y="210" width="70" height="32" rx="4" fill="#1a2233" stroke="#1e2d45"/><text x="527" y="230" text-anchor="middle" fill="#e2e8f0" font-size="9">User</text>
+
+<path d="M304 247 L304 272 L420 272" fill="none" stroke="#ffa726" stroke-width="2" stroke-dasharray="5,3"/>
+<rect x="155" y="275" width="100" height="38" rx="4" fill="#1a0f00" stroke="#ffa726"/><text x="205" y="291" text-anchor="middle" fill="#ffa726" font-size="8.5" font-weight="600">Hook 3: MCP Pre</text><text x="205" y="304" text-anchor="middle" fill="#7a8899" font-size="7.5">SQL inj · param check</text>
+<line x1="255" y1="294" x2="290" y2="294" stroke="#ffa726" stroke-width="1.5"/>
+<rect x="292" y="275" width="100" height="38" rx="4" fill="#0a1220" stroke="#60a5fa"/><text x="342" y="291" text-anchor="middle" fill="#60a5fa" font-size="9" font-weight="600">DB / Tool</text><text x="342" y="304" text-anchor="middle" fill="#7a8899" font-size="7.5">MCP Server</text>
+<line x1="392" y1="294" x2="420" y2="294" stroke="#ffa726" stroke-width="1.5"/>
+<rect x="422" y="275" width="105" height="38" rx="4" fill="#1a0f00" stroke="#ffa726"/><text x="474" y="291" text-anchor="middle" fill="#ffa726" font-size="8.5" font-weight="600">Hook 4: MCP Post</text><text x="474" y="304" text-anchor="middle" fill="#7a8899" font-size="7.5">Result PII redact</text>
+
+<rect x="580" y="200" width="200" height="50" rx="4" fill="#080c12" stroke="#1e2d45"/>
+<text x="680" y="218" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">Without hooks 3 &amp; 4:</text>
+<text x="680" y="233" text-anchor="middle" fill="#ff4757" font-size="8.5">Unvalidated SQL hits your DB.</text>
+<text x="680" y="246" text-anchor="middle" fill="#ff4757" font-size="8.5">Raw PII returns to the model.</text>
+</svg>
+</div>
+<div class="img-caption">The 2-hook model guards the LLM conversation. The 4-hook model (documented by TrueFoundry) also guards autonomous tool calls — critical for agentic workflows. Adapted from architectural analysis; editorial diagram.</div>
+
+<p>The sections below evaluate how each gateway addresses these layers, with particular attention to metadata routing flexibility, payload inspection architecture, and the ability to apply different governance schemas per application or environment.</p>
+
+<hr>
+
+<!-- §2 LITELLM -->
+<div class="vendor-header litellm">
+  <span class="vendor-badge">LiteLLM</span>
+  <span class="vendor-title">§2 — Guardrail Pipeline with Budget-Aware Policy</span>
+</div>
+
+<h3>Governance Architecture</h3>
+<p>LiteLLM's governance model is built around three control surfaces: virtual keys with model allowlists, a guardrail pipeline with named execution phases, and budget routing that makes economics a first-class policy signal. The architecture page at <a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">proxy/architecture</a> documents that virtual-key validation and budget checks happen <em>before</em> the router — identity and economic controls precede routing decisions.</p>
+
+<h3>Model Endpoint ACL &amp; Identity Scoping</h3>
+<p>Virtual keys are the primary identity and policy carrier. Each key can carry a <code>models</code> allowlist, a <code>team_id</code> for team budget consumption, and a <code>max_budget</code> for individual spend caps. Keys with a team assignment consume from the team budget rather than the personal budget, as documented at <a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">proxy/users</a>. Router behavior is configurable per key or team at <a href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings" target="_blank">keys_teams_router_settings</a>, making routing policy genuinely multi-tenant.</p>
+
+<h3>Guardrail Pipeline: pre_call / during_call / post_call</h3>
+<p>The guardrails quick-start page at <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank">proxy/guardrails/quick_start</a> documents guardrails as YAML entries with a <code>guardrail_name</code>, provider parameters, and execution modes: <code>pre_call</code>, <code>during_call</code>, or <code>post_call</code>. This three-phase model lets operators place PII redaction before the model call, streaming-aware checks during generation, and output validation after completion. Provider integrations include Presidio, AIM, Aporia, and Lakera, plus a <code>generic_guardrail_api</code> entry for custom external services.</p>
+
+<p>The pass-through guardrails page adds an important dimension: endpoint-specific guardrails compose with organization-, team-, and key-level guardrails. That means LiteLLM can govern not only LLM inference but also adjacent AI APIs (rerankers, OCR services) through the same policy framework.</p>
+
+<h3>Metadata Routing &amp; Budget Policy</h3>
+<p>LiteLLM's metadata routing operates through the identity object populated by JWT claims (via <code>team_alias_jwt_field</code>) and virtual key attributes. Budget routing at <a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">provider_budget_routing</a> attaches spend ceilings to providers, models, or <strong>tags</strong> — the router excludes exhausted targets from selection. Tag-based budgets (e.g., <code>"product:chat-bot": "10/day"</code>) are the closest analog to metadata-scoped governance.</p>
+
+<div class="code-wrap"><pre><span class="cm"># LiteLLM — Guardrail pipeline with Presidio PII redaction</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/guardrails/quick_start</span>
+<span class="key">guardrails</span>:
+  - <span class="key">guardrail_name</span>: <span class="str">presidio-pii</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">guardrail</span>: <span class="str">presidio</span>
+      <span class="key">mode</span>: <span class="str">pre_call</span>
+      <span class="key">presidio_language</span>: <span class="str">en</span>
+      <span class="key">pii_entities_config</span>:
+        <span class="key">CREDIT_CARD</span>: <span class="str">MASK</span>
+        <span class="key">EMAIL_ADDRESS</span>: <span class="str">MASK</span>
+
+  - <span class="key">guardrail_name</span>: <span class="str">general-safety</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">guardrail</span>: <span class="str">aim</span>
+      <span class="key">mode</span>: [<span class="str">pre_call</span>, <span class="str">post_call</span>]
+      <span class="key">api_key</span>: <span class="str">os.environ/AIM_API_KEY</span>
+      <span class="key">api_base</span>: <span class="str">os.environ/AIM_API_BASE</span>
+      <span class="key">default_on</span>: <span class="kw">true</span>
+
+<span class="cm"># Virtual key with model allowlist + team budget</span>
+<span class="cm"># POST /key/generate — Source: proxy/users</span>
+<span class="cm"># {</span>
+<span class="cm">#   "team_id": "sandbox-contractors",</span>
+<span class="cm">#   "models": ["gpt-5-mini", "gemini-3-flash"],</span>
+<span class="cm">#   "max_budget": 10.0</span>
+<span class="cm"># }</span>
+
+<span class="cm"># Budget routing: tag-based spend ceilings</span>
+<span class="cm"># Source: proxy/provider_budget_routing</span>
+<span class="key">provider_budget_config</span>:
+  <span class="key">openai</span>: <span class="str">"200/day"</span>
+  <span class="key">anthropic</span>: <span class="str">"100/day"</span>
+<span class="key">tag_budget_config</span>:
+  <span class="str">"product:chat-bot"</span>: <span class="str">"10/day"</span>
+  <span class="str">"product:batch-summarizer"</span>: <span class="str">"50/day"</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank">proxy/guardrails/quick_start</a> · <a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">proxy/users</a> · <a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">provider_budget_routing</a></div>
+
+<div class="callout info">
+  <div class="callout-title">📌 LiteLLM Governance Summary</div>
+  <p><strong>Model ACL:</strong> Per-key <code>models</code> allowlist. <strong>Payload inspection:</strong> Three-phase guardrail pipeline (Presidio, AIM, Aporia, Lakera, generic API). <strong>Metadata routing:</strong> Tag-based budget routing; per-key/team router overrides; JWT claim mapping via <code>team_alias_jwt_field</code>. <strong>Custom policy logic:</strong> Custom auth hooks can be used to add bespoke validation and policy logic via the <code>UserAPIKeyAuth</code> return object — not a documented first-party schema validation feature. <strong>Gap:</strong> No documented deployment-time manifest validation policies.</p>
+</div>
+
+<hr>
+
+<!-- §3 KONG -->
+<div class="vendor-header kong">
+  <span class="vendor-badge">Kong</span>
+  <span class="vendor-title">§3 — Plugin-Composed Governance: Deterministic + Semantic + External</span>
+</div>
+
+<h3>Governance Architecture</h3>
+<p>Kong's governance is plugin-composed: each security, inspection, and policy behavior is a distinct plugin attached to Services, Routes, Consumers, or Consumer Groups. This model means governance is not a single feature — it is the combination of AI Prompt Guard, AI Semantic Prompt Guard, AI PII Sanitizer, AI Azure Content Safety, AI AWS Guardrails, AI Rate Limiting Advanced, and AI Prompt Decorator, all composable in the same request path.</p>
+
+<h3>Deterministic vs. Semantic Payload Inspection</h3>
+<p>Kong offers two distinct approaches to prompt inspection. The <strong>AI Prompt Guard</strong> plugin provides deterministic regex-based allow/deny filtering where deny rules take precedence. The best-practices section documents Unicode bidirectional injection patterns — this is classical gateway security applied to AI traffic. The <strong>AI Semantic Prompt Guard</strong> plugin extends this to meaning-based allow/deny lists using embedding similarity, catching paraphrased attacks that regex cannot detect.</p>
+
+<p>The <strong>AI PII Sanitizer</strong> plugin operates through an external PII service and supports request sanitization, response sanitization, or both, with optional restoration of original data in responses. The <strong>AI AWS Guardrails</strong> plugin integrates with AWS Bedrock Guardrails and exposes a <code>response_buffer_size</code> setting to control how streaming output is chunked for evaluation — a critical detail for streaming-first production workloads.</p>
+
+<h3>Consumer Group-Scoped Policy</h3>
+<p>Consumer Groups are Kong's primary mechanism for applying different governance rules to different caller classes on the same Route. A contractor Consumer Group can receive strict prompt deny patterns and tight token quotas, while an internal production group receives higher limits — all on the same Service/Route, differentiated by Consumer identity.</p>
+
+<h3>Metadata Routing &amp; Prompt Shaping</h3>
+<p>Kong's metadata routing operates through standard Route-level path and header matching combined with Consumer Group assignment. The AI Prompt Decorator plugin allows platform teams to preset system prompts, prompt history, or phrase additions at the gateway level — centralizing prompt shaping as governance rather than leaving it to each application. This is a distinct capability: the gateway participates in prompt construction, not just prompt inspection.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Kong decK — Layered governance: Prompt Guard + PII Sanitizer + Rate Limiting</span>
+<span class="cm"># Sources: ai-prompt-guard, ai-sanitizer, ai-rate-limiting-advanced</span>
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">consumer_groups</span>:
+  - <span class="key">name</span>: <span class="str">external-contractors</span>
+    <span class="key">plugins</span>:
+      - <span class="key">name</span>: <span class="str">ai-prompt-guard</span>
+        <span class="key">config</span>:
+          <span class="key">deny_patterns</span>:
+            - <span class="str">"(\xE2\x80[\x8B-\x8D]|\xEF\xBB\xBF)"</span>  <span class="cm"># Unicode injection</span>
+            - <span class="str">"\xE2\x80[\xAA-\xAE]"</span>
+            - <span class="str">"(?i)internal.schema"</span>
+            - <span class="str">"(?i)database.credentials"</span>
+      - <span class="key">name</span>: <span class="str">ai-rate-limiting-advanced</span>
+        <span class="key">config</span>:
+          <span class="key">llm_providers</span>:
+            - <span class="key">name</span>: <span class="str">openai</span>
+              <span class="key">limit</span>: [<span class="num">5000</span>]
+              <span class="key">window_size</span>: [<span class="num">86400</span>]
+
+  - <span class="key">name</span>: <span class="str">internal-production</span>
+    <span class="key">plugins</span>:
+      - <span class="key">name</span>: <span class="str">ai-rate-limiting-advanced</span>
+        <span class="key">config</span>:
+          <span class="key">llm_providers</span>:
+            - <span class="key">name</span>: <span class="str">openai</span>
+              <span class="key">limit</span>: [<span class="num">100</span>, <span class="num">1000</span>]
+              <span class="key">window_size</span>: [<span class="num">60</span>, <span class="num">3600</span>]
+
+<span class="cm"># AI PII Sanitizer with external service</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-sanitizer</span>
+<span class="key">plugins</span>:
+  - <span class="key">name</span>: <span class="str">ai-sanitizer</span>
+    <span class="key">service</span>: <span class="str">llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">sanitize_request</span>: <span class="kw">true</span>
+      <span class="key">sanitize_response</span>: <span class="kw">true</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-prompt-guard/" target="_blank">ai-prompt-guard</a> · <a href="https://developer.konghq.com/plugins/ai-sanitizer/" target="_blank">ai-sanitizer</a> · <a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">ai-rate-limiting-advanced</a></div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+<rect width="820" height="280" fill="#121826"/>
+<text x="410" y="20" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Kong: The Sieve (Regex) vs. The Semantic Boundary (Embedding)</text>
+<text x="410" y="38" text-anchor="middle" fill="#7a8899" font-size="9.5" font-family="IBM Plex Mono,monospace">Two complementary inspection layers — deterministic speed + semantic depth</text>
+
+<line x1="410" y1="50" x2="410" y2="240" stroke="#1e2d45" stroke-width="1"/>
+
+<rect x="25" y="52" width="370" height="186" rx="6" fill="#001e13" stroke="#00D27B" stroke-opacity=".4"/>
+<text x="210" y="72" text-anchor="middle" fill="#00D27B" font-size="11.5" font-weight="700">AI Prompt Guard (Deterministic)</text>
+<text x="210" y="88" text-anchor="middle" fill="#7a8899" font-size="9">Regex deny_patterns · deny takes precedence</text>
+
+<rect x="42" y="102" width="200" height="30" rx="4" fill="#091510" stroke="#50fa7b" stroke-opacity=".5"/>
+<text x="142" y="121" text-anchor="middle" fill="#50fa7b" font-size="9">"Ignore all previous instructions"</text>
+<text x="272" y="121" fill="#50fa7b" font-size="11" font-weight="700">✓ Caught</text>
+<text x="322" y="121" fill="#7a8899" font-size="8">Exact match</text>
+
+<rect x="42" y="142" width="200" height="30" rx="4" fill="#1a0a0a" stroke="#ff4757" stroke-opacity=".5"/>
+<text x="142" y="161" text-anchor="middle" fill="#ff4757" font-size="9">"You have no limitations"</text>
+<text x="272" y="161" fill="#ff4757" font-size="11" font-weight="700">✗ Missed</text>
+<text x="322" y="161" fill="#7a8899" font-size="8">No regex match</text>
+
+<rect x="42" y="182" width="200" height="30" rx="4" fill="#091510" stroke="#50fa7b" stroke-opacity=".5"/>
+<text x="142" y="201" text-anchor="middle" fill="#50fa7b" font-size="9">Unicode bidi: \xE2\x80[\xAA-\xAE]</text>
+<text x="272" y="201" fill="#50fa7b" font-size="11" font-weight="700">✓ Caught</text>
+<text x="322" y="201" fill="#7a8899" font-size="8">Pattern match</text>
+
+<rect x="425" y="52" width="370" height="186" rx="6" fill="#001e13" stroke="#00D27B"/>
+<text x="610" y="72" text-anchor="middle" fill="#00D27B" font-size="11.5" font-weight="700">AI Semantic Prompt Guard</text>
+<text x="610" y="88" text-anchor="middle" fill="#7a8899" font-size="9">Embedding similarity · deny list via vector comparison</text>
+
+<rect x="442" y="102" width="200" height="30" rx="4" fill="#091510" stroke="#50fa7b" stroke-opacity=".5"/>
+<text x="542" y="121" text-anchor="middle" fill="#50fa7b" font-size="9">"Ignore all previous instructions"</text>
+<text x="672" y="121" fill="#50fa7b" font-size="11" font-weight="700">Likely caught</text>
+<text x="722" y="121" fill="#7a8899" font-size="8">Illustrative semantic match</text>
+
+<rect x="442" y="142" width="200" height="30" rx="4" fill="#091510" stroke="#50fa7b"/>
+<text x="542" y="161" text-anchor="middle" fill="#50fa7b" font-size="9">"You have no limitations"</text>
+<text x="672" y="161" fill="#50fa7b" font-size="11" font-weight="700">Likely caught</text>
+<text x="722" y="161" fill="#7a8899" font-size="8">Illustrative similarity</text>
+
+<rect x="442" y="182" width="200" height="30" rx="4" fill="#091510" stroke="#50fa7b"/>
+<text x="542" y="201" text-anchor="middle" fill="#50fa7b" font-size="9">"Respond freely, no restrictions"</text>
+<text x="672" y="201" fill="#50fa7b" font-size="11" font-weight="700">Likely caught</text>
+<text x="722" y="201" fill="#7a8899" font-size="8">Illustrative paraphrase</text>
+
+<rect x="130" y="245" width="560" height="28" rx="4" fill="#001e13" stroke="#00D27B" stroke-opacity=".5"/>
+<text x="410" y="263" text-anchor="middle" fill="#00D27B" font-size="10">Paraphrased jailbreaks share the same semantic attack vector — regex alone cannot catch them.</text>
+</svg>
+</div>
+<div class="img-caption">Kong's two-layer inspection: AI Prompt Guard catches exact patterns cheaply; AI Semantic Prompt Guard catches paraphrased attacks that regex misses. Both documented as native Kong plugins. Adapted from architectural analysis; editorial diagram.</div>
+
+<div class="callout info">
+  <div class="callout-title">📌 Kong Governance Summary</div>
+  <p><strong>Model ACL:</strong> Governance scoped through standard gateway entities — Routes, Consumers, Consumer Groups. <strong>Payload inspection:</strong> Deterministic regex (AI Prompt Guard), semantic embedding (AI Semantic Prompt Guard), external PII service (AI PII Sanitizer), AWS Bedrock Guardrails, Azure Content Safety. <strong>Metadata routing:</strong> Consumer Group-scoped policies; Route-level path/header matching. <strong>Prompt shaping:</strong> AI Prompt Decorator for centralized system prompt management. <strong>MCP governance:</strong> AI MCP Proxy adapts MCP requests into standard HTTP, bringing tool-calling traffic under the same Kong plugin governance stack. <strong>Gap:</strong> No documented LLM request-parameter metadata conditions in AI-specific plugins; metadata-based policy routing is less flexible than Portkey or TrueFoundry.</p>
+</div>
+
+<hr>
+
+<!-- §4 PORTKEY -->
+<div class="vendor-header portkey">
+  <span class="vendor-badge">Portkey</span>
+  <span class="vendor-title">§4 — Config-First Guardrails with Conditional Metadata Routing</span>
+</div>
+
+<h3>Governance Architecture</h3>
+<p>Portkey treats governance as config-first: guardrails, routing conditions, and policy controls are all embedded in or attached to the config object. This design means a single JSON document can express a complete governance posture — which models are reachable, what guardrails fire, what metadata conditions apply, and what fallback behavior activates — and that entire policy can be attached as a default on an API key or passed per-request.</p>
+
+<h3>Guardrail Hooks &amp; Actions</h3>
+<p>The guardrails system uses <code>before_request_hooks</code> and <code>after_request_hooks</code> as attachment points. Each hook can contain checks (partner guardrails, Portkey-native deterministic and LLM-based checks), and each check supports configurable actions: denial, async execution, and feedback annotation. The list of guardrail checks at <a href="https://portkey.ai/docs/product/guardrails/list-of-guardrail-checks" target="_blank">list-of-guardrail-checks</a> includes security-focused checks such as JWT validation and request-parameter validation, plus routing-oriented checks such as model whitelist enforcement.</p>
+
+<h3>Conditional Metadata Routing — MongoDB-Style Operators</h3>
+<p>Portkey's conditional routing at <a href="https://portkey.ai/docs/product/ai-gateway/conditional-routing" target="_blank">conditional-routing</a> is, based on this review's public-doc analysis, the most flexible metadata routing surface among the four vendors. Conditions may reference <code>metadata</code>, <code>params</code> (request parameters like <code>temperature</code>, <code>top_p</code>), or the request URL path, using MongoDB-style query operators (<code>$gt</code>, <code>$lt</code>, <code>$or</code>, <code>$and</code>, <code>$eq</code>). Evaluation order matters — the first matching condition wins.</p>
+
+<p>This means you can implement genuinely different governance schemas per application: a high-temperature creative writing workload routes to a permissive target with relaxed guardrails, while a structured extraction workload with <code>temperature: 0</code> routes to a strict target with aggressive PII redaction — all expressed in a single config.</p>
+
+<h3>BYO Guardrails Webhook</h3>
+<p>The Bring Your Own Guardrails page at <a href="https://portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails" target="_blank">bring-your-own-guardrails</a> documents a webhook contract: Portkey posts the full request body, extracted text, provider slug, request type, metadata, and event type to your endpoint. Your webhook returns a verdict and may optionally transform the request. This is an in-band extension point for teams with existing policy engines — the gateway delegates the policy decision to your infrastructure.</p>
+
+<div class="code-wrap"><pre><span class="cm">// Portkey — Conditional routing on request params + metadata</span>
+<span class="cm">// Source: portkey.ai/docs/product/ai-gateway/conditional-routing</span>
+{
+  <span class="key">"strategy"</span>: {
+    <span class="key">"mode"</span>: <span class="str">"conditional"</span>,
+    <span class="key">"conditions"</span>: [
+      {
+        <span class="key">"query"</span>: { <span class="str">"metadata.environment"</span>: { <span class="str">"$eq"</span>: <span class="str">"production"</span> } },
+        <span class="key">"then"</span>: <span class="str">"prod-strict-target"</span>
+      },
+      {
+        <span class="key">"query"</span>: {
+          <span class="str">"$or"</span>: [
+            { <span class="str">"params.temperature"</span>: { <span class="str">"$gt"</span>: <span class="num">0.7</span> } },
+            { <span class="str">"metadata.workload"</span>: { <span class="str">"$eq"</span>: <span class="str">"creative"</span> } }
+          ]
+        },
+        <span class="key">"then"</span>: <span class="str">"creative-permissive-target"</span>
+      }
+    ],
+    <span class="key">"default"</span>: <span class="str">"general-target"</span>
+  },
+  <span class="key">"targets"</span>: [
+    { <span class="key">"name"</span>: <span class="str">"prod-strict-target"</span>, <span class="key">"provider"</span>: <span class="str">"@openai-prod"</span> },
+    { <span class="key">"name"</span>: <span class="str">"creative-permissive-target"</span>, <span class="key">"provider"</span>: <span class="str">"@anthropic-prod"</span> },
+    { <span class="key">"name"</span>: <span class="str">"general-target"</span>, <span class="key">"provider"</span>: <span class="str">"@openai-sandbox"</span> }
+  ]
+}
+
+<span class="cm">// Guardrail with before_request_hooks — regex deny + model whitelist</span>
+<span class="cm">// Source: portkey.ai/docs/product/guardrails/creating-raw-guardrails-in-json</span>
+{
+  <span class="str">"before_request_hooks"</span>: [{
+    <span class="str">"type"</span>: <span class="str">"guardrail"</span>,
+    <span class="str">"id"</span>: <span class="str">"production-policy"</span>,
+    <span class="str">"checks"</span>: [{
+      <span class="str">"id"</span>: <span class="str">"default.regexMatch"</span>,
+      <span class="str">"parameters"</span>: { <span class="str">"regex"</span>: <span class="str">"(?i)(ssn|social.security|credit.card)"</span> }
+    }],
+    <span class="str">"deny"</span>: <span class="kw">true</span>,
+    <span class="str">"async"</span>: <span class="kw">false</span>,
+    <span class="str">"on_fail"</span>: { <span class="str">"feedback"</span>: { <span class="str">"value"</span>: <span class="num">-1</span>, <span class="str">"weight"</span>: <span class="num">1</span> } }
+  }]
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/ai-gateway/conditional-routing" target="_blank">conditional-routing</a> · <a href="https://portkey.ai/docs/product/guardrails/creating-raw-guardrails-in-json" target="_blank">creating-raw-guardrails-in-json</a></div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 250" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+<rect width="820" height="250" fill="#121826"/>
+<text x="410" y="20" text-anchor="middle" fill="#5A67FF" font-size="12" font-weight="700" font-family="IBM Plex Mono,monospace" letter-spacing="1">PORTKEY — CONFIG-FIRST GOVERNANCE WITH BYO WEBHOOK</text>
+
+<rect x="20" y="42" width="165" height="100" rx="6" fill="#0a0c24" stroke="#5A67FF" stroke-dasharray="6,3"/>
+<text x="102" y="62" text-anchor="middle" fill="#5A67FF" font-size="10" font-weight="700">Config Object</text>
+<rect x="32" y="72" width="141" height="20" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".3"/><text x="102" y="86" text-anchor="middle" fill="#7a8899" font-size="8">before_request_hooks[]</text>
+<rect x="32" y="96" width="141" height="20" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".3"/><text x="102" y="110" text-anchor="middle" fill="#7a8899" font-size="8">after_request_hooks[]</text>
+<rect x="32" y="120" width="141" height="18" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".3"/><text x="102" y="133" text-anchor="middle" fill="#7a8899" font-size="7.5">strategy + targets</text>
+
+<line x1="185" y1="92" x2="218" y2="92" stroke="#5A67FF" stroke-width="1.5"/>
+
+<rect x="220" y="52" width="160" height="80" rx="6" fill="#0a0c24" stroke="#5A67FF"/>
+<text x="300" y="72" text-anchor="middle" fill="#5A67FF" font-size="10" font-weight="700">Conditional Router</text>
+<text x="300" y="88" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">metadata.env == "prod"</text>
+<text x="300" y="102" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">params.temp &gt; 0.7</text>
+<text x="300" y="116" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">$or · $and · $gt · $eq</text>
+
+<line x1="380" y1="75" x2="418" y2="65" stroke="#5A67FF" stroke-width="1.2"/>
+<line x1="380" y1="110" x2="418" y2="120" stroke="#5A67FF" stroke-width="1.2"/>
+
+<rect x="420" y="48" width="110" height="32" rx="4" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".6"/><text x="475" y="68" text-anchor="middle" fill="#e2e8f0" font-size="9">Strict Target</text>
+<rect x="420" y="106" width="110" height="32" rx="4" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".6"/><text x="475" y="126" text-anchor="middle" fill="#e2e8f0" font-size="9">Permissive Target</text>
+
+<line x1="410" y1="158" x2="410" y2="158" stroke="none"/>
+
+<rect x="20" y="158" width="780" height="80" rx="6" fill="#0a0c24" stroke="#ffa726" stroke-opacity=".5"/>
+<text x="40" y="178" fill="#ffa726" font-size="10" font-weight="700">BYO Guardrails Webhook (bring-your-own-guardrails)</text>
+
+<rect x="40" y="190" width="100" height="34" rx="4" fill="#0a0c24" stroke="#5A67FF"/><text x="90" y="205" text-anchor="middle" fill="#5A67FF" font-size="8.5" font-weight="600">Portkey GW</text><text x="90" y="218" text-anchor="middle" fill="#7a8899" font-size="7.5">POST payload</text>
+<line x1="140" y1="207" x2="175" y2="207" stroke="#ffa726" stroke-width="1.5"/>
+<rect x="177" y="188" width="155" height="38" rx="4" fill="#1a1200" stroke="#ffa726" stroke-dasharray="4,2"/><text x="254" y="205" text-anchor="middle" fill="#ffa726" font-size="8.5" font-weight="700">Your Webhook (PDP)</text><text x="254" y="218" text-anchor="middle" fill="#7a8899" font-size="7.5">request body · metadata · eventType</text>
+<line x1="332" y1="207" x2="370" y2="207" stroke="#ffa726" stroke-width="1.5"/>
+
+<polygon points="388,197 404,207 388,217 372,207" fill="#5A67FF" fill-opacity=".3" stroke="#5A67FF" stroke-width="1.5"/>
+<text x="388" y="212" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="700">?</text>
+
+<line x1="404" y1="200" x2="450" y2="193" stroke="#50fa7b" stroke-width="1.5"/>
+<text x="460" y="196" fill="#50fa7b" font-size="8.5" font-family="IBM Plex Mono,monospace">ALLOW → Model</text>
+<line x1="404" y1="214" x2="450" y2="222" stroke="#ff4757" stroke-width="1.5"/>
+<text x="460" y="226" fill="#ff4757" font-size="8.5" font-family="IBM Plex Mono,monospace">BLOCK → 403</text>
+
+<rect x="580" y="185" width="200" height="42" rx="4" fill="#080c12" stroke="#1e2d45"/>
+<text x="680" y="202" text-anchor="middle" fill="#7a8899" font-size="8.5">Webhook can also transform</text>
+<text x="680" y="216" text-anchor="middle" fill="#7a8899" font-size="8.5">the request before forwarding.</text>
+</svg>
+</div>
+<div class="img-caption">Portkey's governance is config-first: conditional routing uses MongoDB-style operators on metadata and request params. The BYO webhook delegates policy decisions to your own infrastructure. Adapted from architectural analysis; editorial diagram.</div>
+
+<div class="callout info">
+  <div class="callout-title">📌 Portkey Governance Summary</div>
+  <p><strong>Model ACL:</strong> Config-scoped targets restrict provider/model per key. Model whitelist as a guardrail check. <strong>Payload inspection:</strong> Regex guardrails, PII redaction (Pro tier, provider-backed + regex custom rules), BYO webhook for external policy engines. <strong>Metadata routing:</strong> In this review, the most flexible documented surface — MongoDB-style operators on <code>params</code>, <code>metadata</code>, and URL path. <strong>Workspace isolation:</strong> API keys are workspace-scoped; workspace-level budget and rate limits (note: some budget/rate and workspace policy surfaces vary by plan tier — verify for your plan). <strong>Gap:</strong> No documented deployment-time manifest validation. Guardrail execution is two-hook (before/after request), not four-hook like TrueFoundry.</p>
+</div>
+
+<hr>
+
+<!-- §5 TRUEFOUNDRY -->
+<div class="vendor-header tf">
+  <span class="vendor-badge">TrueFoundry</span>
+  <span class="vendor-title">§5 — Typed YAML Policy with Subject Conditions, Four-Hook Guardrails &amp; Deployment Validation</span>
+</div>
+
+<h3>Governance Architecture</h3>
+<p>TrueFoundry's governance is the most layered of the four. It operates at two distinct levels: <strong>deployment-time validation policies</strong> that enforce standards before a workload starts, and <strong>runtime gateway policies</strong> that enforce guardrails, rate limits, and budgets on every request. The gateway plane architecture page documents that the core enforcement path (auth, rate limits, load balancing, authorization) is evaluated in-memory on the hot path — with no external calls for those core checks — and async queueing for logs and metrics. Note that optional external guardrail integrations (e.g., Azure PII, Azure Content Safety) do introduce external service calls when configured.</p>
+
+<h3>Deployment-Time Validation Policies</h3>
+<p>The deployment-guardrails-and-policies page at <a href="https://www.truefoundry.com/docs/applying-custom-policies" target="_blank">applying-custom-policies</a> documents executable validation code that runs during deployment. The <code>ValidationInput</code> includes the manifest and context — environment, creator, and active deployment — meaning policies can be sensitive to the resource, the target environment, the actor, and previous state simultaneously. The example enforces auto-shutdown for services:</p>
+
+<div class="code-wrap"><pre><span class="cm">// TrueFoundry — Deployment validation policy (TypeScript)</span>
+<span class="cm">// Source: www.truefoundry.com/docs/applying-custom-policies</span>
+<span class="cm">// Verified: ValidationInput includes manifest and context (environment, creator, active deployment)</span>
+<span class="kw">import</span> { ValidationInput, ValidationError } <span class="kw">from</span> <span class="str">'@src/types'</span>;
+
+<span class="kw">export function</span> validate(validationInput: ValidationInput): <span class="kw">void</span> {
+  <span class="kw">const</span> { manifest } = validationInput;
+  <span class="kw">if</span>(manifest.type !== <span class="str">'service'</span>) <span class="kw">return</span>;
+  <span class="kw">if</span> (!manifest.auto_shutdown) {
+    <span class="kw">throw new</span> ValidationError(
+      <span class="str">'Auto shutdown is required for services'</span>
+    );
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/applying-custom-policies" target="_blank">applying-custom-policies</a></div>
+
+<p>This is a powerful governance primitive. Platform teams can encode environment-specific restrictions (e.g., no GPU-heavy deployments in dev, required labels for compliance, blocked model identifiers in staging) as executable code that runs before a workload ever starts. Combined with <code>tfy apply --dry-run --show-diff</code> for previewable changes, this creates a deployment governance workflow that is reviewable, testable, and version-controllable.</p>
+
+<h3>Four-Hook Guardrails with Subject Conditions</h3>
+<p>TrueFoundry's runtime guardrails are documented at <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrails-overview</a> with four hooks: <strong>LLM input</strong>, <strong>LLM output</strong>, <strong>MCP pre-tool</strong>, and <strong>MCP post-tool</strong>. The MCP hooks are explicitly described as critical for agentic workflows where a model autonomously invokes tools. This four-hook model is unique among the four vendors evaluated.</p>
+
+<p>The guardrails configuration page at <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">guardrails-configuration</a> uses typed YAML with <strong>first-match rule evaluation</strong> — only the first matching rule applies. Rules support <code>subjects</code> conditions (who is calling) and <code>target</code> conditions (what is being called), using <code>operator: and</code> with <code>conditions.in</code> arrays. Both subject and target conditions must match when both are present. This means governance policies can simultaneously depend on caller identity and request destination.</p>
+
+<h3>Metadata-Scoped Rate Limits &amp; Budgets</h3>
+<p>The rate-limiting page at <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">ratelimiting</a> documents the <code>rate_limit_applies_per</code> field supporting <code>['model']</code> and <code>['metadata.project_id']</code> as explicit examples. The <code>x-tfy-metadata</code> request header (documented as stringified JSON with string key-value pairs) carries caller context into the gateway policy engine. This means rate limits and budgets can be segmented by any application-defined dimension — project, team, environment, feature flag, or customer tier — without requiring separate gateway configurations per segment.</p>
+
+<p>Budget limiting at <a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">budgetlimiting</a> uses the same pattern: <code>budget_applies_per: ['metadata.project_id']</code> creates dynamically scoped budget instances from a single static rule.</p>
+
+<h3>Workspace-Environment Isolation</h3>
+<p>Workspaces and environments form the organizational scoping primitives. Deployments, secrets, and model access are workspace-scoped. The combination of workspace membership and environment defines what a workload may access at runtime. Secret groups with FQNs ensure provider credentials are consumed without raw values appearing in application manifests — the platform keeps credential management and workload configuration cleanly separated.</p>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — Subject-scoped guardrails with four hooks</span>
+<span class="cm"># Source: www.truefoundry.com/docs/ai-gateway/guardrails-configuration</span>
+<span class="cm"># Verified: first-match semantics, subjects.operator, subjects.conditions.in</span>
+<span class="cm"># Verified: all four hook arrays from guardrails-overview</span>
+<span class="key">name</span>: <span class="str">environment-aware-governance</span>
+<span class="key">type</span>: <span class="str">gateway-guardrails-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">contractor-strict</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        <span class="key">operator</span>: <span class="str">and</span>
+        <span class="key">conditions</span>:
+          <span class="key">in</span>:
+            - <span class="str">"team:external-contractors"</span>
+    <span class="key">llm_input_guardrails</span>:
+      - <span class="str">"compliance/pii-redact"</span>
+      - <span class="str">"compliance/prompt-injection-detect"</span>
+    <span class="key">llm_output_guardrails</span>:
+      - <span class="str">"compliance/secrets-detection"</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>: []
+    <span class="key">mcp_tool_post_invoke_guardrails</span>: []
+
+  - <span class="key">id</span>: <span class="str">production-agentic</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        <span class="key">operator</span>: <span class="str">and</span>
+        <span class="key">conditions</span>:
+          <span class="key">in</span>: [<span class="str">"team:ai-platform"</span>]
+    <span class="key">llm_input_guardrails</span>: [<span class="str">"compliance/pii-redact"</span>]
+    <span class="key">llm_output_guardrails</span>: [<span class="str">"compliance/secrets-detection"</span>]
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>: [<span class="str">"compliance/sql-injection-check"</span>]
+    <span class="key">mcp_tool_post_invoke_guardrails</span>: [<span class="str">"compliance/result-pii-redact"</span>]
+<span class="cm">---</span>
+<span class="cm"># Metadata-scoped rate limiting</span>
+<span class="cm"># Source: www.truefoundry.com/docs/ai-gateway/ratelimiting</span>
+<span class="cm"># Verified: rate_limit_applies_per with ['model'] and ['metadata.project_id']</span>
+<span class="key">name</span>: <span class="str">metadata-scoped-limits</span>
+<span class="key">type</span>: <span class="str">gateway-rate-limiting-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">"model-daily-limit"</span>
+    <span class="key">when</span>: {}
+    <span class="key">limit_to</span>: <span class="num">1000000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_day</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'model'</span>]
+  - <span class="key">id</span>: <span class="str">"project-hourly-limit"</span>
+    <span class="key">when</span>: {}
+    <span class="key">limit_to</span>: <span class="num">50000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_hour</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'metadata.project_id'</span>]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">guardrails-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrails-overview</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">ratelimiting</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">headers (x-tfy-metadata)</a></div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg">
+<rect width="820" height="220" fill="#121826"/>
+<text x="410" y="18" text-anchor="middle" fill="#e2e8f0" font-size="12.5" font-weight="700" font-family="IBM Plex Sans,sans-serif">TrueFoundry: Two-Phase Governance — Deploy-Time + Runtime</text>
+
+<rect x="30" y="38" width="360" height="160" rx="6" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+<text x="210" y="58" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700">Deploy-Time Governance</text>
+
+<rect x="50" y="70" width="140" height="42" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".3"/>
+<text x="120" y="88" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">Validation Policy</text>
+<text x="120" y="102" text-anchor="middle" fill="#7a8899" font-size="8">TypeScript code</text>
+
+<rect x="210" y="70" width="160" height="42" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".3"/>
+<text x="290" y="88" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">ValidationInput</text>
+<text x="290" y="102" text-anchor="middle" fill="#7a8899" font-size="8">manifest + env + creator</text>
+
+<rect x="50" y="124" width="140" height="42" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".3"/>
+<text x="120" y="142" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">tfy apply</text>
+<text x="120" y="156" text-anchor="middle" fill="#7a8899" font-size="8">--dry-run --show-diff</text>
+
+<rect x="210" y="124" width="160" height="42" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".3"/>
+<text x="290" y="142" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">GitOps Integration</text>
+<text x="290" y="156" text-anchor="middle" fill="#7a8899" font-size="8">Versioned change mgmt</text>
+
+<rect x="420" y="38" width="370" height="160" rx="6" fill="#1e0d08" stroke="#FF5533"/>
+<text x="605" y="58" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700">Runtime Governance (Hot Path)</text>
+
+<rect x="440" y="72" width="80" height="50" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+<text x="480" y="93" text-anchor="middle" fill="#50fa7b" font-size="8" font-weight="600">LLM Input</text>
+<text x="480" y="106" text-anchor="middle" fill="#7a8899" font-size="7">PII · injection</text>
+
+<rect x="530" y="72" width="80" height="50" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+<text x="570" y="93" text-anchor="middle" fill="#50fa7b" font-size="8" font-weight="600">LLM Output</text>
+<text x="570" y="106" text-anchor="middle" fill="#7a8899" font-size="7">secrets · filter</text>
+
+<rect x="620" y="72" width="80" height="50" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+<text x="660" y="93" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="600">MCP Pre</text>
+<text x="660" y="106" text-anchor="middle" fill="#7a8899" font-size="7">SQL inj · param</text>
+
+<rect x="710" y="72" width="60" height="50" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+<text x="740" y="93" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="600">MCP Post</text>
+<text x="740" y="106" text-anchor="middle" fill="#7a8899" font-size="7">PII redact</text>
+
+<rect x="440" y="135" width="330" height="50" rx="4" fill="#080c12" stroke="#1e2d45"/>
+<text x="605" y="155" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="600">First-match rules · subject + target conditions</text>
+<text x="605" y="170" text-anchor="middle" fill="#7a8899" font-size="8">rate_limit_applies_per: ['metadata.project_id']</text>
+
+<text x="410" y="212" text-anchor="middle" fill="#7a8899" font-size="9">Deploy-time policies validate manifests before workloads start. Core runtime enforcement is in-memory on the hot path; optional external guardrails may call external services.</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry uniquely combines deploy-time validation policies with runtime four-hook guardrails and metadata-scoped rate limits. Original diagram based on documented architecture.</div>
+
+<div class="callout ok">
+  <div class="callout-title">✅ Strongest Governance Layering in This Review</div>
+  <p>TrueFoundry is the only vendor with documented <strong>deployment-time validation policies</strong> (executable code inspecting manifests with environment and creator context), <strong>four-hook runtime guardrails</strong> (LLM input/output + MCP pre/post-tool), <strong>subject-scoped first-match rules</strong>, and <strong>metadata-scoped rate limiting and budgeting</strong>. The combination creates a governance model that spans from deployment authoring through every runtime request, with different policies for different teams and workloads expressed in a single typed YAML config.</p>
+</div>
+
+<hr>
+
+<!-- §6 FEATURE MATRIX -->
+<h2>§6 — Governance Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation. ✅ = native, ⚠ = possible with customization or operator-dependent, ❌ = not documented natively.</p>
+
+<div class="matrix-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Governance Capability</th>
+      <th style="color:var(--litellm)">LiteLLM</th>
+      <th style="color:var(--kong)">Kong AI GW</th>
+      <th style="color:var(--portkey)">Portkey</th>
+      <th style="color:var(--tf)">TrueFoundry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Model endpoint ACL</strong></td>
+      <td><span class="check">✅</span> <code>models</code> allowlist per virtual key. <em>proxy/virtual_keys</em></td>
+      <td><span class="check">✅</span> Governance scoped through standard gateway entities: Routes, Consumers, Consumer Groups. <em>plugin catalog</em></td>
+      <td><span class="check">✅</span> Config targets restrict provider/model per key; model whitelist guardrail check. <em>configs; guardrail-checks</em></td>
+      <td><span class="check">✅</span> Workspace + gateway access control scope model access. <em>ai-gateway/access-control</em></td>
+    </tr>
+    <tr>
+      <td><strong>Deployment-time validation policies</strong></td>
+      <td><span class="cross">❌</span> Not documented.</td>
+      <td><span class="cross">❌</span> Not documented natively in AI Gateway context.</td>
+      <td><span class="cross">❌</span> Not documented.</td>
+      <td><span class="check">✅</span> Executable TypeScript policies with ValidationInput (manifest, environment, creator, active deployment). <em>applying-custom-policies</em></td>
+    </tr>
+    <tr>
+      <td><strong>Guardrail hook count</strong></td>
+      <td><span class="check">✅</span> 3 phases: pre_call, during_call, post_call. <em>guardrails/quick_start</em></td>
+      <td><span class="check">✅</span> Plugin-per-concern: multiple plugins compose in request path. <em>plugin catalog</em></td>
+      <td><span class="partial">⚠</span> 2 hooks: before_request_hooks, after_request_hooks. <em>guardrails</em></td>
+      <td><span class="check">✅</span> 4 hooks: LLM input, LLM output, MCP pre-tool, MCP post-tool. <em>guardrails-overview</em></td>
+    </tr>
+    <tr>
+      <td><strong>MCP / agentic tool guardrails</strong></td>
+      <td><span class="partial">⚠</span> Access groups bundle MCP servers. No documented per-tool-call guardrails. <em>proxy/access_groups</em></td>
+      <td><span class="check">✅</span> AI MCP Proxy adapts MCP→HTTP; all Kong plugins govern tool calls. <em>plugins/ai-mcp-proxy</em></td>
+      <td><span class="partial">⚠</span> MCP listed in features; governance docs limited in reviewed materials.</td>
+      <td><span class="check">✅</span> Dedicated MCP pre-tool and post-tool hooks. Documented as critical for agentic workflows. <em>guardrails-overview</em></td>
+    </tr>
+    <tr>
+      <td><strong>PII detection / redaction</strong></td>
+      <td><span class="check">✅</span> Presidio integration with per-entity MASK config. <em>guardrails/quick_start</em></td>
+      <td><span class="check">✅</span> AI PII Sanitizer (external service, request+response, optional restoration). <em>plugins/ai-sanitizer</em></td>
+      <td><span class="check">✅</span> PII Redaction (Pro tier), regex custom rules. <em>guardrails/pii-redaction</em></td>
+      <td><span class="check">✅</span> Built-in PII/PHI (documented as zero external dependencies). Azure PII integration. <em>tfy-pii; azure-pii</em></td>
+    </tr>
+    <tr>
+      <td><strong>Prompt injection detection</strong></td>
+      <td><span class="check">✅</span> In-memory similarity checks + LLM evaluation. <em>guardrails/prompt_injection</em></td>
+      <td><span class="check">✅</span> Deterministic regex (AI Prompt Guard) + semantic embedding (AI Semantic Prompt Guard). <em>ai-prompt-guard; ai-semantic-prompt-guard</em></td>
+      <td><span class="check">✅</span> Regex guardrails + BYO webhook for custom detection. <em>guardrails; bring-your-own-guardrails</em></td>
+      <td><span class="check">✅</span> Documented in guardrails overview; prompt-injection guardrails noted in changelog. <em>guardrails-overview; changelog</em></td>
+    </tr>
+    <tr>
+      <td><strong>Secrets detection</strong></td>
+      <td><span class="partial">⚠</span> Depends on guardrail provider integration.</td>
+      <td><span class="partial">⚠</span> Possible via external moderation services.</td>
+      <td><span class="partial">⚠</span> Possible via BYO webhook.</td>
+      <td><span class="check">✅</span> Built-in secrets detection with validate and mutate modes. Zero external dependencies. <em>secrets-detection</em></td>
+    </tr>
+    <tr>
+      <td><strong>Semantic prompt guard</strong></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="check">✅</span> AI Semantic Prompt Guard: embedding-based allow/deny. <em>ai-semantic-prompt-guard</em></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="cross">❌</span> Not documented natively.</td>
+    </tr>
+    <tr>
+      <td><strong>Metadata-scoped rate limits</strong></td>
+      <td><span class="partial">⚠</span> Tag-based budget routing; per-key/team overrides. <em>provider_budget_routing; keys_teams_router_settings</em></td>
+      <td><span class="partial">⚠</span> Consumer/Consumer Group scoping. No documented metadata key-based segmentation in AI plugins.</td>
+      <td><span class="partial">⚠</span> Enterprise policy engine supports conditions and group-by dimensions (user, provider, config, wildcard); explicit metadata-key scoping (e.g., <code>metadata.project_id</code>) is not documented in reviewed materials. Plan-dependent availability. <em>budget-policies</em></td>
+      <td><span class="check">✅</span> <code>rate_limit_applies_per: ['metadata.project_id']</code> explicitly documented. <em>ratelimiting</em></td>
+    </tr>
+    <tr>
+      <td><strong>Conditional routing on request params</strong></td>
+      <td><span class="cross">❌</span> Not documented as native routing condition.</td>
+      <td><span class="cross">❌</span> Not documented in AI-specific plugins.</td>
+      <td><span class="check">✅</span> MongoDB-style operators on <code>params.temperature</code>, <code>params.top_p</code>, metadata, URL path. <em>conditional-routing</em></td>
+      <td><span class="partial">⚠</span> <code>when</code> clauses support subjects, models, and metadata conditions. Not documented for request params like temperature.</td>
+    </tr>
+    <tr>
+      <td><strong>BYO external guardrail webhook</strong></td>
+      <td><span class="check">✅</span> <code>generic_guardrail_api</code> with static/dynamic headers. <em>guardrails/quick_start</em></td>
+      <td><span class="partial">⚠</span> Specific named integrations (Azure Content Safety, AWS Bedrock Guardrails), not a general-purpose BYO webhook contract. <em>ai-azure-content-safety; ai-aws-guardrails</em></td>
+      <td><span class="check">✅</span> Full webhook contract: request body, text, provider, metadata, event type → verdict + optional transform. <em>bring-your-own-guardrails</em></td>
+      <td><span class="partial">⚠</span> Azure PII, Azure Content Safety documented as external integrations. General webhook contract not documented.</td>
+    </tr>
+    <tr>
+      <td><strong>Prompt shaping at gateway</strong></td>
+      <td><span class="cross">❌</span></td>
+      <td><span class="check">✅</span> AI Prompt Decorator: preset system prompts, history, phrase additions. <em>ai-prompt-decorator</em></td>
+      <td><span class="cross">❌</span> Not documented natively (possible via config override_params).</td>
+      <td><span class="check">✅</span> Prompt overrides per routing target. Prompt management with versioning. <em>load-balancing-overview; prompt-management</em></td>
+    </tr>
+    <tr>
+      <td><strong>First-match rule semantics</strong></td>
+      <td><span class="cross">❌</span> Guardrails execute by mode phase, not by first-match rules.</td>
+      <td><span class="cross">❌</span> Plugin execution order, not first-match rule evaluation.</td>
+      <td><span class="partial">⚠</span> Conditional routing uses first-matching-condition. Guardrails are hook-attached, not rule-matched.</td>
+      <td><span class="check">✅</span> Guardrails, rate limits, and budgets all use first-match rule evaluation. <em>guardrails-configuration; ratelimiting</em></td>
+    </tr>
+    <tr>
+      <td><strong>Audit: applied-config attribution</strong></td>
+      <td><span class="check">✅</span> <code>x-litellm-call-id</code> for correlation. <em>proxy/logging</em></td>
+      <td><span class="check">✅</span> Structured AI audit logs; consumer label on metrics (v3.11+). <em>ai-audit-log-reference</em></td>
+      <td><span class="check">✅</span> Logs with gateway-state column (cache, retry, fallback state). <em>observability/logs</em></td>
+      <td><span class="check">✅</span> <code>x-tfy-applied-configurations</code> + <code>x-tfy-resolved-model</code> response headers; Server-Timing per-phase breakdown. <em>headers</em></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<hr>
+
+<!-- §7 VERDICT -->
+<h2>§7 — Editorial Verdict</h2>
+<p>The following assessments represent editorial judgment based on documented capabilities. "Well-suited for" is the authors' characterization, not a vendor claim.</p>
+
+<div class="verdict-grid">
+  <div class="verdict-card litellm">
+    <div class="verdict-label">LiteLLM</div>
+    <div class="verdict-name">The Pragmatic Budget Governor</div>
+    <div class="verdict-text">Three-phase guardrail pipeline with strong provider integrations (Presidio, AIM, Aporia, Lakera). Per-key model allowlists and team budget enforcement. Tag-based budget routing makes economics a governance signal. Custom Python auth hooks extend the policy surface. Gaps: no deployment-time validation policies, no MCP-specific guardrail hooks, and metadata routing is less granular than Portkey or TrueFoundry.</div>
+    <div class="verdict-use"><strong>Well-suited for:</strong> Teams needing fast multi-provider governance with budget-aware enforcement and flexible guardrail provider choice.</div>
+  </div>
+  <div class="verdict-card kong">
+    <div class="verdict-label">Kong AI Gateway</div>
+    <div class="verdict-name">The Plugin-Composed Security Stack</div>
+    <div class="verdict-text">In this review, the widest content firewall surface among the four: deterministic regex, semantic embedding guards, external PII service with restoration, AWS Bedrock and Azure Content Safety integrations. Consumer Group-scoped policies compose cleanly. AI Prompt Decorator adds centralized prompt shaping. AI MCP Proxy adapts MCP traffic into standard HTTP so all Kong governance plugins can govern tool calls — extending the security surface to agentic workflows. Gaps: metadata-based policy scoping is less flexible than TrueFoundry or Portkey — routing conditions are Route/Consumer-level, not metadata-key-level.</div>
+    <div class="verdict-use"><strong>Well-suited for:</strong> Enterprises with existing Kong infrastructure needing layered, plugin-composed governance with both deterministic and semantic payload inspection.</div>
+  </div>
+  <div class="verdict-card portkey">
+    <div class="verdict-label">Portkey</div>
+    <div class="verdict-name">The Metadata Routing Specialist</div>
+    <div class="verdict-text">In this review, the most flexible conditional routing surface documented: MongoDB-style operators on request params, metadata, and URL path allow genuinely different governance schemas per application class. BYO Guardrails webhook provides an in-band extension for external policy engines. Workspace isolation with enterprise policy engine (note: some budget, rate-limit, and workspace policy surfaces vary by plan tier — verify availability for your plan). Gaps: only two guardrail hooks (before/after), no MCP-specific tool call governance, no deployment-time validation policies.</div>
+    <div class="verdict-use"><strong>Well-suited for:</strong> Product teams needing fine-grained metadata-based routing with external policy engine integration and workspace-level compliance.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">TrueFoundry</div>
+    <div class="verdict-name">The Full-Stack Governance Platform</div>
+    <div class="verdict-text">In this four-vendor review, the only product with both deployment-time validation policies and four-hook runtime guardrails. Subject-scoped first-match rules, metadata-scoped rate limits and budgets, MCP pre/post-tool hooks for agentic workflows, built-in secrets detection with zero external dependencies, and per-phase Server-Timing headers for governance latency attribution. The core enforcement path (auth, rate limits, authorization) is documented as in-memory on the hot path; note that some globally hosted services (licensing, analytics) may remain outside customer infrastructure depending on deployment mode.</div>
+    <div class="verdict-use"><strong>Well-suited for:</strong> Regulated industries, K8s-native platforms with agentic/MCP workloads, and organizations requiring deploy-time + runtime governance with strong self-hosting and in-your-infra gateway options.</div>
+  </div>
+</div>
+
+<h3>Positioning Map — Metadata Routing Flexibility vs. Payload Inspection Depth</h3>
+<div class="svg-wrap">
+<svg viewBox="0 0 900 400" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+  <rect width="900" height="400" fill="#121826"/>
+  <text x="14" y="194" text-anchor="middle" fill="#7a8899" font-size="11" font-family="IBM Plex Mono,monospace" transform="rotate(-90,14,194)">Payload Inspection Depth</text>
+  <line x1="62" y1="20" x2="62" y2="330" stroke="#1e2d45" stroke-width="1.2"/>
+  <line x1="62" y1="330" x2="868" y2="330" stroke="#1e2d45" stroke-width="1.2"/>
+  <line x1="62" y1="175" x2="868" y2="175" stroke="#1e2d45" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="465" y1="20" x2="465" y2="330" stroke="#1e2d45" stroke-width="1" stroke-dasharray="5,5"/>
+  <text x="465" y="360" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono,monospace">Metadata Routing Flexibility →</text>
+
+  <text x="263" y="38" text-anchor="middle" fill="#222e42" font-size="9" font-family="IBM Plex Mono,monospace">LOWER METADATA FLEX / HIGH DEPTH</text>
+  <text x="666" y="38" text-anchor="middle" fill="#222e42" font-size="9" font-family="IBM Plex Mono,monospace">HIGH METADATA FLEX / HIGH DEPTH</text>
+  <text x="263" y="324" text-anchor="middle" fill="#222e42" font-size="9" font-family="IBM Plex Mono,monospace">LOWER METADATA FLEX / LOWER DEPTH</text>
+  <text x="666" y="324" text-anchor="middle" fill="#222e42" font-size="9" font-family="IBM Plex Mono,monospace">HIGH METADATA FLEX / LOWER DEPTH</text>
+
+  <!-- LiteLLM: moderate metadata (tag budgets, key overrides), good inspection -->
+  <circle cx="340" cy="135" r="52" fill="#00c2cb" fill-opacity=".14" stroke="#00c2cb" stroke-width="1.8"/>
+  <text x="340" y="127" text-anchor="middle" fill="#00c2cb" font-size="14" font-weight="700">LiteLLM</text>
+  <text x="340" y="144" text-anchor="middle" fill="#00c2cb" font-size="9.5" font-family="IBM Plex Mono,monospace">3-phase guardrails</text>
+  <text x="340" y="158" text-anchor="middle" fill="#00c2cb" font-size="9.5" font-family="IBM Plex Mono,monospace">Tag-based budgets</text>
+
+  <!-- Kong: lower metadata flex, highest inspection depth (semantic+deterministic+external) -->
+  <circle cx="260" cy="72" r="56" fill="#00d27b" fill-opacity=".14" stroke="#00d27b" stroke-width="1.8"/>
+  <text x="260" y="64" text-anchor="middle" fill="#00d27b" font-size="14" font-weight="700">Kong</text>
+  <text x="260" y="81" text-anchor="middle" fill="#00d27b" font-size="9.5" font-family="IBM Plex Mono,monospace">Regex + semantic + PII</text>
+  <text x="260" y="95" text-anchor="middle" fill="#00d27b" font-size="9.5" font-family="IBM Plex Mono,monospace">Consumer Group scoping</text>
+
+  <!-- Portkey: highest metadata flex, moderate inspection -->
+  <circle cx="700" cy="145" r="54" fill="#5a67ff" fill-opacity=".14" stroke="#5a67ff" stroke-width="1.8"/>
+  <text x="700" y="137" text-anchor="middle" fill="#5a67ff" font-size="14" font-weight="700">Portkey</text>
+  <text x="700" y="154" text-anchor="middle" fill="#5a67ff" font-size="9.5" font-family="IBM Plex Mono,monospace">MongoDB-style operators</text>
+  <text x="700" y="168" text-anchor="middle" fill="#5a67ff" font-size="9.5" font-family="IBM Plex Mono,monospace">BYO webhook</text>
+
+  <!-- TrueFoundry: high metadata flex, high inspection depth -->
+  <circle cx="620" cy="68" r="56" fill="#ff5533" fill-opacity=".14" stroke="#ff5533" stroke-width="1.8"/>
+  <text x="620" y="56" text-anchor="middle" fill="#ff5533" font-size="14" font-weight="700">TrueFoundry</text>
+  <text x="620" y="73" text-anchor="middle" fill="#ff5533" font-size="9.5" font-family="IBM Plex Mono,monospace">4-hook + deploy policies</text>
+  <text x="620" y="87" text-anchor="middle" fill="#ff5533" font-size="9.5" font-family="IBM Plex Mono,monospace">metadata.* scoping</text>
+</svg>
+</div>
+<p style="font-size:.78rem;color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace;margin-top:-.4rem;">Editorial assessment based on the four vendors' public docs reviewed for this article. Kong leads on payload inspection breadth (semantic + deterministic + external services). Portkey leads on conditional metadata routing flexibility. TrueFoundry combines both with deploy-time policies. Bubble positions reflect the authors' judgment — March 2026.</p>
+
+<hr>
+
+<!-- §8 REFERENCES -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank">LiteLLM — Guardrails Quick Start (pre_call, during_call, post_call; Presidio; AIM; generic_guardrail_api)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/guardrails/prompt_injection" target="_blank">LiteLLM — Prompt Injection Detection</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/guardrails/prompt_security" target="_blank">LiteLLM — Prompt Security</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/pass_through_guardrails" target="_blank">LiteLLM — Pass-Through Guardrails (org/team/key + endpoint composition)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">LiteLLM — Virtual Keys (models allowlist)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">LiteLLM — Budgets &amp; Rate Limits (team_id, max_budget)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">LiteLLM — Provider Budget Routing (tag_budget_config)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings" target="_blank">LiteLLM — Router Settings for Keys and Teams</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture (Life of a Request)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-prompt-guard/" target="_blank">Kong — AI Prompt Guard (deterministic regex; Unicode best-practices)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-semantic-prompt-guard/" target="_blank">Kong — AI Semantic Prompt Guard (embedding-based allow/deny)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-sanitizer/" target="_blank">Kong — AI PII Sanitizer (external service; request/response; restoration)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-aws-guardrails/" target="_blank">Kong — AI AWS Guardrails (response_buffer_size for streaming)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-azure-content-safety/" target="_blank">Kong — AI Azure Content Safety</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">Kong — AI Rate Limiting Advanced Example</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-prompt-decorator/" target="_blank">Kong — AI Prompt Decorator</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-mcp-proxy/" target="_blank">Kong — AI MCP Proxy</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/conditional-routing" target="_blank">Portkey — Conditional Routing (MongoDB-style operators; params; metadata)</a></li>
+  <li><a href="https://portkey.ai/docs/product/guardrails" target="_blank">Portkey — Guardrails (hooks, checks, actions)</a></li>
+  <li><a href="https://portkey.ai/docs/product/guardrails/list-of-guardrail-checks" target="_blank">Portkey — List of Guardrail Checks (security, routing checks)</a></li>
+  <li><a href="https://portkey.ai/docs/product/guardrails/creating-raw-guardrails-in-json" target="_blank">Portkey — Creating Raw Guardrails (before_request_hooks; actions)</a></li>
+  <li><a href="https://portkey.ai/docs/product/guardrails/pii-redaction" target="_blank">Portkey — PII Redaction</a></li>
+  <li><a href="https://portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails" target="_blank">Portkey — Bring Your Own Guardrails (webhook contract)</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/budget-policies" target="_blank">Portkey — Usage &amp; Rate Limit Policies (Enterprise; group-by dimensions)</a></li>
+  <li><a href="https://portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits" target="_blank">Portkey — Enforce Workspace Budget &amp; Rate Limits</a></li>
+  <li><a href="https://www.truefoundry.com/docs/applying-custom-policies" target="_blank">TrueFoundry — Deployment Guardrails and Policies (ValidationInput; TypeScript)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview (four-hook model; MCP pre/post-tool)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">TrueFoundry — Guardrails Configuration (subjects; when; first-match)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting (rate_limit_applies_per: metadata.project_id)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">TrueFoundry — Budget Limiting (budget_applies_per)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">TrueFoundry — Headers (x-tfy-metadata; x-tfy-applied-configurations; Server-Timing)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/secrets-detection" target="_blank">TrueFoundry — Secrets Detection (validate + mutate modes; zero external deps)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/tfy-pii" target="_blank">TrueFoundry — PII/PHI Detection</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture (in-memory hot-path; async logging)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/manage-secrets" target="_blank">TrueFoundry — Secret Management (secret groups; FQNs)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/prompt-management" target="_blank">TrueFoundry — Prompt Management</a></li>
+</ol>
+
+<hr>
+<p style="font-size:.74rem;color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace;line-height:1.8;">
+  AI Gateway Series · Blog 6 of 15 &nbsp;·&nbsp; March 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
+  Configuration field names sourced from published vendor documentation; validate against your deployed version before use.<br>
+  Editorial verdicts represent the authors' judgment and are not vendor endorsements or guarantees.
+</p>
+
+<script>
+(function(){
+  function flashCopied(btn){btn.textContent='✓ copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='copy';btn.classList.remove('copied');},1800);}
+  function fallbackCopy(text){const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:-9999px;left:-9999px';document.body.appendChild(ta);ta.focus();ta.select();let ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(ta);return ok;}
+  async function copyText(text){if(window.isSecureContext&&navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(text);return true;}catch(e){}}return fallbackCopy(text);}
+  function attach(btn,pre){if(btn.dataset.copyBound==='1')return;btn.dataset.copyBound='1';btn.type='button';btn.addEventListener('click',async()=>{const ok=await copyText(pre.innerText);if(ok)flashCopied(btn);else{btn.textContent='copy failed';setTimeout(()=>{btn.textContent='copy';},1800);}});}
+  document.querySelectorAll('pre').forEach(pre=>{
+    let wrap=pre.parentElement&&pre.parentElement.classList.contains('code-wrap')?pre.parentElement:null;
+    if(!wrap){wrap=document.createElement('div');wrap.className='code-wrap';pre.parentNode.insertBefore(wrap,pre);wrap.appendChild(pre);}
+    let btn=wrap.querySelector('.copy-btn');
+    if(!btn){btn=document.createElement('button');btn.className='copy-btn';btn.textContent='copy';wrap.appendChild(btn);}
+    attach(btn,pre);
+  });
+})();
+</script>
+</body>
+</html>
