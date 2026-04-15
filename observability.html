@@ -1,0 +1,1063 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Gateway Series #8 — Observability: Logs &amp; Tracing</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB; --kong: #00D27B; --portkey: #5A67FF; --tf: #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+
+  .series-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .tag-pill { display: inline-block; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace; padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase; }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer { background: #1a1200; border: 1px solid #3d2c00; color: var(--warn); font-size: .78rem; padding: .5rem 1rem; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; }
+
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre { background: #080c12; border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 0; }
+  .copy-btn { position: absolute; top: .55rem; right: .55rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: .68rem; padding: .22rem .55rem; border-radius: 5px; cursor: pointer; transition: all .15s ease; user-select: none; letter-spacing: .03em; line-height: 1.4; }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+  .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note { font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border); }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn   { border-color: var(--warn);   background: #1a1200; }
+  .callout.info   { border-color: #60a5fa;        background: #0a1220; }
+  .callout.tf     { border-color: var(--tf);      background: #1e0d08; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn   .callout-title { color: var(--warn); }
+  .callout.info   .callout-title { color: #60a5fa; }
+  .callout.tf     .callout-title { color: var(--tf); }
+
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong    { color: var(--kong);    border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf      { color: var(--tf);      border-top: 3px solid var(--tf); }
+
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong    .vendor-badge { background: var(--kong);    color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf      .vendor-badge { background: var(--tf);      color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+  .cat-row td { background: var(--surface2); font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before    { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before      { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong    .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf      .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai    { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google    { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0 1rem; }
+  .itag { font-size: .73rem; font-family: 'IBM Plex Mono', monospace; padding: .18rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .itag.hi { border-color: #60a5fa55; color: #60a5fa; background: #0a1220; }
+</style>
+</head>
+<body>
+<div class="series-bar">
+<span class="tag-pill">AI Gateway Series</span>
+<div class="series-dots">
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot active" title="Blog 8 — Observability"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div>
+</div>
+<span class="tag-pill active">Blog 8 of 15</span>
+</div>
+<h1>Observability in the Dark:<br/>Logs, Tracing &amp; OpenTelemetry Across Four AI Gateways</h1>
+<div class="meta">
+<span class="meta-item">⏱ 26 min read</span>
+<span class="meta-item">🗓 March 2026</span>
+<span class="meta-item">👤 Platform Engineering</span>
+<div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 25, 2026. Verify against current vendor docs before architectural decisions.</div>
+</div>
+<p style="font-size:.82rem; color:var(--muted);">Models referenced throughout this post reflect the production-current landscape as of this writing:</p>
+<div class="model-pills">
+<span class="mpill openai">gpt-5</span>
+<span class="mpill openai">gpt-5-mini</span>
+<span class="mpill anthropic">Claude Sonnet 4.6</span>
+<span class="mpill anthropic">claude-haiku-4-5</span>
+<span class="mpill google">gemini-3.1-pro-preview</span>
+<span class="mpill google">Gemini 3 Flash (preview)</span>
+</div>
+<!-- ══════ §0 TL;DR ══════ -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<div class="scenario">
+<div class="scenario-title">🔍 Real-World Scenario: The Invisible 15-Second Bottleneck</div>
+<p>Your production RAG pipeline takes roughly 15 seconds end-to-end. On a Thursday afternoon, a subset of enterprise users starts reporting incomplete answers — not wrong, not errored, just suspiciously shallow. Your monitoring dashboard shows no 5xx spikes, latency p99 looks flat, and the LLM provider's status page is green.</p>
+<p>The pipeline has five distinct stages: query rewriting, dense retrieval against a vector index, a re-ranking call, a synthesis call to <code>claude-sonnet-4-6</code>, and a post-processing step. Without traces that span the full chain, you're left grepping through flat log files trying to reconstruct causality from fragments.</p>
+<p>This is the <strong>standard operating condition</strong> for any team running non-trivial LLM workloads in production. An AI gateway that doubles as a first-class observability layer fundamentally changes how quickly your team can isolate and fix these failures. But the four gateways take structurally different approaches to how telemetry is collected, where it goes, and whether it ever leaves your network.</p>
+</div>
+<div class="quickpick-grid">
+<div class="qp-card c-litellm">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">LiteLLM</div>
+<div class="qp-desc">Callback-driven polyglot logging. Best when Langfuse, LangSmith, Datadog, or your own SIEM is already in the stack — and when you want callbacks you can route synchronously or asynchronously.</div>
+</div>
+<div class="qp-card c-kong">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Kong AI Gateway</div>
+<div class="qp-desc">Plugin-composable OTel + Prometheus / Grafana. If your org already runs Kong for REST services, LLM telemetry joins the same Grafana/Jaeger pipeline. AI cost metrics require <code>ai_metrics</code> on Prometheus / Grafana <em>and</em> statistics logging on the AI Proxy plugin.</div>
+</div>
+<div class="qp-card c-portkey">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Portkey</div>
+<div class="qp-desc">Analytics-first dashboard with near-zero setup, rich trace UI, Feedback API, and direct Langfuse/LangSmith integrations. Hybrid deployment keeps LLM payloads in your VPC data plane while Portkey-managed dashboards and metadata remain SaaS-side.</div>
+</div>
+<div class="qp-card c-tf">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">TrueFoundry</div>
+<div class="qp-desc">Built-in Monitor metrics and trace views, plus configurable trace retention, custom metadata, trace feedback, and OTEL / Prometheus / Grafana export paths. Best fit when you want first-party gateway observability with optional customer-hosted integrations — while treating data residency as deployment-mode dependent.</div>
+</div>
+</div>
+<!-- ══════ §1 WHY GATEWAY-LAYER OBSERVABILITY ══════ -->
+<h2>§1 — Why the Gateway Is the Right Instrumentation Point</h2>
+<p>LLM providers expose minimal telemetry. An <code>/v1/chat/completions</code> response contains token counts and a finish reason — nothing you'd want in a trace. The gateway sits at the single choke-point where <em>every</em> LLM call passes. That positional advantage means it can:</p>
+<ul>
+<li><strong>Capture request and response payloads</strong> before they reach application code, without modifying application code.</li>
+<li><strong>Inject and propagate W3C trace context</strong> headers so gateway spans nest correctly inside upstream application traces.</li>
+<li><strong>Compute derived metrics</strong> — cost per token, tokens-per-second, cache hit rate — that neither the provider nor the application naturally surfaces.</li>
+<li><strong>Route telemetry independently</strong> of application telemetry, so a noisy dev environment doesn't contaminate your production SIEM.</li>
+</ul>
+<div class="callout warn">
+<div class="callout-title">⚠ Data Residency Implication</div>
+<p>Gateway-layer logging captures full prompt and completion text. For regulated industries (HIPAA, PCI-DSS, GDPR), the <em>export destination</em> of that telemetry is a primary architectural constraint — one where the four gateways diverge sharply, as we will see.</p>
+</div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 400" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="400" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="24">AI Gateway Observability — Conceptual Architecture</text>
+<defs>
+<marker id="a1" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#60a5fa" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="a1g" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="a1o" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ffa726" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#1a2233" height="110" rx="7" stroke="#1e2d45" width="118" x="18" y="140"></rect>
+<text fill="#7a8899" font-size="9" font-weight="700" letter-spacing=".5" text-anchor="middle" x="77" y="162">APPLICATION</text>
+<rect fill="#0d1520" height="19" rx="3" stroke="#1e2d45" width="94" x="30" y="170"></rect><text fill="#60a5fa" font-size="8" text-anchor="middle" x="77" y="183">RAG Pipeline</text>
+<rect fill="#0d1520" height="19" rx="3" stroke="#1e2d45" width="94" x="30" y="193"></rect><text fill="#60a5fa" font-size="8" text-anchor="middle" x="77" y="206">Chat Service</text>
+<rect fill="#0d1520" height="19" rx="3" stroke="#1e2d45" width="94" x="30" y="216"></rect><text fill="#60a5fa" font-size="8" text-anchor="middle" x="77" y="229">Batch Jobs</text>
+<line marker-end="url(#a1)" stroke="#60a5fa" stroke-dasharray="4,3" stroke-width="1.5" x1="136" x2="172" y1="195" y2="195"></line>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="154" y="188">HTTPS</text>
+<rect fill="#1a2233" height="200" rx="9" stroke="#60a5fa" stroke-width="1.5" width="200" x="173" y="100"></rect>
+<text fill="#60a5fa" font-size="10" font-weight="700" letter-spacing=".5" text-anchor="middle" x="273" y="123">AI GATEWAY</text>
+<rect fill="#0d1520" height="23" rx="4" stroke="#1e2d45" width="177" x="185" y="132"></rect><text fill="#e2e8f0" font-size="8.5" text-anchor="middle" x="273" y="148">Request Router &amp; Load Balancer</text>
+<rect fill="#0d1520" height="23" rx="4" stroke="#1e2d45" width="177" x="185" y="160"></rect><text fill="#e2e8f0" font-size="8.5" text-anchor="middle" x="273" y="176">Auth / Keys / Routing</text>
+<rect fill="#1a1200" height="23" rx="4" stroke="#ffa726" stroke-width="1" width="177" x="185" y="188"></rect><text fill="#ffa726" font-size="8.5" text-anchor="middle" x="273" y="204">📡 Telemetry Hooks / Export</text>
+<rect fill="#0d1520" height="23" rx="4" stroke="#1e2d45" width="177" x="185" y="216"></rect><text fill="#e2e8f0" font-size="8.5" text-anchor="middle" x="273" y="232">Cost &amp; Token Accounting</text>
+<rect fill="#0d1520" height="23" rx="4" stroke="#1e2d45" width="177" x="185" y="244"></rect><text fill="#e2e8f0" font-size="8.5" text-anchor="middle" x="273" y="260">Guardrails &amp; Caching</text>
+<line marker-end="url(#a1)" stroke="#60a5fa" stroke-width="1.4" x1="373" x2="420" y1="165" y2="150"></line>
+<line marker-end="url(#a1)" stroke="#60a5fa" stroke-width="1.4" x1="373" x2="420" y1="195" y2="195"></line>
+<line marker-end="url(#a1)" stroke="#60a5fa" stroke-width="1.4" x1="373" x2="420" y1="225" y2="240"></line>
+<rect fill="#0d1520" height="28" rx="5" stroke="#1e2d45" width="118" x="422" y="134"></rect><text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="481" y="152">GPT-5.4 / 5.4-mini</text>
+<rect fill="#0d1520" height="28" rx="5" stroke="#1e2d45" width="118" x="422" y="181"></rect><text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="481" y="199">Claude Sonnet 4.6</text>
+<rect fill="#0d1520" height="28" rx="5" stroke="#1e2d45" width="118" x="422" y="226"></rect><text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="481" y="244">Gemini 3 Flash</text>
+<line marker-end="url(#a1o)" stroke="#ffa726" stroke-dasharray="3,3" stroke-width="1.5" x1="273" x2="273" y1="300" y2="334"></line>
+<rect fill="#1a1200" height="28" rx="5" stroke="#ffa726" width="196" x="175" y="336"></rect>
+<text fill="#ffa726" font-size="9" font-weight="600" text-anchor="middle" x="273" y="354">OpenTelemetry Collector</text>
+<line marker-end="url(#a1g)" stroke="#50fa7b" stroke-dasharray="3,2" stroke-width="1.2" x1="371" x2="545" y1="350" y2="316"></line>
+<line marker-end="url(#a1g)" stroke="#50fa7b" stroke-dasharray="3,2" stroke-width="1.2" x1="371" x2="545" y1="353" y2="350"></line>
+<line marker-end="url(#a1g)" stroke="#50fa7b" stroke-dasharray="3,2" stroke-width="1.2" x1="371" x2="545" y1="356" y2="376"></line>
+<rect fill="#0d1520" height="26" rx="5" stroke="#50fa7b" width="118" x="547" y="300"></rect><text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="606" y="317">Grafana / Prometheus</text>
+<rect fill="#0d1520" height="26" rx="5" stroke="#50fa7b" width="118" x="547" y="337"></rect><text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="606" y="354">New Relic / Elastic</text>
+<rect fill="#0d1520" height="26" rx="5" stroke="#50fa7b" width="118" x="547" y="363"></rect><text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="606" y="380">Langfuse / LangSmith</text>
+<text fill="#7a8899" font-size="8" x="42" y="310">Span attributes:</text>
+<text fill="#6272a4" font-size="7.5" x="42" y="323">model, tokens_in/out, cost_usd,</text>
+<text fill="#6272a4" font-size="7.5" x="42" y="336">latency_ms, user_id, trace_id,</text>
+<text fill="#6272a4" font-size="7.5" x="42" y="349">finish_reason, guardrail_action</text>
+</svg>
+</div>
+<div class="img-caption">The AI gateway sits at the single choke-point where every LLM call passes — the natural instrumentation layer for prompt content, token accounting, and distributed trace context.</div>
+<hr/>
+<!-- ══════ §2 LITELLM ══════ -->
+<div class="vendor-header litellm">
+<span class="vendor-badge">LiteLLM</span>
+<span class="vendor-title">§2 — Callback-Driven Polyglot Logging</span>
+</div>
+<p>LiteLLM's observability model is built around <strong>callbacks</strong>: hooks that can run synchronously or asynchronously on success, failure, and other lifecycle events. Each callback receives request kwargs, response details, timing, and computed metadata such as token usage and cost. That makes LiteLLM less of a bundled observability product and more of a flexible telemetry router for teams that already know where they want their traces, logs, and metrics to land.</p>
+<h3>OpenTelemetry Export</h3>
+<p>LiteLLM ships a first-class <code>OpenTelemetry</code> callback that wraps LLM calls in OTLP spans carrying GenAI semantic-convention fields. Current docs support both OTLP/gRPC and OTLP/HTTP exporters, and the same request can fan out to other backends such as Langfuse or LangSmith through callback configuration. The key design point is flexibility: LiteLLM gives you spans, but you decide whether they go to a collector, a SaaS tool, or multiple places at once.</p>
+<div class="code-wrap"><pre># litellm_config.yaml — OpenTelemetry + Langfuse fan-out
+model_list:
+  - model_name: gpt-5
+    litellm_params:
+      model: openai/gpt-5
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: claude-sonnet-4-6
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+litellm_settings:
+  callbacks: ["otel"]
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
+  service_callbacks: []
+  turn_off_message_logging: false
+
+environment_variables:
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.monitoring.svc:4317"
+  LANGFUSE_HOST: "https://cloud.langfuse.com"
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">docs.litellm.ai/docs/proxy/logging</a> · <a href="https://docs.litellm.ai/docs/observability/opentelemetry_integration" target="_blank">opentelemetry_integration</a></div>
+<h3>Prometheus / Grafana Metrics</h3>
+<p>Adding <code>"prometheus"</code> to the callback list enables a <code>/metrics</code> endpoint on the proxy port. LiteLLM's current docs focus on Prometheus / Grafana as another callback destination and document example series such as failed-logging counters; they are less stable about the exact metric names than the original draft implied. The safe claim is that Prometheus / Grafana scraping is supported, while dashboards should be built from the metric series exposed by the version you are running.</p>
+<div class="code-wrap"><pre># Multi-backend fan-out: OTel + Prometheus / Grafana + S3 archival
+litellm_settings:
+  callbacks: ["otel", "prometheus"]
+  success_callback: ["langfuse", "s3"]
+  failure_callback: ["langfuse", "sentry"]
+
+environment_variables:
+  AWS_BUCKET_NAME: "my-llm-logs-prod"
+  AWS_REGION_NAME: "us-east-1"
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">docs.litellm.ai/docs/proxy/logging</a> · <a href="https://docs.litellm.ai/docs/proxy/prometheus" target="_blank">proxy/prometheus</a></div>
+<h3>Custom Async Logger (Bring-Your-Own SIEM)</h3>
+<div class="code-wrap"><pre>import aiohttp
+from litellm.integrations.custom_logger import CustomLogger
+
+class SIEMLogger(CustomLogger):
+    def __init__(self, endpoint: str, timeout_seconds: float = 5.0):
+        self.endpoint = endpoint
+        self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+
+    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+        payload = kwargs.get("standard_logging_object", {})
+        event = {
+            "request_id": payload.get("id"),
+            "trace_id": payload.get("trace_id"),
+            "call_type": payload.get("call_type"),
+            "model": payload.get("model"),
+            "response_cost": payload.get("response_cost"),
+            "prompt_tokens": payload.get("prompt_tokens"),
+            "completion_tokens": payload.get("completion_tokens"),
+            "status": payload.get("status"),
+        }
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            async with session.post(self.endpoint, json=event) as resp:
+                resp.raise_for_status()
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/observability/custom_callback" target="_blank">docs.litellm.ai/docs/observability/custom_callback</a></div>
+<p>LiteLLM's documented logging integrations include Langfuse, LangSmith, Helicone, Traceloop, Arize Phoenix, Datadog, Prometheus / Grafana, OpenTelemetry, S3, GCS, Sentry, and a generic <code>custom_logger</code> hook. The practical implication is that LiteLLM is usually strongest when it plugs into an observability system you already operate, rather than when you expect it to be the observability backend itself.</p>
+<div class="tag-list">
+<span class="itag hi">OTLP/gRPC</span><span class="itag hi">OTLP/HTTP</span>
+<span class="itag">Langfuse</span><span class="itag">LangSmith</span><span class="itag">Helicone</span>
+<span class="itag">Traceloop</span><span class="itag">Arize Phoenix</span><span class="itag">MLflow</span>
+<span class="itag">Datadog</span><span class="itag hi">Prometheus /metrics</span>
+<span class="itag">S3 archival</span><span class="itag">GCS archival</span><span class="itag">Sentry</span>
+<span class="itag">Opik</span><span class="itag">Custom async hook</span>
+</div>
+<div class="callout warn">
+<div class="callout-title">⚠ Operational Caveat</div>
+<p>The proxy's built-in UI (<code>:4000/ui</code>) provides basic spend dashboards but is not a full trace viewer. For rich trace analysis, an external backend (Langfuse, Jaeger, etc.) is required. Misconfiguring async failure callbacks can silently drop events — validate against a known failure path in staging.</p>
+</div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 290" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="290" width="820"></rect>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="700" letter-spacing=".5" text-anchor="middle" x="410" y="22">LITELLM — CALLBACK FAN-OUT PIPELINE</text>
+<defs>
+<marker id="lm" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00C2CB" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="lmb" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#60a5fa" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#001d1e" height="90" rx="7" stroke="#00C2CB" stroke-width="1.5" width="148" x="18" y="90"></rect>
+<text fill="#00C2CB" font-size="9" font-weight="700" letter-spacing=".5" text-anchor="middle" x="92" y="113">LITELLM PROXY</text>
+<rect fill="#0d1520" height="19" rx="3" stroke="#1e2d45" width="124" x="30" y="120"></rect><text fill="#e2e8f0" font-size="8" text-anchor="middle" x="92" y="133">Incoming /chat/completions</text>
+<rect fill="#0d1520" height="19" rx="3" stroke="#1e2d45" width="124" x="30" y="143"></rect><text fill="#e2e8f0" font-size="8" text-anchor="middle" x="92" y="156">LLM Router + Response</text>
+<line marker-end="url(#lm)" stroke="#00C2CB" stroke-width="1.5" x1="166" x2="202" y1="135" y2="135"></line>
+<rect fill="#001d1e" height="126" rx="7" stroke="#00C2CB" stroke-dasharray="4,2" stroke-width="1.2" width="148" x="204" y="72"></rect>
+<text fill="#00C2CB" font-size="9" font-weight="700" text-anchor="middle" x="278" y="92">CALLBACK</text>
+<text fill="#00C2CB" font-size="9" font-weight="700" text-anchor="middle" x="278" y="104">DISPATCHER</text>
+<rect fill="#0d1520" height="16" rx="3" width="124" x="216" y="112"></rect><text fill="#7a8899" font-size="7.5" text-anchor="middle" x="278" y="124">async_log_success_event</text>
+<rect fill="#0d1520" height="16" rx="3" width="124" x="216" y="132"></rect><text fill="#7a8899" font-size="7.5" text-anchor="middle" x="278" y="144">async_log_failure_event</text>
+<rect fill="#0d1520" height="16" rx="3" width="124" x="216" y="152"></rect><text fill="#7a8899" font-size="7.5" text-anchor="middle" x="278" y="164">async_log_stream_event</text>
+<rect fill="#0d1520" height="16" rx="3" width="124" x="216" y="172"></rect><text fill="#7a8899" font-size="7.5" text-anchor="middle" x="278" y="184">log_pre_api_call</text>
+<line marker-end="url(#lmb)" stroke="#60a5fa" stroke-dasharray="3,2" stroke-width="1.2" x1="352" x2="400" y1="120" y2="60"></line>
+<line marker-end="url(#lmb)" stroke="#50fa7b" stroke-dasharray="3,2" stroke-width="1.2" x1="352" x2="400" y1="130" y2="102"></line>
+<line marker-end="url(#lmb)" stroke="#bd93f9" stroke-dasharray="3,2" stroke-width="1.2" x1="352" x2="400" y1="138" y2="144"></line>
+<line marker-end="url(#lmb)" stroke="#ffa726" stroke-dasharray="3,2" stroke-width="1.2" x1="352" x2="400" y1="148" y2="186"></line>
+<line marker-end="url(#lmb)" stroke="#ff79c6" stroke-dasharray="3,2" stroke-width="1.2" x1="352" x2="400" y1="158" y2="228"></line>
+<line marker-end="url(#lmb)" stroke="#6272a4" stroke-dasharray="3,2" stroke-width="1.2" x1="352" x2="400" y1="168" y2="260"></line>
+<rect fill="#0d1520" height="28" rx="5" stroke="#60a5fa" stroke-width="1" width="128" x="402" y="44"></rect><text fill="#60a5fa" font-size="8.5" text-anchor="middle" x="466" y="62">OTel Collector (OTLP)</text>
+<rect fill="#0d1520" height="28" rx="5" stroke="#50fa7b" stroke-width="1" width="128" x="402" y="87"></rect><text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="466" y="105">Prometheus /metrics</text>
+<rect fill="#0d1520" height="28" rx="5" stroke="#bd93f9" stroke-width="1" width="128" x="402" y="130"></rect><text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="466" y="148">Langfuse / LangSmith</text>
+<rect fill="#0d1520" height="28" rx="5" stroke="#ffa726" stroke-width="1" width="128" x="402" y="172"></rect><text fill="#ffa726" font-size="8.5" text-anchor="middle" x="466" y="190">Datadog / Arize</text>
+<rect fill="#0d1520" height="28" rx="5" stroke="#ff79c6" stroke-width="1" width="128" x="402" y="214"></rect><text fill="#ff79c6" font-size="8.5" text-anchor="middle" x="466" y="232">S3 / GCS Archival</text>
+<rect fill="#0d1520" height="28" rx="5" stroke="#6272a4" stroke-width="1" width="128" x="402" y="245"></rect><text fill="#6272a4" font-size="8.5" text-anchor="middle" x="466" y="263">Custom SIEM Hook</text>
+<line marker-end="url(#lmb)" stroke="#60a5fa" stroke-dasharray="2,2" stroke-width="1" x1="530" x2="570" y1="58" y2="58"></line>
+<line marker-end="url(#lmb)" stroke="#bd93f9" stroke-dasharray="2,2" stroke-width="1" x1="530" x2="570" y1="144" y2="144"></line>
+<rect fill="#0d1520" height="28" rx="5" stroke="#60a5fa" stroke-width="1" width="108" x="572" y="43"></rect><text fill="#60a5fa" font-size="8.5" text-anchor="middle" x="626" y="61">Grafana / Jaeger</text>
+<rect fill="#0d1520" height="28" rx="5" stroke="#bd93f9" stroke-width="1" width="108" x="572" y="130"></rect><text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="626" y="148">LLM Trace UI</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="92" y="200">callbacks: ["otel","prometheus"]</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="92" y="213">success_callback: ["langfuse","s3"]</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="92" y="226">Callbacks can be sync or async</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM's callback dispatcher fans out to supported backends; individual hooks can be synchronous or asynchronous depending on callback type and runtime. Editorial reconstruction based on LiteLLM logging docs.</div>
+<hr/>
+<!-- ══════ §3 KONG ══════ -->
+<div class="vendor-header kong">
+<span class="vendor-badge">Kong</span>
+<span class="vendor-title">§3 — Plugin-Composable Observability</span>
+</div>
+<p>Kong's observability model is inherited from its API gateway lineage: every cross-cutting concern is a plugin. For LLM observability, you compose a telemetry pipeline by stacking <code>opentelemetry</code>, <code>prometheus</code>, and one or more logging plugins on a route that is already handled by <code>ai-proxy</code> or <code>ai-proxy-advanced</code>. The upside is consistency with the rest of a Kong-based platform; the caveat is that some AI metrics depend on more than one knob being enabled at the same time.</p>
+<h3>OpenTelemetry Plugin</h3>
+<p>Kong's <code>opentelemetry</code> plugin exports OTLP spans for proxied requests. When combined with <code>ai-proxy</code>, those spans can carry GenAI-specific attributes. The code sample below stays deliberately conservative: it uses the currently documented trace endpoint field and leaves version-specific sampler or propagation knobs out of the snippet unless you have checked them against the exact Kong version you deploy.</p>
+<div class="code-wrap"><pre># kong.yaml — AI metrics + tracing on an LLM route
+_format_version: "3.0"
+
+services:
+  - name: llm-service
+    url: https://api.openai.com
+    routes:
+      - name: llm-route
+        paths:
+          - /v1/chat/completions
+
+plugins:
+  - name: ai-proxy
+    service: llm-service
+    config:
+      route_type: llm/v1/chat
+      auth:
+        header_name: Authorization
+        header_value: Bearer ${OPENAI_API_KEY}
+      model:
+        provider: openai
+        name: gpt-5
+      logging:
+        log_statistics: true
+
+  - name: prometheus
+    service: llm-service
+    config:
+      ai_metrics: true
+
+  - name: opentelemetry
+    service: llm-service
+    config:
+      traces_endpoint: http://otel-collector.monitoring.svc:4318/v1/traces
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/opentelemetry/" target="_blank">plugins/opentelemetry</a> · <a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">monitor-ai-llm-metrics</a> · <a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank">llm-open-telemetry</a></div>
+<h3>AI Token &amp; Cost Metrics via Prometheus / Grafana</h3>
+<p>Kong's AI Prometheus metrics require two pieces of configuration together: <code>config.ai_metrics: true</code> on the Prometheus plugin <em>and</em> <code>config.logging.log_statistics: true</code> on <code>ai-proxy</code> or <code>ai-proxy-advanced</code>. With both enabled, Kong documents AI-specific series including request counts, token counts, provider latency histograms, and total AI cost. That makes Kong stronger on native cost visibility than the earlier draft suggested.</p>
+<div class="code-wrap"><pre># PromQL examples for Kong AI dashboards
+# Note: ai_llm_cost_total is useful only when model pricing is configured.
+
+# AI request rate by model
+sum by (ai_model) (
+  rate(ai_llm_requests_total[5m])
+)
+
+# Total AI cost by provider
+sum by (ai_provider) (
+  increase(ai_llm_cost_total[1h])
+)
+
+# p95 provider latency
+histogram_quantile(
+  0.95,
+  sum by (ai_provider, le) (
+    rate(ai_llm_provider_latency_ms_bucket[5m])
+  )
+)
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/</a></div>
+<div class="callout info">
+<div class="callout-title">ℹ Kong Prompt Body Logging</div>
+<p>Prompt and response body logging in Kong follows the standard logging-plugin path (http-log, file-log, kafka-log) rather than a dedicated AI-specific plugin. Careful payload redaction strategy is required to avoid logging sensitive user data verbatim — this is not automatic. Consult your Kong version's logging plugin documentation for body-capture configuration options.</p>
+</div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 322" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="322" width="820"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="700" letter-spacing=".5" text-anchor="middle" x="410" y="22">KONG AI GATEWAY — PLUGIN STACK &amp; TELEMETRY PIPELINE</text>
+<defs>
+<marker id="km" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00D27B" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="kmb" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#60a5fa" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="kmg" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ffa726" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#1a2233" height="44" rx="5" stroke="#1e2d45" width="72" x="18" y="110"></rect>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="54" y="129">Client App</text>
+<text fill="#60a5fa" font-size="8" text-anchor="middle" x="54" y="143">HTTPS</text>
+<line marker-end="url(#km)" stroke="#00D27B" stroke-width="1.5" x1="90" x2="112" y1="132" y2="132"></line>
+<rect fill="#001e13" height="260" rx="9" stroke="#00D27B" stroke-width="1.5" width="370" x="114" y="46"></rect>
+<text fill="#00D27B" font-size="10" font-weight="700" letter-spacing=".5" text-anchor="middle" x="299" y="66">KONG AI GATEWAY</text>
+<rect fill="#0d1520" height="26" rx="4" stroke="#1e2d45" width="346" x="126" y="75"></rect><text fill="#e2e8f0" font-size="8.5" text-anchor="middle" x="299" y="92">① ai-proxy — routing + log_statistics</text>
+<rect fill="#00d27b0d" height="26" rx="4" stroke="#00D27B" stroke-width=".8" width="346" x="126" y="106"></rect><text fill="#00D27B" font-size="8.5" text-anchor="middle" x="299" y="123">② opentelemetry — OTLP export + trace correlation</text>
+<rect fill="#50fa7b0d" height="26" rx="4" stroke="#50fa7b" stroke-width=".8" width="346" x="126" y="137"></rect><text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="299" y="154">③ prometheus + ai_metrics — ai_llm_* + cost</text>
+<rect fill="#0d1520" height="26" rx="4" stroke="#1e2d45" width="346" x="126" y="168"></rect><text fill="#e2e8f0" font-size="8.5" text-anchor="middle" x="299" y="185">④ http-log / kafka-log — Payload forwarding (redact manually)</text>
+<rect fill="#0d1520" height="26" rx="4" stroke="#1e2d45" width="346" x="126" y="199"></rect><text fill="#7a8899" font-size="8.5" text-anchor="middle" x="299" y="216">⑤ rate-limiting / key-auth / ai-prompt-guard</text>
+<rect fill="#0d1520" height="26" rx="4" stroke="#1e2d45" width="346" x="126" y="230"></rect><text fill="#6272a4" font-size="8.5" text-anchor="middle" x="299" y="247">⑥ [Enterprise] ai-semantic-cache</text>
+<rect fill="#0d1520" height="26" rx="4" stroke="#1e2d45" width="346" x="126" y="261"></rect><text fill="#6272a4" font-size="8.5" text-anchor="middle" x="299" y="278">⑦ [Enterprise] ai-proxy-advanced — multi-target balancing</text>
+<line marker-end="url(#km)" stroke="#00D27B" stroke-width="1.5" x1="484" x2="524" y1="132" y2="132"></line>
+<rect fill="#0d1520" height="32" rx="5" stroke="#1e2d45" width="118" x="526" y="116"></rect>
+<text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="585" y="130">OpenAI / Anthropic</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="585" y="142">/ Azure / Bedrock</text>
+<line marker-end="url(#kmb)" stroke="#60a5fa" stroke-dasharray="3,2" stroke-width="1.2" x1="484" x2="660" y1="119" y2="80"></line>
+<line marker-end="url(#kmb)" stroke="#50fa7b" stroke-dasharray="3,2" stroke-width="1.2" x1="484" x2="660" y1="150" y2="190"></line>
+<line marker-end="url(#kmg)" stroke="#ffa726" stroke-dasharray="3,2" stroke-width="1.2" x1="484" x2="660" y1="181" y2="248"></line>
+<rect fill="#0d1520" height="36" rx="5" stroke="#60a5fa" stroke-width="1" width="138" x="662" y="63"></rect>
+<text fill="#60a5fa" font-size="8.5" font-weight="600" text-anchor="middle" x="731" y="78">OTel Collector</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="731" y="91">→ Tempo / Jaeger</text>
+<rect fill="#0d1520" height="36" rx="5" stroke="#50fa7b" stroke-width="1" width="138" x="662" y="174"></rect>
+<text fill="#50fa7b" font-size="8.5" font-weight="600" text-anchor="middle" x="731" y="190">Prometheus / Grafana</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="731" y="203">ai_llm_* + cost → Grafana</text>
+<rect fill="#0d1520" height="36" rx="5" stroke="#ffa726" stroke-width="1" width="138" x="662" y="232"></rect>
+<text fill="#ffa726" font-size="8.5" font-weight="600" text-anchor="middle" x="731" y="248">Log Aggregator</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="731" y="261">Splunk / ELK / Loki</text>
+</svg>
+</div>
+<div class="img-caption">Kong's AI observability is a plugin composition. AI Prometheus metrics require both <code>ai_metrics: true</code> on the Prometheus plugin and <code>logging.log_statistics: true</code> on the AI Proxy plugin; cost metrics additionally depend on pricing being configured for the routed model. Editorial reconstruction based on Kong AI Gateway docs.</div>
+<hr/>
+<!-- ══════ §4 PORTKEY ══════ -->
+<div class="vendor-header portkey">
+<span class="vendor-badge">Portkey</span>
+<span class="vendor-title">§4 — Analytics-First SaaS Observability</span>
+</div>
+<p>Portkey bakes the observability dashboard <em>into the gateway product itself</em>. Every request is automatically logged, traced, and surfaced in a web UI with near-zero configuration. For teams that need data locality, Portkey documents a <strong>hybrid deployment</strong> where the data plane runs in your VPC, LLM payloads stay on that data plane, and Portkey-managed dashboards plus control-plane metadata remain SaaS-side. Enterprise docs also expose Prometheus metrics, direct Langfuse/LangSmith integrations, and OTEL-style export paths.</p>
+<h3>Headers, Metadata, and Automatic Tracing</h3>
+<p>Portkey's observability story starts at the request layer: API-key plus provider/config headers determine routing, while metadata and trace headers can be attached directly to requests. Current docs support W3C trace context, Portkey trace headers, metadata tagging, multi-step trace trees, and ingestion of broader application OpenTelemetry signals into the Portkey observability surface. For attribution, the safer framing is metadata and request-level identifiers rather than the older Virtual Keys terminology, which Portkey now documents as deprecated in favor of Model Catalog / provider-based configuration.</p>
+<div class="code-wrap"><pre><span class="cm"># Python — multi-span RAG pipeline: all steps under one trace_id</span>
+<span class="kw">import</span> openai
+<span class="kw">from</span> portkey_ai <span class="kw">import</span> PORTKEY_GATEWAY_URL, createHeaders
+
+<span class="str">TRACE_ID</span> = <span class="str">"rag-session-abc-001"</span>
+
+<span class="kw">def</span> <span class="str">get_portkey_client</span>(stage: str):
+    <span class="kw">return</span> openai.OpenAI(
+        api_key=<span class="str">"dummy"</span>,
+        base_url=PORTKEY_GATEWAY_URL,
+        default_headers=createHeaders(
+            api_key=<span class="str">"pk-..."</span>,
+            virtual_key=<span class="str">"openai-prod-vk"</span>,
+            trace_id=TRACE_ID,
+            metadata={
+                <span class="str">"pipeline_stage"</span>: stage,
+                <span class="str">"_user"</span>:          <span class="str">"user-789"</span>,
+                <span class="str">"environment"</span>:    <span class="str">"production"</span>,
+                <span class="str">"app"</span>:            <span class="str">"rag-pipeline-v2"</span>,
+            }
+        )
+    )
+
+<span class="cm"># Step 1: Query rewriting — logged as span 1 under TRACE_ID</span>
+rewrite_client = get_portkey_client(<span class="str">"query-rewrite"</span>)
+rewritten = rewrite_client.chat.completions.create(
+    model=<span class="str">"gpt-5-mini"</span>,
+    messages=[{<span class="str">"role"</span>:<span class="str">"user"</span>,<span class="str">"content"</span>:f<span class="str">"Rewrite for retrieval: {user_query}"</span>}],
+)
+
+<span class="cm"># Step 2: Synthesis — logged as span 2, same trace</span>
+synth_client = get_portkey_client(<span class="str">"synthesis"</span>)
+response = synth_client.chat.completions.create(
+    model=<span class="str">"claude-sonnet-4-6"</span>,
+    messages=[
+        {<span class="str">"role"</span>:<span class="str">"system"</span>, <span class="str">"content"</span>:<span class="str">"Answer using only the provided context."</span>},
+        {<span class="str">"role"</span>:<span class="str">"user"</span>,   <span class="str">"content"</span>:f<span class="str">"Context: {retrieved_docs}\n\nQuery: {user_query}"</span>},
+    ],
+)</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/observability/traces" target="_blank">portkey.ai/docs/product/observability/traces</a> · <a href="https://portkey.ai/docs/product/observability/logs" target="_blank">observability/logs</a></div>
+<h3>Feedback API — Human Ratings on Traces</h3>
+<div class="code-wrap"><pre><span class="kw">from</span> portkey_ai <span class="kw">import</span> Portkey
+
+client = Portkey(api_key=<span class="str">"pk-..."</span>)
+
+client.feedback.create(
+    trace_id=<span class="str">"rag-session-abc-001"</span>,
+    value=<span class="num">1</span>,    <span class="cm"># +1 (thumbs up) or -1 (thumbs down)</span>
+    weight=<span class="num">1</span>,
+    metadata={
+        <span class="str">"reviewer"</span>: <span class="str">"qa-team"</span>,
+        <span class="str">"comment"</span>:  <span class="str">"Response was factually grounded"</span>,
+    }
+)</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/observability/feedback" target="_blank">portkey.ai/docs/product/observability/feedback</a></div>
+<div class="callout warn">
+<div class="callout-title">⚠ Data Residency — Standard vs Hybrid Plans</div>
+<p>On standard SaaS tiers, Portkey stores observability data in Portkey-managed infrastructure. The documented hybrid deployment keeps the LLM data plane — including prompt and response payloads — in your VPC. Portkey's own enterprise architecture docs still describe a Portkey-managed control plane that hosts the dashboard and stores non-sensitive metadata plus aggregated metrics, so avoid over-claiming this as a fully self-hosted observability stack.</p>
+</div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="320" width="820"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="700" letter-spacing=".5" text-anchor="middle" x="410" y="22">PORTKEY — HEADERS, TRACES &amp; ANALYTICS FLOW</text>
+<defs>
+<marker id="pm" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#5A67FF" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="pmg" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="pmo" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ffa726" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#0a0c24" height="110" rx="7" stroke="#5A67FF" stroke-opacity=".5" width="128" x="16" y="90"></rect>
+<text fill="#7a8899" font-size="9" font-weight="600" text-anchor="middle" x="80" y="110">APPLICATION</text>
+<rect fill="#0d1520" height="16" rx="3" stroke="#5A67FF" stroke-opacity=".4" width="108" x="26" y="117"></rect><text fill="#a5b4fc" font-size="7.5" text-anchor="middle" x="80" y="129">x-portkey-api-key</text>
+<rect fill="#0d1520" height="16" rx="3" stroke="#5A67FF" stroke-opacity=".4" width="108" x="26" y="137"></rect><text fill="#a5b4fc" font-size="7.5" text-anchor="middle" x="80" y="149">x-portkey-metadata</text>
+<rect fill="#0d1520" height="16" rx="3" stroke="#5A67FF" stroke-opacity=".4" width="108" x="26" y="157"></rect><text fill="#a5b4fc" font-size="7.5" text-anchor="middle" x="80" y="169">x-portkey-provider</text>
+<rect fill="#0d1520" height="16" rx="3" stroke="#5A67FF" stroke-opacity=".4" width="108" x="26" y="177"></rect><text fill="#a5b4fc" font-size="7.5" text-anchor="middle" x="80" y="189">W3C traceparent (OTel)</text>
+<line marker-end="url(#pm)" stroke="#5A67FF" stroke-width="1.5" x1="144" x2="180" y1="145" y2="145"></line>
+<rect fill="#0a0c24" height="170" rx="8" stroke="#5A67FF" stroke-width="1.5" width="200" x="182" y="72"></rect>
+<text fill="#5A67FF" font-size="10" font-weight="700" letter-spacing=".5" text-anchor="middle" x="282" y="95">PORTKEY GATEWAY</text>
+<rect fill="#0d1520" height="22" rx="4" stroke="#1e2d45" width="176" x="194" y="104"></rect><text fill="#e2e8f0" font-size="8.5" text-anchor="middle" x="282" y="119">API Key + Provider Routing</text>
+<rect fill="#5A67FF15" height="22" rx="4" stroke="#5A67FF" stroke-width=".8" width="176" x="194" y="130"></rect><text fill="#a5b4fc" font-size="8.5" text-anchor="middle" x="282" y="145">📡 Auto Span Creation</text>
+<rect fill="#5A67FF15" height="22" rx="4" stroke="#5A67FF" stroke-width=".8" width="176" x="194" y="156"></rect><text fill="#a5b4fc" font-size="8.5" text-anchor="middle" x="282" y="171">💰 Cost + Token Accounting</text>
+<rect fill="#0d1520" height="22" rx="4" stroke="#1e2d45" width="176" x="194" y="182"></rect><text fill="#e2e8f0" font-size="8.5" text-anchor="middle" x="282" y="197">Fallback / Retry Engine</text>
+<rect fill="#0d1520" height="22" rx="4" stroke="#1e2d45" width="176" x="194" y="208"></rect><text fill="#7a8899" font-size="8.5" text-anchor="middle" x="282" y="223">W3C OTel context correlation</text>
+<line marker-end="url(#pm)" stroke="#5A67FF" stroke-width="1.4" x1="382" x2="430" y1="140" y2="120"></line>
+<line marker-end="url(#pm)" stroke="#5A67FF" stroke-width="1.4" x1="382" x2="430" y1="155" y2="172"></line>
+<rect fill="#0d1520" height="32" rx="5" stroke="#1e2d45" width="118" x="432" y="102"></rect><text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="491" y="122">OpenAI / Anthropic</text>
+<rect fill="#0d1520" height="32" rx="5" stroke="#1e2d45" width="118" x="432" y="154"></rect><text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="491" y="174">Azure / Gemini / etc.</text>
+<line marker-end="url(#pm)" stroke="#5A67FF" stroke-dasharray="3,2" stroke-width="1.2" x1="282" x2="282" y1="242" y2="268"></line>
+<rect fill="#5A67FF15" height="28" rx="5" stroke="#5A67FF" stroke-width="1" width="200" x="182" y="270"></rect>
+<text fill="#a5b4fc" font-size="9" font-weight="600" text-anchor="middle" x="282" y="288">Portkey Log Store</text>
+<line marker-end="url(#pmg)" stroke="#50fa7b" stroke-dasharray="3,2" stroke-width="1.2" x1="382" x2="558" y1="281" y2="246"></line>
+<line marker-end="url(#pmo)" stroke="#ffa726" stroke-dasharray="3,2" stroke-width="1.2" x1="382" x2="558" y1="284" y2="284"></line>
+<line marker-end="url(#pm)" stroke="#bd93f9" stroke-dasharray="3,2" stroke-width="1.2" x1="382" x2="558" y1="287" y2="300"></line>
+<rect fill="#0d1520" height="36" rx="5" stroke="#50fa7b" stroke-width="1" width="145" x="560" y="228"></rect>
+<text fill="#50fa7b" font-size="8.5" font-weight="600" text-anchor="middle" x="632" y="244">Portkey Dashboard</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="632" y="257">Traces · Logs · Analytics</text>
+<rect fill="#0d1520" height="36" rx="5" stroke="#ffa726" stroke-width="1" width="145" x="560" y="268"></rect>
+<text fill="#ffa726" font-size="8.5" font-weight="600" text-anchor="middle" x="632" y="284">Enterprise Export</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="632" y="297">OTLP / Complete Logs</text>
+<rect fill="#0d1520" height="36" rx="5" stroke="#bd93f9" stroke-width="1" width="145" x="560" y="165"></rect>
+<text fill="#bd93f9" font-size="8.5" font-weight="600" text-anchor="middle" x="632" y="181">Feedback API</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="632" y="194">Human ratings on traces</text>
+<line marker-end="url(#pm)" stroke="#bd93f9" stroke-dasharray="3,2" stroke-width="1" x1="382" x2="560" y1="278" y2="183"></line>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="282" y="312">⚠ Hybrid: data plane runs in your VPC; control plane handles admin + analytics</text>
+</svg>
+</div>
+<div class="img-caption">Portkey auto-logs every request. In hybrid deployment, AI traffic stays on the VPC data plane while Portkey-managed dashboards, non-sensitive metadata, and aggregated metrics remain control-plane managed. Enterprise docs additionally describe Prometheus metrics and OTLP / complete-log export paths. Editorial reconstruction based on Portkey observability and enterprise architecture docs.</div>
+<hr/>
+<!-- ══════ §5 TRUEFOUNDRY ══════ -->
+<div class="vendor-header tf">
+<span class="vendor-badge">TrueFoundry</span>
+<span class="vendor-title">§5 — Built-In Monitor, Trace Export &amp; Deployment-Dependent Data Paths</span>
+</div>
+<p>TrueFoundry's AI Gateway supports multiple deployment topologies — including gateway-only SaaS, gateway-plane-only, managed combinations, and fully self-hosted. In current docs, observability is not just a bring-your-own-backend story: TrueFoundry documents a built-in <strong>Metrics Dashboard</strong>, built-in <strong>trace viewing in Monitor</strong>, configurable <strong>request-log / trace retention</strong>, <strong>custom metadata tagging</strong>, native <strong>feedback attachment on traces</strong>, optional <strong>OpenTelemetry trace export</strong>, and Prometheus/Grafana integration for supported customer-hosted deployments. Which pieces you can use, and where the resulting telemetry lands, depends on deployment mode and data-routing configuration.</p>
+<div class="callout tf">
+<div class="callout-title">🔒 Telemetry Data Path — Deployment-Mode Dependent</div>
+<p>TrueFoundry's broader platform architecture includes globally hosted services such as licensing/authentication and analytics outside customer infrastructure. Separately, the AI Gateway docs now let you configure where <strong>request logs (traces)</strong> and <strong>metrics</strong> are stored. The default destination is always enabled; custom destinations are Enterprise-only and currently apply to traces, while metrics continue to route to the default destination. Treat telemetry residency as a deployment-and-routing decision, not as a universal product guarantee.</p>
+</div>
+<h3>OTEL Export Configuration</h3>
+<p>TrueFoundry documents <strong>OpenTelemetry-compliant tracing export</strong> for the AI Gateway. Two details matter: the export is specifically for <strong>traces</strong>, and the exported traces can coexist with the traces already stored and viewable inside TrueFoundry Monitor. Prometheus / Grafana-style metrics are documented separately, and current data-routing docs make clear that metrics and traces do not follow identical routing rules.</p>
+<div class="code-wrap"><pre># Optional customer-managed trace export path for TrueFoundry
+# Use OTLP for traces; handle metrics separately via Prometheus / Grafana-compatible scraping.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: http://tempo.monitoring.svc:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: Standard OpenTelemetry Collector config — exporters are vendor-neutral and documented at <a href="https://opentelemetry.io/docs/collector/" target="_blank">opentelemetry.io/docs/collector</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">TrueFoundry OTEL export doc</a></div>
+<p>The collector example above is intentionally narrow: it shows <em>one optional trace-export topology</em>, not the whole TrueFoundry observability story. Current docs separately describe built-in trace viewing, a built-in metrics dashboard, Prometheus-compatible metrics for supported customer-hosted gateways, and routing rules where traces and metrics can follow different destinations.</p><h3>Logs, Retention, Metadata, Feedback, and Alerting</h3><p>TrueFoundry treats request logs as traces. Current docs let operators control request tracing, query those traces in Monitor or via API, and configure where traces and metrics are stored. The important nuance is that traces and metrics do not follow the same routing rules: trace retention is configurable, custom trace destinations are an enterprise feature, and metrics continue to route to the default destination.</p><p>Two higher-level observability primitives are especially relevant for platform teams. First, <code>X-TFY-METADATA</code> lets you attach custom key/value metadata that can be used for filtering, custom metrics pages, and conditional routing rules. Second, every gateway response can return <code>x-tfy-feedback-target-id</code>, which lets product or QA workflows attach human feedback directly to the root trace. For customer-hosted gateways, TrueFoundry separately documents Prometheus/Grafana-based alerting plus export guides for monitoring platforms such as Elastic, New Relic, Dynatrace, and Last9.</p>
+<div class="callout info">
+<div class="callout-title">ℹ Why In-Cluster OTEL Matters for Regulated Industries</div>
+<p>In HIPAA-covered environments or financial services under SOC2/ISO 27001, keeping prompt and completion text within audited network boundaries is a compliance requirement. For teams on self-hosted gateway-plane deployments, TrueFoundry's OTLP export to in-cluster backends can satisfy this — but confirm your specific deployment topology against TrueFoundry's deployment documentation before treating this as a guarantee.</p>
+</div>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 460" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="460" width="820"></rect>
+<text fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" x="410" y="22">TrueFoundry — Built-In Monitor + Optional Customer-Managed Export</text>
+<defs>
+<marker id="tfm" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#FF5533" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="tfmg" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="tfmb" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#60a5fa" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="tfmp" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ff79c6" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="tfmo" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ffa726" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<!-- Outer boundary: self-hosted gateway-plane cluster -->
+<rect fill="none" height="430" opacity=".6" rx="10" stroke="#FF5533" stroke-dasharray="8,4" stroke-width="1.5" width="804" x="8" y="14"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="8.5" font-weight="700" letter-spacing=".5" x="26" y="30">SELF-HOSTED GATEWAY-PLANE DEPLOYMENT — IN-CLUSTER TELEMETRY</text>
+<rect fill="#1e0d0844" height="385" opacity=".5" rx="7" stroke="#FF5533" stroke-dasharray="4,3" stroke-width=".8" width="776" x="22" y="44"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="7.5" opacity=".7" x="38" y="58">Kubernetes Cluster (EKS / GKE / AKS)</text>
+<!-- Application -->
+<rect fill="#1a2233" height="72" rx="6" stroke="#1e2d45" width="108" x="36" y="165"></rect>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="90" y="185">Application</text>
+<text fill="#60a5fa" font-size="8" text-anchor="middle" x="90" y="200">RAG / Chat</text>
+<text fill="#60a5fa" font-size="8" text-anchor="middle" x="90" y="214">Services</text>
+<line marker-end="url(#tfm)" stroke="#FF5533" stroke-width="1.5" x1="144" x2="186" y1="201" y2="201"></line>
+<!-- TrueFoundry Gateway -->
+<rect fill="#1e0d08" height="196" rx="8" stroke="#FF5533" stroke-width="1.8" width="182" x="188" y="108"></rect>
+<text fill="#FF5533" font-size="9.5" font-weight="700" letter-spacing=".5" text-anchor="middle" x="279" y="127">TRUEFOUNDRY</text>
+<text fill="#FF5533" font-size="9" letter-spacing=".3" text-anchor="middle" x="279" y="139">AI GATEWAY</text>
+<rect fill="#0d1520" height="20" rx="3" stroke="#1e2d45" width="158" x="200" y="148"></rect><text fill="#e2e8f0" font-size="8" text-anchor="middle" x="279" y="162">Model Router / Auth</text>
+<rect fill="#FF553310" height="20" rx="3" stroke="#FF5533" stroke-opacity=".7" width="158" x="200" y="172"></rect><text fill="#ff9977" font-size="8" text-anchor="middle" x="279" y="186">📡 OTLP Trace Export</text>
+<rect fill="#FF553310" height="20" rx="3" stroke="#FF5533" stroke-opacity=".7" width="158" x="200" y="196"></rect><text fill="#ff9977" font-size="8" text-anchor="middle" x="279" y="210">📊 Metrics Dashboard + /metrics</text>
+<rect fill="#0d1520" height="20" rx="3" stroke="#1e2d45" width="158" x="200" y="220"></rect><text fill="#e2e8f0" font-size="8" text-anchor="middle" x="279" y="234">🧾 Request traces / logs</text>
+<rect fill="#0d1520" height="20" rx="3" stroke="#1e2d45" width="158" x="200" y="244"></rect><text fill="#e2e8f0" font-size="8" text-anchor="middle" x="279" y="258">🏷 Custom metadata + filters</text>
+<rect fill="#0d1520" height="26" rx="3" stroke="#1e2d45" width="158" x="200" y="268"></rect><text fill="#7a8899" font-size="8" text-anchor="middle" x="279" y="285">⭐ Feedback on traces</text>
+<!-- GW → Provider APIs -->
+<line marker-end="url(#tfm)" stroke="#FF5533" stroke-width="1.4" x1="370" x2="416" y1="165" y2="152"></line>
+<rect fill="#1a2233" height="40" rx="5" stroke="#1e2d45" width="128" x="418" y="138"></rect>
+<text fill="#bd93f9" font-size="8.5" text-anchor="middle" x="482" y="155">Provider APIs</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="482" y="168">(OpenAI, Anthropic, Azure...)</text>
+<!-- OTLP arrow down to OTel Collector -->
+<line marker-end="url(#tfm)" stroke="#FF5533" stroke-dasharray="3,2" stroke-width="1.5" x1="279" x2="279" y1="304" y2="334"></line>
+<!-- OTel Collector -->
+<rect fill="#1a1200" height="36" rx="5" stroke="#ffa726" stroke-width="1.2" width="178" x="190" y="334"></rect>
+<text fill="#ffa726" font-size="9" font-weight="600" text-anchor="middle" x="279" y="351">OTel Collector</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="279" y="363">svc.cluster.local (in-cluster)</text>
+<!-- Prometheus / Grafana scrape -->
+<line marker-end="url(#tfmp)" stroke="#ff79c6" stroke-dasharray="3,2" stroke-width="1.2" x1="370" x2="532" y1="210" y2="218"></line>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="451" y="207">Prometheus / Grafana scrape</text>
+<!-- OTel Collector → backends -->
+<line marker-end="url(#tfmb)" stroke="#60a5fa" stroke-dasharray="3,2" stroke-width="1.2" x1="368" x2="532" y1="344" y2="250"></line>
+<line marker-end="url(#tfmg)" stroke="#50fa7b" stroke-dasharray="3,2" stroke-width="1.2" x1="368" x2="532" y1="349" y2="296"></line>
+<line marker-end="url(#tfmo)" stroke="#ffa726" stroke-dasharray="3,2" stroke-width="1.2" x1="368" x2="532" y1="354" y2="343"></line>
+<line marker-end="url(#tfm)" stroke="#ff7b72" stroke-dasharray="3,2" stroke-width="1.2" x1="368" x2="532" y1="358" y2="391"></line>
+<!-- Prometheus / Grafana y=208 h=36 bottom=244 -->
+<rect fill="#0d1520" height="36" rx="5" stroke="#ff79c6" stroke-width="1" width="148" x="534" y="208"></rect>
+<text fill="#ff79c6" font-size="8.5" font-weight="600" text-anchor="middle" x="608" y="224">Prometheus / Grafana</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="608" y="237">dashboards + alerts</text>
+<!-- Tempo / Jaeger y=280 h=36 bottom=316 -->
+<rect fill="#0d1520" height="36" rx="5" stroke="#60a5fa" stroke-width="1" width="148" x="534" y="280"></rect>
+<text fill="#60a5fa" font-size="8.5" font-weight="600" text-anchor="middle" x="608" y="296">Tempo / Jaeger</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="608" y="309">OTEL trace UI</text>
+<!-- SIEM y=328 h=36 bottom=364 -->
+<rect fill="#0d1520" height="36" rx="5" stroke="#ffa726" stroke-width="1" width="148" x="534" y="328"></rect>
+<text fill="#ffa726" font-size="8.5" font-weight="600" text-anchor="middle" x="608" y="344">New Relic / Elastic</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="608" y="357">export guides documented</text>
+<!-- Vector/Fluentd y=376 h=36 bottom=412 — inside cluster rect (44+385=429) -->
+<rect fill="#0d1520" height="36" rx="5" stroke="#ff7b72" stroke-width="1" width="148" x="534" y="376"></rect>
+<text fill="#ff7b72" font-size="8.5" font-weight="600" text-anchor="middle" x="608" y="392">Trace data routing</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="608" y="405">custom retention / destinations</text>
+<!-- stdout log path from GW -->
+<line marker-end="url(#tfm)" stroke="#ff7b72" stroke-dasharray="3,2" stroke-width="1" x1="370" x2="532" y1="240" y2="394"></line>
+<!-- Note about managed services -->
+<text fill="#6272a4" font-family="IBM Plex Mono, monospace" font-size="7.5" text-anchor="middle" x="279" y="438">Note: built-in Monitor views can coexist with customer-managed export paths; broader platform services may still be hosted depending on deployment mode</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry combines built-in Monitor views with configurable trace routing, retention, metadata, feedback-on-trace workflows, and customer-managed metrics / alerting paths. Request logs are exposed as traces, and routing remains deployment- and destination-dependent.</div>
+<hr/>
+<!-- ══════ §6 DASHBOARD FLEXIBILITY ══════ -->
+<h2>§6 — Trace Dashboard Flexibility Across Platforms</h2>
+<p>All four gateways can ultimately feed Prometheus metrics, but the setup effort and out-of-box experience varies significantly. A compliance team needs audit-oriented log tables. A product team needs per-user cost heatmaps. An ML team needs prompt version performance comparisons.</p>
+<h3>Grafana + Prometheus / Grafana</h3>
+<p>All four gateways can feed metrics into a Prometheus / Grafana-style workflow, but the operator experience differs. LiteLLM and Kong are classic bring-your-own-dashboard products. Portkey has a built-in dashboard and also documents Prometheus metrics for enterprise/self-hosted deployments. TrueFoundry now sits in the middle: it documents a built-in Metrics Dashboard in Monitor, while also exposing Prometheus-compatible metrics and Grafana integration for supported customer-hosted gateway deployments.</p>
+<h3>Langfuse / Observability Ecosystems</h3>
+<p><strong>LiteLLM</strong> documents native Langfuse and LangSmith callbacks. <strong>Portkey</strong> now documents direct Langfuse and LangSmith integrations, plus enterprise OTEL / complete-log export paths for broader observability ecosystems. <strong>TrueFoundry</strong> is better described as <em>OTEL-friendly</em> than as a native Langfuse product: you can forward traces to external tools through standard export pipelines. <strong>Kong</strong> remains the most custom here — you bridge to external tools through OTEL or logging plugins rather than a dedicated Langfuse/LangSmith feature.</p>
+<h3>Jaeger / Tempo / Jaeger (OTel-native)</h3>
+<p><strong>LiteLLM</strong>, <strong>Kong</strong>, and <strong>TrueFoundry</strong> all document OTLP-friendly tracing paths that can be visualized in Jaeger or Tempo / Jaeger. <strong>Portkey</strong> still centers its own trace UI, but enterprise docs now also describe OTEL-style export and complete-log export options for self-hosted / enterprise use cases. So the accurate distinction is no longer “Portkey cannot”; it is “Portkey's built-in UI is primary, while self-managed backends are an enterprise/export-path story.”</p>
+<hr/>
+<!-- ══════ §7 FEATURE MATRIX ══════ -->
+<h2>§7 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation as of March 2026. <span class="check">✅</span> = native, <span class="partial">⚠</span> = possible with customization or caveats, <span class="cross">❌</span> = not natively supported.</p>
+<div class="matrix-wrap">
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th style="color:var(--litellm)">LiteLLM</th>
+<th style="color:var(--kong)">Kong AI GW</th>
+<th style="color:var(--portkey)">Portkey</th>
+<th style="color:var(--tf)">TrueFoundry</th>
+</tr>
+</thead>
+<tbody>
+<tr class="cat-row"><td colspan="5">DISTRIBUTED TRACING</td></tr>
+<tr>
+<td>Native OTLP/gRPC export</td>
+<td><span class="check">✅</span> OTLP via callback</td>
+<td><span class="check">✅</span> Via opentelemetry plugin</td>
+<td><span class="partial">⚠</span> Enterprise / self-hosted OTEL export</td>
+<td><span class="check">✅</span> Trace export documented</td>
+</tr>
+<tr>
+<td>Native OTLP/HTTP export</td>
+<td><span class="check">✅</span> OTLP via callback</td>
+<td><span class="check">✅</span> Via opentelemetry plugin</td>
+<td><span class="partial">⚠</span> Enterprise / self-hosted OTEL export</td>
+<td><span class="check">✅</span> Trace export documented</td>
+</tr>
+<tr>
+<td>W3C Traceparent propagation</td>
+<td><span class="partial">⚠</span> Verify per integration path</td>
+<td><span class="check">✅</span> W3C propagation supported</td>
+<td><span class="check">✅</span> W3C context accepted</td>
+<td><span class="partial">⚠</span> Trace correlation documented; verify per upstream path</td>
+</tr>
+<tr>
+<td>Streaming request tracing</td>
+<td>✅</td>
+<td><span class="partial">⚠</span> Request-level tracing</td>
+<td>✅</td>
+<td><span class="partial">⚠</span> Verify streaming-specific semantics</td>
+</tr>
+<tr>
+<td>Multi-step pipeline traces</td>
+<td><span class="check">✅</span> Via metadata / callback context</td>
+<td><span class="partial">⚠</span> Via PDK custom spans</td>
+<td><span class="check">✅</span> <code>trace_id</code> grouping</td>
+<td><span class="partial">⚠</span> Context propagation documented</td>
+</tr>
+<tr class="cat-row"><td colspan="5">LOGGING</td></tr>
+<tr>
+<td>Prompt &amp; completion body logging</td>
+<td><span class="partial">⚠</span> Configurable; not always stored</td>
+<td><span class="partial">⚠</span> Via log plugins; manual redaction required</td>
+<td><span class="check">✅</span> Built-in logs / hybrid or SaaS</td>
+<td><span class="partial">⚠</span> Via request traces/log settings</td>
+</tr>
+<tr>
+<td>Structured request logs / queryable traces</td>
+<td>✅ Standard logging payload via callbacks</td>
+<td>✅ AI audit logs + log plugins</td>
+<td>✅ Built-in logs; enterprise export path</td>
+<td>✅ Built-in trace logs + API access</td>
+</tr>
+<tr>
+<td>S3 / GCS log archival</td>
+<td><span class="check">✅</span> Native callbacks</td>
+<td><span class="partial">⚠</span> Via S3/file/kafka log plugins</td>
+<td><span class="partial">⚠</span> Enterprise export path</td>
+<td><span class="partial">⚠</span> Customer-managed export / storage path</td>
+</tr>
+<tr>
+<td>Kafka log streaming</td>
+<td><span class="partial">⚠</span> Via custom callback</td>
+<td><span class="check">✅</span> Native <code>kafka-log</code> plugin</td>
+<td><span class="partial">⚠</span> Enterprise / custom export</td>
+<td><span class="partial">⚠</span> Customer-managed export path</td>
+</tr>
+<tr>
+<td>PII / payload redaction controls</td>
+<td><span class="check">✅</span> Scrub-data / logging controls</td>
+<td><span class="partial">⚠</span> Manual in logging pipeline</td>
+<td><span class="check">✅</span> Guardrails + redaction surfaces</td>
+<td><span class="partial">⚠</span> Verify per deployment / logging mode</td>
+</tr><tr><td>Retention controls for stored traces/logs</td><td>⚠ Depends on chosen backend</td><td>⚠ Depends on chosen backend</td><td>✅ Plan / enterprise retention documented</td><td>✅ Trace retention + routing documented</td></tr>
+<tr class="cat-row"><td colspan="5">METRICS</td></tr>
+<tr>
+<td>Prometheus /metrics endpoint</td>
+<td><span class="check">✅</span> Via callbacks</td>
+<td><span class="check">✅</span> Via prometheus plugin</td>
+<td><span class="partial">⚠</span> Enterprise / self-hosted metrics</td>
+<td><span class="check">✅</span> Customer-hosted gateway metrics documented</td>
+</tr>
+<tr>
+<td>Token usage metrics (prompt / completion)</td>
+<td>✅</td>
+<td>✅ ai_llm_tokens_total{token_type=...}</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Per-request cost tracking (USD)</td>
+<td>✅</td>
+<td>✅ Via ai_metrics + pricing config</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Per-team / per-user spend attribution</td>
+<td>⚠ Team labels / metadata</td>
+<td>⚠ Via consumer / tags / labels</td>
+<td>✅ Metadata + key / config segmentation</td>
+<td>✅ Users / teams / virtual accounts / metadata</td>
+</tr><tr><td>Custom metadata for filtering / dashboards</td><td>⚠ Metadata / tags / payload fields</td><td>⚠ Custom tags / headers / plugins</td><td>✅ Metadata feature</td><td>✅ X-TFY-METADATA</td></tr>
+<tr>
+<td>Kubernetes ServiceMonitor</td>
+<td><span class="partial">⚠</span> Manual ServiceMonitor</td>
+<td><span class="partial">⚠</span> Manual ServiceMonitor</td>
+<td><span class="partial">⚠</span> Enterprise / self-hosted only</td>
+<td><span class="partial">⚠</span> Verify current docs</td>
+</tr>
+<tr class="cat-row"><td colspan="5">OBSERVABILITY BACKENDS &amp; INTEGRATIONS</td></tr>
+<tr>
+<td>Langfuse integration</td>
+<td><span class="check">✅</span> Native callback</td>
+<td><span class="partial">⚠</span> Custom via OTEL / logs</td>
+<td><span class="check">✅</span> Direct integration documented</td>
+<td><span class="partial">⚠</span> Custom via OTEL/export pipeline</td>
+</tr>
+<tr>
+<td>LangSmith integration</td>
+<td><span class="check">✅</span> Native callback</td>
+<td><span class="partial">⚠</span> Custom via OTEL / logs</td>
+<td><span class="check">✅</span> Direct integration documented</td>
+<td><span class="partial">⚠</span> Custom via OTEL/export pipeline</td>
+</tr>
+<tr>
+<td>Datadog integration</td>
+<td><span class="check">✅</span> Native callback</td>
+<td><span class="check">✅</span> Datadog / OTEL path</td>
+<td><span class="partial">⚠</span> Enterprise OTEL / complete-log export</td>
+<td><span class="check">✅</span> Export guides documented</td>
+</tr>
+<tr>
+<td>Grafana Tempo / Jaeger trace UI</td>
+<td><span class="check">✅</span> Via OTLP</td>
+<td><span class="check">✅</span> Via opentelemetry plugin</td>
+<td><span class="partial">⚠</span> Enterprise export path available</td>
+<td><span class="check">✅</span> OTEL trace export documented</td>
+</tr>
+<tr>
+<td>SIEM integration (Splunk, ELK, etc.)</td>
+<td><span class="check">✅</span> Via OTEL / custom callback</td>
+<td><span class="check">✅</span> Via OTEL / log plugins</td>
+<td><span class="partial">⚠</span> Enterprise OTEL / complete-log export</td>
+<td><span class="check">✅</span> Export integrations documented</td>
+</tr><tr><td>Export to monitoring platforms / alerts</td><td>⚠ Via Prometheus / OTEL / callbacks</td><td>✅ Via Prometheus / OTEL / log plugins</td><td>⚠ Enterprise export / self-hosted metrics</td><td>✅ Prometheus/Grafana + export guides</td></tr>
+<tr>
+<td>Built-in observability UI (no 3rd-party)</td>
+<td><span class="partial">⚠</span> Basic spend / logs UI</td>
+<td><span class="cross">❌</span> Bring your own UI</td>
+<td><span class="check">✅</span> Full dashboard</td>
+<td><span class="check">✅</span> Metrics Dashboard + trace view</td>
+</tr>
+<tr class="cat-row"><td colspan="5">ADVANCED &amp; DATA RESIDENCY</td></tr>
+<tr>
+<td>Feedback attached to traces</td>
+<td>⚠ Via Langfuse / custom callback</td>
+<td>❌ No native support</td>
+<td>✅ Native Feedback API</td>
+<td>✅ x-tfy-feedback-target-id</td>
+</tr>
+<tr>
+<td>Trace sampling (head-based)</td>
+<td><span class="partial">⚠</span> Via OTel / callback config</td>
+<td><span class="check">✅</span> Via OTel plugin sampler</td>
+<td><span class="partial">⚠</span> Depends on export path</td>
+<td><span class="partial">⚠</span> Depends on export pipeline</td>
+</tr>
+<tr>
+<td>Hot-path telemetry stays in-cluster</td>
+<td>⚠ Self-hosted only; callbacks decide egress</td>
+<td>⚠ Self-hosted only; plugin config decides egress</td>
+<td>⚠ Hybrid: AI traffic in VPC; control-plane metadata outside</td>
+<td>⚠ Supported in customer-hosted modes; routing still matters</td>
+</tr>
+<tr>
+<td>Prompt version tracking</td>
+<td><span class="partial">⚠</span> Via Langfuse callback</td>
+<td><span class="partial">⚠</span> Custom metadata / external tooling</td>
+<td><span class="check">✅</span> Prompt management built-in</td>
+<td><span class="partial">⚠</span> External / custom path</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr/>
+<!-- ══════ §8 VERDICT ══════ -->
+<h2>§8 — Editorial Verdict</h2>
+<p>Editorial assessments as of March 25, 2026.</p>
+<div class="verdict-grid">
+<div class="verdict-card litellm">
+<div class="verdict-label">LiteLLM</div>
+<div class="verdict-name">The Polyglot Logger</div>
+<div class="verdict-text">LiteLLM's callback architecture is the most flexible. Twenty-plus documented integrations, support for synchronous or asynchronous callback patterns, and a clean base class for bring-your-own destinations mean almost any observability stack can be wired in. The cost is operational discipline: each integration needs validation, and the built-in UI remains deliberately minimal.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams that need maximum integration flexibility and are comfortable managing observability backends. Strong choice when Langfuse or LangSmith is already in the stack.</div>
+</div>
+<div class="verdict-card kong">
+<div class="verdict-label">Kong AI Gateway</div>
+<div class="verdict-name">The Enterprise Composer</div>
+<div class="verdict-text">Kong's plugin composability is genuinely powerful for organisations already running Kong as their API gateway — LLM observability joins the same OTel/Prometheus / Grafana infrastructure your REST services already use. But the details matter: native AI cost and token metrics only appear when <code>ai_metrics: true</code> is enabled on Prometheus / Grafana <em>and</em> statistics logging is enabled on the AI Proxy plugin. Prompt body capture still follows the standard logging-plugin path and needs deliberate redaction strategy.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Organisations with an existing Kong deployment where LLM routes need to join an established API observability program.</div>
+</div>
+<div class="verdict-card portkey">
+<div class="verdict-label">Portkey</div>
+<div class="verdict-name">The Analytics-First Gateway</div>
+<div class="verdict-text">Portkey still delivers the lowest time-to-insight: a production-grade LLM observability dashboard requiring near-zero configuration. Hybrid deployment keeps LLM payloads on the VPC data plane while the Portkey-managed dashboard and control-plane metadata remain SaaS-side. Compared with the earlier draft, the key correction is that Portkey's enterprise story is broader than just the built-in UI: current docs also include direct Langfuse/LangSmith integrations and enterprise export paths.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Product teams that prioritise observability UX and time-to-insight; Enterprise teams using the hybrid data plane for payload residency.</div>
+</div>
+<div class="verdict-card tf">
+<div class="verdict-label">TrueFoundry</div>
+<div class="verdict-name">The Built-In Monitor + Export Hybrid</div>
+<div class="verdict-text">TrueFoundry is no longer best described as only a bring-your-own observability stack. Current docs show built-in Monitor trace views, a built-in Metrics Dashboard, optional OTEL trace export, and Prometheus/Grafana integration for supported customer-hosted gateways. The caveat remains important: deployment mode and data-routing choices determine where telemetry lands, and traces and metrics do not share identical routing semantics.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams on self-hosted gateway-plane deployments with existing Prometheus/Grafana stacks, especially in regulated industries where payload residency requirements are strict.</div>
+</div>
+</div>
+<h3>Positioning Map — Observability Depth vs. Setup Complexity</h3>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 620 420" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="420" width="620"></rect>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="65" y1="22" y2="342"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="580" y1="342" y2="342"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="65" x2="580" y1="182" y2="182"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="322" x2="322" y1="22" y2="342"></line>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" x="322" y="380">← Low Operational Complexity — High →</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" transform="rotate(-90,14,182)" x="14" y="182">Observability Depth</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="193" y="42">LOW OPS / HIGH DEPTH</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="450" y="42">HIGH OPS / HIGH DEPTH</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="193" y="335">LOW OPS / LOWER DEPTH</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="450" y="335">HIGH OPS / LOWER DEPTH</text>
+<!-- PORTKEY -->
+<circle cx="155" cy="100" fill="#5A67FF" fill-opacity=".08" r="48" stroke="#5A67FF" stroke-width="1.5"></circle>
+<text fill="#5A67FF" font-size="13" font-weight="700" text-anchor="middle" x="155" y="95">Portkey</text>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="155" y="111">Analytics SaaS</text>
+<!-- LITELLM -->
+<circle cx="195" cy="60" fill="#00C2CB" fill-opacity=".08" r="42" stroke="#00C2CB" stroke-width="1.5"></circle>
+<text fill="#00C2CB" font-size="13" font-weight="700" text-anchor="middle" x="195" y="55">LiteLLM</text>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="195" y="71">Callback polyglot</text>
+<!-- KONG -->
+<circle cx="430" cy="208" fill="#00D27B" fill-opacity=".08" r="44" stroke="#00D27B" stroke-width="1.5"></circle>
+<text fill="#00D27B" font-size="13" font-weight="700" text-anchor="middle" x="430" y="203">Kong</text>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="430" y="219">Plugin composable</text>
+<!-- TRUEFOUNDRY -->
+<circle cx="468" cy="70" fill="#FF5533" fill-opacity=".08" r="52" stroke="#FF5533" stroke-width="1.5"></circle>
+<text fill="#FF5533" font-size="13" font-weight="700" text-anchor="middle" x="468" y="62">TrueFoundry</text>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="468" y="78">Built-in Monitor + export</text>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" x="468" y="91">(self-hosted GW-plane)</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="9" x="96" y="400">Bubble size = degree of VPC telemetry control (deployment-mode dependent)</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Axes are editorial assessments as of March 2026. TrueFoundry reflects a built-in Monitor plus optional export posture rather than a pure bring-your-own-backend story.</p>
+<hr/>
+<!-- ══════ §9 REFERENCES ══════ -->
+<h2>§9 — References</h2>
+<ol class="ref-list">
+<li><a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">LiteLLM — Proxy Logging &amp; Callbacks</a></li>
+<li><a href="https://docs.litellm.ai/docs/observability/opentelemetry_integration" target="_blank">LiteLLM — OpenTelemetry Integration</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/prometheus" target="_blank">LiteLLM — Prometheus / Grafana Metrics</a></li>
+<li><a href="https://docs.litellm.ai/docs/observability/custom_callback" target="_blank">LiteLLM — Custom Logger / Callback</a></li>
+<li><a href="https://developer.konghq.com/plugins/opentelemetry/" target="_blank">Kong — OpenTelemetry Plugin</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM Metrics (incl. ai_metrics flag)</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank">Kong — Gen AI OTel Attributes Reference</a></li>
+<li><a href="https://docs.konghq.com/hub/kong-inc/prometheus/" target="_blank">Kong — Prometheus / Grafana Plugin</a></li>
+<li><a href="https://docs.konghq.com/hub/kong-inc/http-log/" target="_blank">Kong — HTTP Log Plugin</a></li>
+<li><a href="https://portkey.ai/docs/product/observability/traces" target="_blank">Portkey — Traces</a></li>
+<li><a href="https://portkey.ai/docs/product/observability/logs" target="_blank">Portkey — Logs</a></li>
+<li><a href="https://portkey.ai/docs/product/observability/feedback" target="_blank">Portkey — Feedback API</a></li>
+<li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Hybrid Deployment (data plane in VPC)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">TrueFoundry — Export OpenTelemetry Data</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview</a></li>
+<li><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/" target="_blank">OpenTelemetry — GenAI Semantic Conventions</a></li>
+<li><a href="https://opentelemetry.io/docs/collector/" target="_blank">OpenTelemetry — Collector Documentation</a></li>
+<li><a href="https://docs.portkey.ai/docs/integrations/observability/langsmith" target="_blank">Portkey — LangSmith Integration</a></li><li><a href="https://docs.portkey.ai/docs/integrations/observability/langfuse" target="_blank">Portkey — Langfuse Integration</a></li><li><a href="https://docs.portkey.ai/docs/product/enterprise-offering/otel/complete-logs" target="_blank">Portkey — Complete Logs Export (Enterprise)</a></li><li><a href="https://docs.portkey.ai/docs/self-hosting/prometheus-metrics" target="_blank">Portkey — Self-Hosted Prometheus / Grafana Metrics</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/analytics" target="_blank">TrueFoundry — Metrics Dashboard</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/view-traces" target="_blank">TrueFoundry — View Traces</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/data-routing" target="_blank">TrueFoundry — Data Routing</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/prometheus-grafana-integration" target="_blank">TrueFoundry — Prometheus / Grafana / Grafana Integration</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/analytics-overview" target="_blank">TrueFoundry — View Metrics / Monitor</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/request-logging" target="_blank">TrueFoundry — Request Tracing</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/feedback-for-traces" target="_blank">TrueFoundry — Log Feedback on Requests</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/log-custom-metadata" target="_blank">TrueFoundry — Log Custom Metadata</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/alerting" target="_blank">TrueFoundry — Prometheus / Grafana Integration</a></li></ol>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 8 of 15  ·  March 25, 2026  ·  All vendor names are trademarks of their respective owners.<br/>
+  Feature claims cross-referenced against official public documentation. Verify before production decisions.
+</p>
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+</body>
+</html>
