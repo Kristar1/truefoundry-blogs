@@ -1,0 +1,1020 @@
+
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="How LiteLLM, Kong, Portkey, and TrueFoundry handle LLM routing and load balancing — comparing fallback logic, latency-based routing, token-aware rate limiting, and multi-provider failover.">
+<title>AI Gateway Series #3 — LLM Routing &amp; Load Balancing</title>
+<style>
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB;
+    --kong:    #00D27B;
+    --portkey: #5A67FF;
+    --tf:      #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+
+  /* ── Header ── */
+  .series-bar {
+    display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap;
+  }
+  .tag-pill {
+    display: inline-block; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace;
+    padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase;
+  }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer {
+    background: #1a1200; border: 1px solid #3d2c00; color: var(--warn);
+    font-size: .78rem; padding: .5rem 1rem; border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* ── Code ── */
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre {
+    background: #080c12; border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto;
+    font-size: .83rem; line-height: 1.6; margin: 0;
+  }
+  .copy-btn {
+    position: absolute; top: .55rem; right: .55rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    font-size: .68rem; padding: .22rem .55rem; border-radius: 5px;
+    cursor: pointer; transition: all .15s ease; user-select: none;
+    letter-spacing: .03em; line-height: 1.4;
+  }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+  .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note {
+    font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border);
+  }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+
+  /* ── Callouts ── */
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn { border-color: var(--warn); background: #1a1200; }
+  .callout.info { border-color: #60a5fa; background: #0a1220; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.info .callout-title { color: #60a5fa; }
+
+  /* ── Quick-picks ── */
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+
+  /* ── Vendor headers ── */
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+
+  /* ── Matrix ── */
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+
+  /* ── Verdicts ── */
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+
+  /* ── Scenario ── */
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+
+  .plugin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .7rem; margin: 1rem 0 1.5rem; }
+  .plugin-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .8rem 1rem; }
+  .plugin-card .pname { font-family: 'IBM Plex Mono', monospace; font-size: .8rem; font-weight: 700; color: var(--kong); margin-bottom: .25rem; }
+  .plugin-card .pdesc { font-size: .78rem; color: var(--muted); line-height: 1.45; }
+  .plugin-card .pver { font-family: 'IBM Plex Mono', monospace; font-size: .68rem; color: #444e5e; margin-top: .25rem; }
+</style>
+</head>
+<body>
+
+<!-- ══════ HEADER ══════ -->
+<div class="series-bar">
+  <span class="tag-pill">AI Gateway Series</span>
+  <div class="series-dots">
+    <div class="dot"></div><div class="dot"></div>
+    <div class="dot active" title="Blog 3 — Routing &amp; Load Balancing"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+  </div>
+  <span class="tag-pill active">Blog 3 of 15</span>
+</div>
+
+<h1>Routing &amp; Load Balancing for LLMs:<br>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 20 min read</span>
+  <span class="meta-item">🗓 March 2026</span>
+  <span class="meta-item">👤 Platform Engineering</span>
+  <div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 10, 2026. Verify against current vendor docs before architectural decisions.</div>
+</div>
+
+<p style="font-size:.82rem; color: var(--muted);">Models referenced throughout this post reflect the production-current landscape as of this writing:</p>
+<div class="model-pills">
+  <span class="mpill openai">gpt-5.4</span>
+  <span class="mpill openai">gpt-5.4-pro</span>
+  <span class="mpill openai">gpt-5-mini</span>
+  <span class="mpill anthropic">claude-opus-4-6</span>
+  <span class="mpill anthropic">claude-sonnet-4-6</span>
+  <span class="mpill anthropic">claude-haiku-4-5</span>
+  <span class="mpill google">gemini-3.1-pro-preview</span>
+  <span class="mpill google">gemini-3-flash</span>
+  <span class="mpill google">gemini-3.1-flash-lite</span>
+</div>
+
+<!-- ══════ §0 TL;DR ══════ -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">🔥 Real-World Scenario: The Black Friday LLM Meltdown</div>
+  <p>It's 11:47 PM on Black Friday. Your AI-powered customer service bot is handling 40,000 concurrent sessions against <code>gpt-5.4</code>. The provider starts returning <code>503 Service Unavailable</code> errors — meaning it is temporarily unable to handle requests — and latency climbs past 9 seconds. To customers, that doesn't look like an HTTP issue. It looks like chats hanging, answers arriving too late to help, and some sessions failing altogether. Within 90 seconds, retries pile up, your queue fills, and delays spill into the rest of the customer journey. Support containment drops, carts get abandoned, and checkout conversion starts to fall.</p>
+  <p>This is not a freak event. Major model providers do occasionally report elevated errors and degraded performance on public status pages such as <a href="https://status.openai.com/" target="_blank">status.openai.com</a> and <a href="https://status.claude.com/" target="_blank">status.claude.com</a>, so provider-side disruption is something you should architect around, not treat as impossible. The architectural mistake is <strong>static routing with no fallback, no health awareness, and no weight redistribution</strong>. With GPT-5.4 at $2.50/1M input tokens and Claude Sonnet 4.6 at $3/1M, you now have two tier-1 frontier models to balance across — static single-provider routing is hard to justify for production customer workflows.</p>
+  <p>The problem with LLMs specifically is that routing them isn't like routing HTTP microservices. Wall time is non-deterministic, token budgets are asymmetric across providers, Time-to-First-Token (TTFT) variance can swing dramatically under load, and rate limits are enforced per-model, per-org, per-minute — not per-connection. Any gateway solving this correctly must be <em>LLM-aware</em>, not just network-aware.</p>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-litellm">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">LiteLLM</div>
+    <div class="qp-desc">Python-native budget-aware routing. Best for teams that need multi-provider fallback + spend governance wired up fast. Redis becomes part of the intended production architecture as traffic grows.</div>
+  </div>
+  <div class="qp-card c-kong">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Kong AI Gateway</div>
+    <div class="qp-desc">C/Lua network plane + LLM-specific plugin catalog. Best for orgs already on Kong; adds semantic routing, RAG injection, PII sanitization, and MCP governance.</div>
+  </div>
+  <div class="qp-card c-portkey">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Portkey</div>
+    <div class="qp-desc">Config-first composable control plane. Conditional routing, circuit breakers, canary testing, and gateway-state-aware observability. SaaS edge with hybrid VPC option.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">Hono-based stateless data plane. Native latency-based routing using inter-token latency / time per output token. Typed YAML policy, four-hook guardrails, OTEL export. Strong self-hosting and in-cluster data-path options.</div>
+  </div>
+</div>
+
+<!-- ══════ §1 WHY IT MATTERS ══════ -->
+<h2>§1 — Why LLM Routing Is a Different Problem</h2>
+
+<p>When a platform engineer says "load balancing," the mental model is round-robin across identical replicas behind a VIP. LLM traffic breaks every assumption:</p>
+
+<ul>
+  <li><strong>TTFT variance is non-deterministic and model-specific.</strong> In practice, TTFT variance can swing dramatically under load. <code>gemini-3.1-pro-preview</code> and <code>claude-opus-4-6</code> show similarly heavy long tails under queue pressure. Static routing has no mechanism to respond.</li>
+  <li><strong>Rate limits are multi-dimensional.</strong> GPT-5.4 enforces limits per-minute on both tokens and requests, per-org, and per-deployment. Distributing load without understanding these dimensions causes 429 storms that are worse than the original bottleneck.</li>
+  <li><strong>SLA requirements differ wildly by application.</strong> A real-time voice agent needs TTFT under 300ms and should shed aggressively to <code>gemini-3.1-flash-lite</code> or <code>claude-haiku-4-5</code>. A batch summarization job can tolerate 30-second completions and should optimize cost-per-token on <code>gpt-5-mini</code>. No single policy fits both.</li>
+  <li><strong>Model fallbacks are semantically meaningful.</strong> Failing from <code>gpt-5.4</code> to <code>claude-sonnet-4-6</code> isn't transparent — format and quality can diverge. Routing logic must encode which fallback is acceptable for which workload class.</li>
+  <li><strong>Spend is a first-class routing signal.</strong> With frontier models ranging from $0.25/1M (Gemini 3.1 Flash-Lite) to $5/1M (Claude Opus 4.6 input) to $2.50/1M (GPT-5.4 input), daily provider budget exhaustion is a legitimate routing trigger — not an error condition.</li>
+</ul>
+
+<!-- ══════ NEW DIAGRAM 1: HTTP vs LLM Routing ══════ -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 360" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="360" fill="#121826"/>
+  <text x="410" y="26" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Traditional HTTP Load Balancing vs. LLM-Aware Routing</text>
+  <!-- LEFT: HTTP -->
+  <rect x="20" y="48" width="380" height="280" rx="8" fill="#0a0e16" stroke="#1e2d45"/>
+  <text x="210" y="72" text-anchor="middle" fill="#7a8899" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">HTTP LOAD BALANCER</text>
+  <line x1="40" y1="115" x2="100" y2="115" stroke="#4a5568" stroke-width="1.5"/><line x1="40" y1="140" x2="100" y2="140" stroke="#4a5568" stroke-width="1.5"/><line x1="40" y1="165" x2="100" y2="165" stroke="#4a5568" stroke-width="1.5"/>
+  <rect x="105" y="100" width="90" height="80" rx="6" fill="#1a2233" stroke="#4a5568" stroke-width="1.5"/><text x="150" y="136" text-anchor="middle" fill="#7a8899" font-size="11" font-weight="600">Round</text><text x="150" y="153" text-anchor="middle" fill="#7a8899" font-size="11" font-weight="600">Robin ⚖</text>
+  <line x1="195" y1="120" x2="240" y2="105" stroke="#4a5568" stroke-width="1.5"/><line x1="195" y1="140" x2="240" y2="140" stroke="#4a5568" stroke-width="1.5"/><line x1="195" y1="160" x2="240" y2="175" stroke="#4a5568" stroke-width="1.5"/>
+  <rect x="245" y="90" width="70" height="30" rx="4" fill="#1a2233" stroke="#4a5568"/><text x="280" y="109" text-anchor="middle" fill="#7a8899" font-size="9">Replica A</text>
+  <rect x="245" y="125" width="70" height="30" rx="4" fill="#1a2233" stroke="#4a5568"/><text x="280" y="144" text-anchor="middle" fill="#7a8899" font-size="9">Replica B</text>
+  <rect x="245" y="160" width="70" height="30" rx="4" fill="#1a2233" stroke="#4a5568"/><text x="280" y="179" text-anchor="middle" fill="#7a8899" font-size="9">Replica C</text>
+  <text x="50" y="228" fill="#4a5568" font-size="10" font-family="IBM Plex Mono, monospace">✓ Predictable wall time</text>
+  <text x="50" y="248" fill="#4a5568" font-size="10" font-family="IBM Plex Mono, monospace">✓ Symmetric payloads</text>
+  <text x="50" y="268" fill="#4a5568" font-size="10" font-family="IBM Plex Mono, monospace">✓ Connection-based limits</text>
+  <text x="50" y="288" fill="#4a5568" font-size="10" font-family="IBM Plex Mono, monospace">✓ Homogeneous targets</text>
+  <text x="50" y="316" fill="#3a4a5a" font-size="9" font-style="italic">Any replica can handle any request</text>
+  <!-- DIVIDER -->
+  <line x1="410" y1="52" x2="410" y2="324" stroke="#2d3f5a" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="410" y="342" text-anchor="middle" fill="#2d3f5a" font-size="10" font-family="IBM Plex Mono, monospace">vs.</text>
+  <!-- RIGHT: LLM -->
+  <rect x="420" y="48" width="380" height="280" rx="8" fill="#0d1420" stroke="#00d4ff" stroke-width="1" stroke-opacity=".4"/>
+  <text x="610" y="72" text-anchor="middle" fill="#00d4ff" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">LLM-AWARE ROUTER</text>
+  <rect x="440" y="90" width="72" height="28" rx="4" fill="#1a0a0a" stroke="#ff475744"/><text x="476" y="108" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="600">Latency</text>
+  <rect x="440" y="124" width="72" height="28" rx="4" fill="#1a0a0a" stroke="#ff475744"/><text x="476" y="142" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="600">Token Limits</text>
+  <rect x="440" y="158" width="72" height="28" rx="4" fill="#1a0a0a" stroke="#ff475744"/><text x="476" y="176" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="600">Cost / Budget</text>
+  <rect x="440" y="192" width="72" height="28" rx="4" fill="#1a0a0a" stroke="#ff475744"/><text x="476" y="210" text-anchor="middle" fill="#ffa726" font-size="8" font-weight="600">SLA Class</text>
+  <rect x="540" y="105" width="90" height="80" rx="6" fill="#0d2237" stroke="#00d4ff" stroke-width="1.5"/><text x="585" y="138" text-anchor="middle" fill="#00d4ff" font-size="10" font-weight="700">AI-Aware</text><text x="585" y="153" text-anchor="middle" fill="#00d4ff" font-size="10" font-weight="700">Router ⚡</text>
+  <line x1="512" y1="104" x2="538" y2="125" stroke="#ffa726" stroke-width="1" stroke-opacity=".6"/><line x1="512" y1="138" x2="538" y2="140" stroke="#ffa726" stroke-width="1" stroke-opacity=".6"/><line x1="512" y1="172" x2="538" y2="155" stroke="#ffa726" stroke-width="1" stroke-opacity=".6"/><line x1="512" y1="206" x2="538" y2="170" stroke="#ffa726" stroke-width="1" stroke-opacity=".6"/>
+  <line x1="630" y1="125" x2="670" y2="102" stroke="#10a37f" stroke-width="1.5"/><line x1="630" y1="145" x2="670" y2="145" stroke="#e8843a" stroke-width="1.5"/><line x1="630" y1="165" x2="670" y2="182" stroke="#6ba3f5" stroke-width="1.5"/>
+  <rect x="675" y="88" width="100" height="28" rx="4" fill="#0a1a14" stroke="#10a37f"/><text x="725" y="106" text-anchor="middle" fill="#10a37f" font-size="9" font-weight="600">gpt-5.4</text>
+  <rect x="675" y="131" width="100" height="28" rx="4" fill="#1a0f06" stroke="#e8843a"/><text x="725" y="149" text-anchor="middle" fill="#e8843a" font-size="9" font-weight="600">claude-sonnet-4.6</text>
+  <rect x="675" y="168" width="100" height="28" rx="4" fill="#080e1a" stroke="#6ba3f5"/><text x="725" y="186" text-anchor="middle" fill="#6ba3f5" font-size="9" font-weight="600">gemini-3-flash</text>
+  <text x="450" y="248" fill="#00d4ff" font-size="10" font-family="IBM Plex Mono, monospace" fill-opacity=".7">⚠ Non-deterministic execution</text>
+  <text x="450" y="268" fill="#00d4ff" font-size="10" font-family="IBM Plex Mono, monospace" fill-opacity=".7">⚠ Multi-dimensional rate limits</text>
+  <text x="450" y="288" fill="#00d4ff" font-size="10" font-family="IBM Plex Mono, monospace" fill-opacity=".7">⚠ Variable cost ceilings</text>
+  <text x="450" y="308" fill="#00d4ff" font-size="10" font-family="IBM Plex Mono, monospace" fill-opacity=".7">⚠ Semantically unique models</text>
+</svg>
+</div>
+<div class="img-caption">HTTP load balancing assumes homogeneous replicas. LLM routing must account for latency variance, token economics, budget state, and model-specific semantics.</div>
+
+<!-- Existing Latency SVG — UNCHANGED -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 330" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="330" fill="#121826"></rect>
+  <text x="410" y="26" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Model Latency Variance Under Load — Illustrative P50 / P95 / P99 (TTFT, ms)</text>
+  <line x1="70" y1="40" x2="70" y2="268" stroke="#1e2d45" stroke-width="1.5"></line>
+  <line x1="70" y1="268" x2="790" y2="268" stroke="#1e2d45" stroke-width="1.5"></line>
+  <text x="16" y="155" text-anchor="middle" fill="#7a8899" font-size="11" font-family="IBM Plex Mono, monospace" transform="rotate(-90,16,155)">TTFT (ms)</text>
+  <line x1="70" y1="58" x2="790" y2="58" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"></line>
+  <line x1="70" y1="108" x2="790" y2="108" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"></line>
+  <line x1="70" y1="158" x2="790" y2="158" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"></line>
+  <line x1="70" y1="208" x2="790" y2="208" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"></line>
+  <text x="62" y="61" text-anchor="end" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">11 000</text>
+  <text x="62" y="111" text-anchor="end" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace"> 7 000</text>
+  <text x="62" y="161" text-anchor="end" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace"> 4 000</text>
+  <text x="62" y="211" text-anchor="end" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace"> 2 000</text>
+  <text x="62" y="271" text-anchor="end" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">     0</text>
+  <rect x="93" y="230" width="36" height="38" fill="#10a37f" fill-opacity=".85" rx="3"></rect>
+  <rect x="134" y="162" width="36" height="106" fill="#10a37f" fill-opacity=".5" rx="3"></rect>
+  <rect x="175" y="60" width="36" height="208" fill="#10a37f" fill-opacity=".25" rx="3"></rect>
+  <text x="174" y="287" text-anchor="middle" fill="#10a37f" font-size="10.5" font-weight="700">gpt-5.4</text>
+  <rect x="278" y="224" width="36" height="44" fill="#e8843a" fill-opacity=".85" rx="3"></rect>
+  <rect x="319" y="170" width="36" height="98" fill="#e8843a" fill-opacity=".5" rx="3"></rect>
+  <rect x="360" y="108" width="36" height="160" fill="#e8843a" fill-opacity=".25" rx="3"></rect>
+  <text x="359" y="287" text-anchor="middle" fill="#e8843a" font-size="10.5" font-weight="700">sonnet-4.6</text>
+  <rect x="463" y="218" width="36" height="50" fill="#6ba3f5" fill-opacity=".85" rx="3"></rect>
+  <rect x="504" y="175" width="36" height="93" fill="#6ba3f5" fill-opacity=".5" rx="3"></rect>
+  <rect x="545" y="118" width="36" height="150" fill="#6ba3f5" fill-opacity=".25" rx="3"></rect>
+  <text x="544" y="287" text-anchor="middle" fill="#6ba3f5" font-size="10.5" font-weight="700">gem-3.1-pro</text>
+  <rect x="645" y="240" width="36" height="28" fill="#a8d8b0" fill-opacity=".85" rx="3"></rect>
+  <rect x="686" y="224" width="36" height="44" fill="#a8d8b0" fill-opacity=".5" rx="3"></rect>
+  <rect x="727" y="205" width="36" height="63" fill="#a8d8b0" fill-opacity=".25" rx="3"></rect>
+  <text x="726" y="287" text-anchor="middle" fill="#a8d8b0" font-size="10.5" font-weight="700">gem-3.1-lite</text>
+  <rect x="72" y="307" width="11" height="11" fill="#e2e8f0" fill-opacity=".85" rx="2"></rect>
+  <text x="87" y="317" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">P50</text>
+  <rect x="122" y="307" width="11" height="11" fill="#e2e8f0" fill-opacity=".5" rx="2"></rect>
+  <text x="137" y="317" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">P95</text>
+  <rect x="192" y="307" width="11" height="11" fill="#e2e8f0" fill-opacity=".25" rx="2"></rect>
+  <text x="207" y="317" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">P99 — efficiency-tier models are often attractive shed targets because of tighter latency/cost envelopes.</text>
+</svg>
+</div>
+<div class="img-caption">Illustrative TTFT P50/P95/P99 across current frontier and efficiency models (March 2026). Editorial illustration of relative latency behavior — not vendor benchmark data.</div>
+
+<!-- ══════ NEW DIAGRAM 2: Fallbacks are Semantic ══════ -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 310" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="310" fill="#121826"/>
+  <text x="410" y="26" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Fallbacks Are Semantic, Not Just TCP</text>
+  <text x="410" y="44" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">Model fallback requires format translation — it is not a transparent network failover</text>
+  <!-- Incoming request -->
+  <rect x="30" y="100" width="120" height="50" rx="6" fill="#1a2233" stroke="#4a5568"/><text x="90" y="122" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600">Incoming</text><text x="90" y="138" text-anchor="middle" fill="#7a8899" font-size="10">Request</text>
+  <!-- Primary path — fails -->
+  <line x1="150" y1="120" x2="220" y2="90" stroke="#10a37f" stroke-width="2"/>
+  <rect x="225" y="72" width="110" height="40" rx="5" fill="#0a1a14" stroke="#10a37f"/><text x="280" y="96" text-anchor="middle" fill="#10a37f" font-size="11" font-weight="600">gpt-5.4</text>
+  <text x="345" y="86" fill="#ff4757" font-size="16" font-weight="700">✗</text>
+  <text x="370" y="90" fill="#ff4757" font-size="10" font-weight="600">503 / timeout</text>
+  <!-- Fallback arrow through translation engine -->
+  <path d="M 280 112 L 280 150 L 390 150" fill="none" stroke="#ffa726" stroke-width="2" stroke-dasharray="6,3"/>
+  <rect x="390" y="130" width="140" height="50" rx="6" fill="#1a1200" stroke="#ffa726" stroke-width="1.5"/><text x="460" y="151" text-anchor="middle" fill="#ffa726" font-size="10" font-weight="700">Translation Engine</text><text x="460" y="167" text-anchor="middle" fill="#7a8899" font-size="9">Format + param rewrite</text>
+  <line x1="530" y1="155" x2="590" y2="155" stroke="#e8843a" stroke-width="2"/>
+  <defs><marker id="fba" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#e8843a"/></marker></defs>
+  <line x1="530" y1="155" x2="590" y2="155" stroke="#e8843a" stroke-width="2" marker-end="url(#fba)"/>
+  <rect x="595" y="132" width="130" height="46" rx="5" fill="#1a0f06" stroke="#e8843a"/><text x="660" y="159" text-anchor="middle" fill="#e8843a" font-size="11" font-weight="600">claude-sonnet-4.6</text>
+  <!-- Source format vs target format -->
+  <rect x="180" y="200" width="200" height="80" rx="6" fill="#080c12" stroke="#1e2d45"/>
+  <text x="280" y="220" text-anchor="middle" fill="#7a8899" font-size="9" font-weight="700">SOURCE FORMAT</text>
+  <text x="280" y="238" text-anchor="middle" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">"prompt": "...",</text>
+  <text x="280" y="254" text-anchor="middle" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">"max_tokens": 1024</text>
+  <text x="410" y="240" fill="#ffa726" font-size="18">→</text>
+  <rect x="440" y="200" width="230" height="80" rx="6" fill="#080c12" stroke="#1e2d45"/>
+  <text x="555" y="220" text-anchor="middle" fill="#7a8899" font-size="9" font-weight="700">TARGET FORMAT</text>
+  <text x="555" y="238" text-anchor="middle" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">"messages": [{"role":...}],</text>
+  <text x="555" y="254" text-anchor="middle" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">"stop_sequences": ["\n"]</text>
+  <text x="410" y="300" text-anchor="middle" fill="#3a4a5a" font-size="9">Routing logic must encode which fallback is acceptable per workload class — and rewrite prompt parameters to match target model syntax.</text>
+</svg>
+</div>
+<div class="img-caption">LLM fallback is not transparent: format, parameters, and quality diverge across providers. The gateway must translate, not just redirect.</div>
+
+<hr>
+
+<!-- ══════ §2 LITELLM — UNCHANGED prose + code, NEW diagram appended ══════ -->
+<div class="vendor-header litellm">
+  <span class="vendor-badge">LiteLLM</span>
+  <span class="vendor-title">§2 — Python-Native Budget-Aware Router</span>
+</div>
+
+<h3>Architecture</h3>
+<p>LiteLLM's routing layer is built around a Python <code>Router</code> class initialized with a <code>model_list</code> array. Each entry maps a logical <code>model_name</code> (the name the proxy exposes) to a <code>litellm_params</code> block containing the actual upstream model identifier, <code>api_key</code>, <code>api_base</code>, and per-model rate caps. The request pipeline, documented at <a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">docs.litellm.ai/docs/proxy/architecture</a>, places virtual-key validation and budget checks <em>before</em> the router — meaning routing decisions are informed by identity and spend state, not just provider health.</p>
+
+<p>The routing engine supports: <code>simple-shuffle</code>, <code>least-busy</code>, <code>latency-based-routing</code> (EWMA of response times), and <code>usage-based-routing</code> (TPM/RPM headroom). <strong>Budget routing</strong> (<a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">provider_budget_routing</a>) lets you attach daily spend ceilings to providers or models — the router excludes exhausted targets from selection, making economics a first-class routing signal alongside availability. Per-key and per-team router overrides are documented at <a href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings" target="_blank">keys_teams_router_settings</a>, making the routing fabric genuinely multi-tenant.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Adapted LiteLLM pattern based on current routing / fallback / budget docs</span>
+<span class="key">model_list</span>:
+  - <span class="key">model_name</span>: <span class="str">flagship-primary</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">openai/gpt-5.4</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/OPENAI_API_KEY</span>
+      <span class="key">weight</span>: <span class="num">60</span>
+      <span class="key">tpm</span>: <span class="num">200000</span>
+      <span class="key">rpm</span>: <span class="num">500</span>
+
+  - <span class="key">model_name</span>: <span class="str">flagship-secondary</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4-6</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/ANTHROPIC_API_KEY</span>
+      <span class="key">weight</span>: <span class="num">40</span>
+      <span class="key">tpm</span>: <span class="num">150000</span>
+      <span class="key">rpm</span>: <span class="num">400</span>
+
+  - <span class="key">model_name</span>: <span class="str">cost-fallback</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">google/gemini-3-flash</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/GOOGLE_API_KEY</span>
+
+<span class="key">router_settings</span>:
+  <span class="key">routing_strategy</span>: <span class="str">usage-based-routing</span>
+  <span class="key">num_retries</span>: <span class="num">2</span>
+  <span class="key">fallbacks</span>:
+    - <span class="str">flagship-primary</span>: [<span class="str">flagship-secondary</span>, <span class="str">cost-fallback</span>]
+  <span class="key">provider_budget_config</span>:
+    <span class="key">openai</span>:
+      <span class="key">budget_limit</span>: <span class="num">200.0</span>
+      <span class="key">time_period</span>: <span class="str">1d</span>
+    <span class="key">anthropic</span>:
+      <span class="key">budget_limit</span>: <span class="num">100.0</span>
+      <span class="key">time_period</span>: <span class="str">1d</span>
+    <span class="key">google</span>:
+      <span class="key">budget_limit</span>: <span class="num">50.0</span>
+      <span class="key">time_period</span>: <span class="str">1d</span>
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/reliability" target="_blank">docs.litellm.ai/docs/proxy/reliability</a> · <a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">provider_budget_routing</a> · <a href="https://docs.litellm.ai/docs/routing-load-balancing" target="_blank">routing-load-balancing</a></div>
+<div class="callout info">
+  <div class="callout-title">How to run this pattern</div>
+  <p>Save the YAML as <code>config.yaml</code>, export the provider API keys referenced in the file, and start LiteLLM Proxy against that config. If you turn on shared routing state or budget-aware routing in production, plan on Redis as part of the deployment rather than treating it as optional scale garnish. Replace the example logical aliases and model IDs with the exact ones you expose in your environment.</p>
+</div>
+
+<!-- ══════ NEW: LiteLLM Architecture Diagram ══════ -->
+<div class="svg-wrap">
+<svg viewBox="0 0 620 220" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="620" height="220" fill="#121826"/>
+  <text x="310" y="22" text-anchor="middle" fill="#00C2CB" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">LITELLM REQUEST PIPELINE</text>
+  <defs><marker id="la" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00C2CB"/></marker></defs>
+  <!-- Request in -->
+  <rect x="15" y="65" width="80" height="45" rx="5" fill="#1a2233" stroke="#4a5568"/><text x="55" y="85" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="600">Request</text><text x="55" y="99" text-anchor="middle" fill="#7a8899" font-size="9">+ bearer key</text>
+  <!-- Virtual key + budget -->
+  <line x1="95" y1="88" x2="128" y2="88" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+  <rect x="130" y="55" width="120" height="65" rx="6" fill="#001d1e" stroke="#00C2CB" stroke-width="1.5"/><text x="190" y="78" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="700">Virtual Key</text><text x="190" y="93" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="700">& Budget Check</text><text x="190" y="110" text-anchor="middle" fill="#7a8899" font-size="8">Identity + spend state</text>
+  <!-- Router -->
+  <line x1="250" y1="88" x2="283" y2="88" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+  <rect x="285" y="60" width="100" height="55" rx="6" fill="#001d1e" stroke="#00C2CB"/><text x="335" y="83" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="700">Router</text><text x="335" y="98" text-anchor="middle" fill="#7a8899" font-size="8">EWMA / usage / budget</text>
+  <!-- Provider targets -->
+  <line x1="385" y1="75" x2="430" y2="60" stroke="#10a37f" stroke-width="1.2"/><line x1="385" y1="88" x2="430" y2="88" stroke="#e8843a" stroke-width="1.2"/><line x1="385" y1="100" x2="430" y2="115" stroke="#6ba3f5" stroke-width="1.2"/>
+  <rect x="432" y="46" width="80" height="26" rx="4" fill="#0a1a14" stroke="#10a37f"/><text x="472" y="63" text-anchor="middle" fill="#10a37f" font-size="9">OpenAI</text>
+  <rect x="432" y="76" width="80" height="26" rx="4" fill="#1a0f06" stroke="#e8843a"/><text x="472" y="93" text-anchor="middle" fill="#e8843a" font-size="9">Anthropic</text>
+  <rect x="432" y="106" width="80" height="26" rx="4" fill="#080e1a" stroke="#6ba3f5"/><text x="472" y="123" text-anchor="middle" fill="#6ba3f5" font-size="9">Google</text>
+  <!-- Bottom annotations -->
+  <rect x="130" y="145" width="120" height="28" rx="4" fill="#0a0e16" stroke="#1e2d45"/><text x="190" y="163" text-anchor="middle" fill="#7a8899" font-size="8">Redis / memory cache</text>
+  <rect x="285" y="145" width="100" height="28" rx="4" fill="#0a0e16" stroke="#1e2d45"/><text x="335" y="163" text-anchor="middle" fill="#7a8899" font-size="8">Postgres metadata</text>
+  <line x1="190" y1="120" x2="190" y2="143" stroke="#1e2d45" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="335" y1="115" x2="335" y2="143" stroke="#1e2d45" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="310" y="200" text-anchor="middle" fill="#ffa726" font-size="9" font-family="IBM Plex Mono, monospace">⚠ Python runtime scaling constraint · Redis recommended at >1000 RPS</text>
+  <text x="310" y="215" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: docs.litellm.ai/docs/proxy/architecture</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM places identity and spend checks before the router — economics govern routing decisions before target health is even evaluated. Editorial reconstruction based on LiteLLM architecture docs.</div>
+
+<div class="callout danger">
+  <div class="callout-title">⚠ Limitation — Python Runtime &amp; Scale Considerations</div>
+  <p>LiteLLM's Python runtime can become an <strong>operational scaling constraint</strong> under heavy concurrency; Redis and deployment design matter in production. For higher-throughput LiteLLM deployments, Redis and careful database/connection planning become part of the intended architecture.</p>
+</div>
+
+<hr>
+
+<!-- ══════ §3 KONG — UNCHANGED prose + code, NEW diagram appended ══════ -->
+<div class="vendor-header kong">
+  <span class="vendor-badge">Kong</span>
+  <span class="vendor-title">§3 — Gateway-First AI Plugin Stack with Semantic Features</span>
+</div>
+
+<h3>Architecture</h3>
+<p>Kong AI Gateway is documented at <a href="https://developer.konghq.com/ai-gateway/" target="_blank">developer.konghq.com/ai-gateway</a> as an AI feature layer on top of Kong Gateway — not a separate broker process. The core architecture is still Services, Routes, Upstreams, Consumers, and plugin chains; AI behavior is a composition of plugins attached to that substrate.</p>
+
+<p>The <strong>AI Proxy</strong> plugin (min. Kong 3.6) normalizes provider request/response formats. <strong>AI Proxy Advanced</strong> (min. Kong 3.8, enterprise) extends that to multi-target routing with: <em>round-robin</em>, <em>least-connections</em>, <em>lowest-latency</em>, <em>lowest-usage</em>, <em>priority</em>, <em>consistent-hashing</em>, and <em>semantic routing</em>. The AI load balancer also supports retries, fallback behavior, and balancer failure-threshold controls that function as circuit-breaking behavior.</p>
+
+<h3>AI Plugin Catalog (key plugins)</h3>
+<div class="plugin-grid">
+  <div class="plugin-card"><div class="pname">ai-proxy</div><div class="pdesc">Provider normalization, authentication mediation, usage stats.</div><div class="pver">Min. Kong 3.6 · OSS + Enterprise</div></div>
+  <div class="plugin-card"><div class="pname">ai-proxy-advanced</div><div class="pdesc">Multi-target balancing: least-connections, lowest-latency, lowest-usage, priority, semantic routing. Retry, fallback, failure-threshold health controls.</div><div class="pver">Min. Kong 3.8 · Enterprise</div></div>
+  <div class="plugin-card"><div class="pname">ai-rate-limiting-advanced</div><div class="pdesc">Token- and cost-aware quota control per consumer, provider, or model.</div><div class="pver">Min. Kong 3.7 · AI License</div></div>
+  <div class="plugin-card"><div class="pname">ai-semantic-cache</div><div class="pdesc">Vector-DB-backed semantic similarity cache.</div><div class="pver">Min. Kong 3.8 · Enterprise</div></div>
+  <div class="plugin-card"><div class="pname">ai-rag-injector</div><div class="pdesc">Gateway-level RAG: embedding generation, vector search, context injection.</div><div class="pver">Min. Kong 3.10 · Enterprise</div></div>
+  <div class="plugin-card"><div class="pname">ai-mcp-proxy</div><div class="pdesc">Converts MCP requests to standard HTTP so Kong plugins govern tool-calling traffic.</div><div class="pver">Enterprise</div></div>
+</div>
+
+<div class="code-wrap"><pre><span class="cm"># Validated Kong pattern — documented ai-proxy-advanced least-connections shape + provider rate limiting</span>
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">services</span>:
+  - <span class="key">name</span>: <span class="str">llm-service</span>
+    <span class="key">url</span>: <span class="str">http://localhost</span>
+    <span class="key">routes</span>:
+      - <span class="key">name</span>: <span class="str">llm-route</span>
+        <span class="key">paths</span>: [<span class="str">/v1/chat/completions</span>]
+
+<span class="key">plugins</span>:
+  - <span class="key">name</span>: <span class="str">ai-proxy-advanced</span>
+    <span class="key">service</span>: <span class="str">llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">balancer</span>:
+        <span class="key">algorithm</span>: <span class="str">least-connections</span>
+        <span class="key">retries</span>: <span class="num">3</span>
+        <span class="key">failover_criteria</span>: [<span class="str">error</span>, <span class="str">timeout</span>, <span class="str">http_429</span>, <span class="str">non_idempotent</span>]
+      <span class="key">targets</span>:
+        - <span class="key">model</span>:
+            <span class="key">name</span>: <span class="str">gpt-4o</span>
+            <span class="key">provider</span>: <span class="str">openai</span>
+            <span class="key">options</span>:
+              <span class="key">max_tokens</span>: <span class="num">1024</span>
+              <span class="key">temperature</span>: <span class="num">1.0</span>
+          <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">weight</span>: <span class="num">2</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">Authorization</span>
+            <span class="key">header_value</span>: <span class="str">Bearer ${{ env "DECK_OPENAI_API_KEY" }}</span>
+          <span class="key">logging</span>:
+            <span class="key">log_statistics</span>: <span class="str">true</span>
+            <span class="key">log_payloads</span>: <span class="str">true</span>
+        - <span class="key">model</span>:
+            <span class="key">name</span>: <span class="str">gpt-4o-mini</span>
+            <span class="key">provider</span>: <span class="str">openai</span>
+            <span class="key">options</span>:
+              <span class="key">max_tokens</span>: <span class="num">1024</span>
+              <span class="key">temperature</span>: <span class="num">1.0</span>
+          <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">weight</span>: <span class="num">2</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">Authorization</span>
+            <span class="key">header_value</span>: <span class="str">Bearer ${{ env "DECK_OPENAI_API_KEY" }}</span>
+          <span class="key">logging</span>:
+            <span class="key">log_statistics</span>: <span class="str">true</span>
+            <span class="key">log_payloads</span>: <span class="str">true</span>
+
+  - <span class="key">name</span>: <span class="str">ai-rate-limiting-advanced</span>
+    <span class="key">service</span>: <span class="str">llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">llm_providers</span>:
+        - <span class="key">name</span>: <span class="str">openai</span>
+          <span class="key">limit</span>: [<span class="num">100</span>, <span class="num">1000</span>]
+          <span class="key">window_size</span>: [<span class="num">60</span>, <span class="num">3600</span>]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-proxy-advanced/examples/least-connections/" target="_blank">ai-proxy-advanced — least-connections example</a> · <a href="https://developer.konghq.com/ai-gateway/load-balancing/" target="_blank">load-balancing guide</a> · <a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">ai-rate-limiting-advanced example</a></div>
+<div class="callout info">
+  <div class="callout-title">How to run this pattern</div>
+  <p>This block now uses a documented <code>ai-proxy-advanced</code> shape instead of hand-invented balancer keys. Create the Service and Route, attach <code>ai-proxy-advanced</code> and <code>ai-rate-limiting-advanced</code>, then apply with decK or the Admin / Konnect API. Replace the example models and auth values with the exact provider credentials and model IDs enabled in your environment. If you want <em>lowest-latency</em> instead of <em>least-connections</em>, switch only to fields that exist in the current Kong examples / reference — do not add undocumented keys like <code>latency_strategy</code>.</p>
+</div>
+
+<!-- ══════ NEW: Kong Architecture Diagram ══════ -->
+<div class="svg-wrap">
+<svg viewBox="0 0 700 230" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="700" height="230" fill="#121826"/>
+  <text x="350" y="22" text-anchor="middle" fill="#00D27B" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">KONG AI GATEWAY — C/LUA PLUGIN PIPELINE</text>
+  <defs>
+    <marker id="ka" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00D27B"/></marker>
+    <marker id="ka2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#4a5568"/></marker>
+  </defs>
+  <!-- Request in -->
+  <rect x="20" y="62" width="62" height="46" rx="5" fill="#1a2233" stroke="#4a5568"/><text x="51" y="82" text-anchor="middle" fill="#7a8899" font-size="9" font-weight="600">Request</text><text x="51" y="96" text-anchor="middle" fill="#4a5568" font-size="8">OpenAI fmt</text>
+  <line x1="82" y1="85" x2="105" y2="85" stroke="#4a5568" stroke-width="1.5" marker-end="url(#ka2)"/>
+  <!-- Plugin 1 -->
+  <rect x="108" y="55" width="100" height="60" rx="6" fill="#001e13" stroke="#00D27B" stroke-opacity=".6"/>
+  <text x="158" y="78" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">Auth / ACL</text>
+  <text x="158" y="94" text-anchor="middle" fill="#7a8899" font-size="7.5">Consumer identity</text>
+  <text x="158" y="106" text-anchor="middle" fill="#4a5568" font-size="7">Key Auth · OIDC · mTLS</text>
+  <!-- Arrow -->
+  <line x1="208" y1="85" x2="225" y2="85" stroke="#00D27B" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#ka)"/>
+  <!-- Plugin 2 -->
+  <rect x="228" y="55" width="100" height="60" rx="6" fill="#001e13" stroke="#00D27B" stroke-opacity=".6"/>
+  <text x="278" y="78" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">Prompt Guard</text>
+  <text x="278" y="94" text-anchor="middle" fill="#7a8899" font-size="7.5">Regex + semantic</text>
+  <text x="278" y="106" text-anchor="middle" fill="#4a5568" font-size="7">Allow / deny filtering</text>
+  <!-- Arrow -->
+  <line x1="328" y1="85" x2="345" y2="85" stroke="#00D27B" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#ka)"/>
+  <!-- Plugin 3 -->
+  <rect x="348" y="55" width="100" height="60" rx="6" fill="#001e13" stroke="#00D27B" stroke-opacity=".6"/>
+  <text x="398" y="78" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">Rate Limiting</text>
+  <text x="398" y="94" text-anchor="middle" fill="#7a8899" font-size="7.5">Token + cost aware</text>
+  <text x="398" y="106" text-anchor="middle" fill="#4a5568" font-size="7">Per consumer / provider</text>
+  <!-- Arrow -->
+  <line x1="448" y1="85" x2="465" y2="85" stroke="#00D27B" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#ka)"/>
+  <!-- Plugin 4 (wider) -->
+  <rect x="468" y="55" width="130" height="60" rx="6" fill="#001e13" stroke="#00D27B"/>
+  <text x="533" y="75" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">AI Proxy Advanced</text>
+  <text x="533" y="91" text-anchor="middle" fill="#7a8899" font-size="7.5">Multi-target balancer</text>
+  <text x="533" y="103" text-anchor="middle" fill="#4a5568" font-size="7">retry · failover · fallback</text>
+  <!-- Arrow out to providers -->
+  <line x1="598" y1="72" x2="638" y2="60" stroke="#10a37f" stroke-width="1.2"/><line x1="598" y1="85" x2="638" y2="85" stroke="#e8843a" stroke-width="1.2"/><line x1="598" y1="98" x2="638" y2="110" stroke="#6ba3f5" stroke-width="1.2"/>
+  <text x="660" y="63" fill="#10a37f" font-size="8" font-weight="600">OpenAI</text>
+  <text x="660" y="89" fill="#e8843a" font-size="8" font-weight="600">Anthropic</text>
+  <text x="660" y="114" fill="#6ba3f5" font-size="8" font-weight="600">Google</text>
+  <!-- Bottom: key differentiators -->
+  <line x1="50" y1="140" x2="650" y2="140" stroke="#1e2d45" stroke-width="1"/>
+  <text x="130" y="162" text-anchor="middle" fill="#00D27B" font-size="9" font-family="IBM Plex Mono, monospace" fill-opacity=".7">Semantic routing</text>
+  <text x="130" y="176" text-anchor="middle" fill="#4a5568" font-size="7.5">Embedding-based target match</text>
+  <text x="350" y="162" text-anchor="middle" fill="#00D27B" font-size="9" font-family="IBM Plex Mono, monospace" fill-opacity=".7">RAG Injector</text>
+  <text x="350" y="176" text-anchor="middle" fill="#4a5568" font-size="7.5">Gateway-level retrieval (3.10+)</text>
+  <text x="565" y="162" text-anchor="middle" fill="#00D27B" font-size="9" font-family="IBM Plex Mono, monospace" fill-opacity=".7">MCP Proxy</text>
+  <text x="565" y="176" text-anchor="middle" fill="#4a5568" font-size="7.5">Agent traffic governance</text>
+  <!-- Separator dots -->
+  <circle cx="240" cy="168" r="2" fill="#1e2d45"/><circle cx="457" cy="168" r="2" fill="#1e2d45"/>
+  <!-- Source -->
+  <text x="350" y="210" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: developer.konghq.com/ai-gateway/ · developer.konghq.com/plugins/ai-proxy-advanced/</text>
+  <text x="350" y="224" text-anchor="middle" fill="#3a4a5a" font-size="7.5">Editorial reconstruction; not an official vendor diagram. Plugin availability varies by version and license tier.</text>
+</svg>
+</div>
+<div class="img-caption">Kong's AI features are C/Lua plugins composed in a non-blocking data plane — not a separate broker process. Editorial reconstruction based on Kong AI Gateway docs; not an official vendor architecture diagram.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — Feature Availability Still Depends on Plugin / Version</div>
+  <p>Kong documents <em>lowest-latency</em> routing and balancer failover behavior in AI Proxy Advanced, but this post now shows a <em>least-connections</em> example because its config shape is easier to validate line by line against the public docs. The real limitation is operational complexity: advanced routing features are distributed across specific enterprise plugins and Kong versions. Always consult the <a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">plugin compatibility reference</a> before treating an example like a production-ready manifest.</p>
+</div>
+
+<hr>
+
+<!-- ══════ §4 PORTKEY — UNCHANGED prose + code, NEW diagram appended ══════ -->
+<div class="vendor-header portkey">
+  <span class="vendor-badge">Portkey</span>
+  <span class="vendor-title">§4 — Config-First Composable Control Plane</span>
+</div>
+
+<h3>Architecture</h3>
+<p>Portkey's architecture is a fully managed SaaS Anycast edge network, but the deeper product is the <strong>config object</strong> — a JSON document that encapsulates routing strategy, fallback chains, retry logic, caching, guardrails, and provider credentials. As documented at <a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">portkey.ai/docs/product/ai-gateway/configs</a>, a config can be attached via the SDK, via <code>x-portkey-config</code> header, or set as a default on an API key.</p>
+
+<p>The routing strategies are genuinely composable as a nested graph: <code>loadbalance</code> (weighted), <code>fallback</code> (prioritized sequential), and <code>conditional</code> (MongoDB-style query operators on metadata, request params, or URL path). Circuit breaker, canary testing, request timeouts, and automatic retries are all first-party features that compose into the same config object.</p>
+
+<div class="code-wrap"><pre>{
+  <span class="key">"strategy"</span>: {
+    <span class="key">"mode"</span>: <span class="str">"fallback"</span>,
+    <span class="key">"on_status_codes"</span>: [<span class="num">429</span>, <span class="num">500</span>, <span class="num">502</span>, <span class="num">503</span>, <span class="num">504</span>]
+  },
+  <span class="key">"targets"</span>: [
+    {
+      <span class="key">"strategy"</span>: { <span class="key">"mode"</span>: <span class="str">"loadbalance"</span> },
+      <span class="key">"targets"</span>: [
+        { <span class="key">"override_params"</span>: { <span class="key">"model"</span>: <span class="str">"@openai/gpt-4o"</span> }, <span class="key">"weight"</span>: <span class="num">1</span> },
+        { <span class="key">"override_params"</span>: { <span class="key">"model"</span>: <span class="str">"@azure/gpt-4o"</span> }, <span class="key">"weight"</span>: <span class="num">1</span> }
+      ]
+    },
+    { <span class="key">"override_params"</span>: { <span class="key">"model"</span>: <span class="str">"@anthropic/claude-sonnet-4-5-20250514"</span> } }
+  ],
+  <span class="key">"retry"</span>: {
+    <span class="key">"attempts"</span>: <span class="num">3</span>,
+    <span class="key">"on_status_codes"</span>: [<span class="num">429</span>, <span class="num">500</span>, <span class="num">502</span>, <span class="num">503</span>, <span class="num">504</span>]
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/guides/use-cases/combining-routing-strategies" target="_blank">Portkey — Combining Routing Strategies</a> · <a href="https://portkey.ai/docs/product/ai-gateway/fallbacks" target="_blank">Fallbacks</a> · <a href="https://portkey.ai/docs/product/ai-gateway/automatic-retries" target="_blank">Automatic Retries</a> · <a href="https://portkey.ai/docs/api-reference/inference-api/config-object" target="_blank">Gateway Config Object</a></div>
+<div class="callout info">
+  <div class="callout-title">How to run this pattern</div>
+  <p>Create the config in Portkey UI or through the Portkey API, save it to get a config ID, and attach that config either to an API key or per request with the SDK / <code>x-portkey-config</code> header. This block is now strict JSON: no <code>//</code> comments, no trailing notes inside the object. If you need annotations, keep them outside the JSON. An extra field like <code>"_comment"</code></p>
+  <p>might work only if the Portkey schema ignores unknown keys, so do not rely on that unless you have tested it in your own workspace. Replace the example model aliases with the exact provider/model slugs available in your environment.</p>
+</div>
+
+<!-- ══════ NEW: Portkey Architecture Diagram ══════ -->
+<div class="svg-wrap">
+<svg viewBox="0 0 620 230" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="620" height="230" fill="#121826"/>
+  <text x="310" y="22" text-anchor="middle" fill="#5A67FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">PORTKEY — COMPOSABLE STRATEGY GRAPH</text>
+  <defs><marker id="pa" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#5A67FF"/></marker></defs>
+  <!-- Config object -->
+  <rect x="30" y="50" width="150" height="130" rx="8" fill="#0a0c24" stroke="#5A67FF" stroke-dasharray="6,3"/>
+  <text x="105" y="72" text-anchor="middle" fill="#5A67FF" font-size="10" font-weight="700">Config Object</text>
+  <rect x="45" y="82" width="120" height="22" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/><text x="105" y="97" text-anchor="middle" fill="#7a8899" font-size="8">Load Balance</text>
+  <rect x="45" y="108" width="120" height="22" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/><text x="105" y="123" text-anchor="middle" fill="#7a8899" font-size="8">Fallback</text>
+  <rect x="45" y="134" width="120" height="22" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/><text x="105" y="149" text-anchor="middle" fill="#7a8899" font-size="8">Cache + Guardrails</text>
+  <!-- Conditional router -->
+  <line x1="180" y1="115" x2="220" y2="115" stroke="#5A67FF" stroke-width="1.5" marker-end="url(#pa)"/>
+  <rect x="225" y="85" width="120" height="60" rx="6" fill="#0a0c24" stroke="#5A67FF"/><text x="285" y="110" text-anchor="middle" fill="#5A67FF" font-size="10" font-weight="700">Conditional Router</text><text x="285" y="126" text-anchor="middle" fill="#7a8899" font-size="8">MongoDB-style operators</text>
+  <!-- Branches -->
+  <line x1="345" y1="100" x2="400" y2="72" stroke="#5A67FF" stroke-width="1.2"/><line x1="345" y1="130" x2="400" y2="155" stroke="#5A67FF" stroke-width="1.2"/>
+  <!-- LB branch -->
+  <rect x="402" y="52" width="90" height="40" rx="4" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".6"/><text x="447" y="70" text-anchor="middle" fill="#5A67FF" font-size="9">Load Balancer</text><text x="447" y="84" text-anchor="middle" fill="#7a8899" font-size="8">60/40 weighted</text>
+  <line x1="492" y1="64" x2="530" y2="55" stroke="#10a37f" stroke-width="1"/><line x1="492" y1="78" x2="530" y2="85" stroke="#e8843a" stroke-width="1"/>
+  <text x="560" y="58" fill="#10a37f" font-size="8" font-weight="600">gpt-5.4</text>
+  <text x="560" y="90" fill="#e8843a" font-size="8" font-weight="600">sonnet-4.6</text>
+  <!-- Fallback branch -->
+  <rect x="402" y="140" width="90" height="40" rx="4" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".6"/><text x="447" y="158" text-anchor="middle" fill="#5A67FF" font-size="9">Fallback Chain</text><text x="447" y="172" text-anchor="middle" fill="#7a8899" font-size="8">Primary → Backup</text>
+  <!-- Bottom notes -->
+  <text x="310" y="208" text-anchor="middle" fill="#7a8899" font-size="9">Strategies are fully composable · Observability tracks "requests rescued by gateway strategies"</text>
+  <text x="310" y="225" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: portkey.ai/docs/product/ai-gateway/configs · SaaS Anycast edge with hybrid VPC option</text>
+</svg>
+</div>
+<div class="img-caption">Portkey's config object composes routing strategies as a nested graph. Conditional routing, load balancing, and fallback chains are siblings, not separate systems. Editorial reconstruction based on Portkey docs.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — Cloud Control Dependency &amp; Network Hop</div>
+  <p>All routing logic traverses Portkey's cloud edge. Portkey does offer a hybrid deployment path (<a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">portkey.ai/docs/enterprise/hybrid2</a>) where the data plane runs inside your VPC via Helm — prompt and response payloads stay in your network while only metrics leave. However, the control dashboard and higher-level features remain in Portkey's cloud.</p>
+</div>
+
+<hr>
+
+<!-- ══════ §5 TRUEFOUNDRY — UNCHANGED prose, NEW diagrams inserted ══════ -->
+<div class="vendor-header tf">
+  <span class="vendor-badge">TrueFoundry</span>
+  <span class="vendor-title">§5 — K8s-Native Hono Data Plane with Typed YAML Routing Policy</span>
+</div>
+
+<h3>Architecture</h3>
+<p>TrueFoundry's AI Gateway is a Kubernetes-native data plane built on the Hono framework. The <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway plane architecture page</a> documents its hot-path design explicitly: no external calls during request handling (unless cache is involved), in-memory evaluation for rate limits, load balancing, authentication, and authorization, with async queueing for logs and metrics. The gateway plane is <strong>stateless</strong>, subscribing to configuration updates via a queue with HTTP fallback — enabling cross-region multi-gateway deployments while configuration is managed centrally.</p>
+
+<p>Routing policy is expressed through typed YAML configs. The <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">load-balancing-overview</a> and <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">load-balancing-configuration</a> docs describe three routing strategies: <strong>weight-based</strong>, <strong>latency-based</strong> (using time per output token / inter-token latency in the data plane), and <strong>priority-based</strong> (with adaptive SLA cutoff — unhealthy targets recover when performance improves, not after a fixed cooldown).</p>
+
+<!-- ══════ NEW: TrueFoundry Architecture Diagram ══════ -->
+<div class="svg-wrap">
+<svg viewBox="0 0 620 220" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="620" height="220" fill="#121826"/>
+  <text x="310" y="22" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">TRUEFOUNDRY — K8S-NATIVE STATELESS DATA PLANE</text>
+  <!-- K8s cluster boundary -->
+  <rect x="20" y="40" width="580" height="140" rx="8" fill="#0d0906" stroke="#FF5533" stroke-opacity=".3"/>
+  <text x="40" y="58" fill="#FF5533" font-size="9" font-weight="600" font-family="IBM Plex Mono, monospace">Kubernetes cluster</text>
+  <!-- Control plane -->
+  <rect x="420" y="55" width="160" height="40" rx="5" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/><text x="500" y="73" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="600">Control Plane</text><text x="500" y="86" text-anchor="middle" fill="#7a8899" font-size="8">config updates via queue</text>
+  <!-- Gateway plane (stateless) -->
+  <rect x="40" y="65" width="350" height="90" rx="6" fill="#1e0d08" stroke="#FF5533"/>
+  <text x="215" y="84" text-anchor="middle" fill="#FF5533" font-size="10" font-weight="700">Stateless Hono Gateway Plane</text>
+  <text x="215" y="100" text-anchor="middle" fill="#7a8899" font-size="9">In-memory evaluation · No external calls on hot path</text>
+  <!-- Internal blocks -->
+  <rect x="55" y="110" width="70" height="22" rx="3" fill="#2a1508" stroke="#FF5533" stroke-opacity=".3"/><text x="90" y="125" text-anchor="middle" fill="#7a8899" font-size="7">Auth + Rate</text>
+  <rect x="135" y="110" width="70" height="22" rx="3" fill="#2a1508" stroke="#FF5533" stroke-opacity=".3"/><text x="170" y="125" text-anchor="middle" fill="#7a8899" font-size="7">Routing (TPOT)</text>
+  <rect x="215" y="110" width="70" height="22" rx="3" fill="#2a1508" stroke="#FF5533" stroke-opacity=".3"/><text x="250" y="125" text-anchor="middle" fill="#7a8899" font-size="7">Guardrails</text>
+  <rect x="295" y="110" width="70" height="22" rx="3" fill="#2a1508" stroke="#FF5533" stroke-opacity=".3"/><text x="330" y="125" text-anchor="middle" fill="#7a8899" font-size="7">MCP Hooks</text>
+  <!-- Async logs arrow -->
+  <path d="M 215 140 Q 215 160 350 160 Q 480 160 500 100" fill="none" stroke="#7a8899" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="360" y="172" fill="#7a8899" font-size="8" font-style="italic">async logs + metrics</text>
+  <!-- Bottom -->
+  <text x="310" y="200" text-anchor="middle" fill="#7a8899" font-size="9">Typed YAML policies · first-match-wins rules · GitOps-native · OTEL export</text>
+  <text x="310" y="215" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: truefoundry.com/docs/platform/gateway-plane-architecture</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's gateway plane is stateless, Kubernetes-native, and evaluates routing + guardrails entirely in-memory on the hot path. Logs and metrics are queued asynchronously. Editorial reconstruction based on TrueFoundry architecture docs.</div>
+
+<!-- ══════ NEW: Adaptive SLA Cutoff Diagram ══════ -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 310" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="310" fill="#121826"/>
+  <text x="410" y="24" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Adaptive SLA Cutoff — Priority-Based Routing Recovery</text>
+  <text x="410" y="42" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">TrueFoundry load-balancing-overview · Illustrative timing</text>
+  <!-- Axes -->
+  <line x1="70" y1="60" x2="70" y2="242" stroke="#2d3f5a" stroke-width="1.5"/><line x1="70" y1="242" x2="770" y2="242" stroke="#2d3f5a" stroke-width="1.5"/>
+  <text x="18" y="155" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace" transform="rotate(-90,18,155)">Latency (ms)</text>
+  <text x="420" y="262" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">Time →</text>
+  <text x="62" y="232" text-anchor="end" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">200</text><text x="62" y="182" text-anchor="end" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">400</text><text x="62" y="135" text-anchor="end" fill="#ff4757" font-size="9" font-family="IBM Plex Mono, monospace">500</text><text x="62" y="92" text-anchor="end" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">800</text>
+  <!-- SLA line -->
+  <line x1="70" y1="135" x2="770" y2="135" stroke="#ff4757" stroke-width="1.5" stroke-dasharray="8,4"/>
+  <text x="775" y="139" fill="#ff4757" font-size="9" font-family="IBM Plex Mono, monospace" font-weight="600">SLA</text>
+  <!-- Primary: healthy → degrades → passive → recovers -->
+  <polyline points="80,225 150,220 220,210 280,195 330,175 360,150 380,138" fill="none" stroke="#00d4ff" stroke-width="2.5"/>
+  <polyline points="380,138 410,118 440,105 470,100 500,108 530,115 550,125 570,132 585,135" fill="none" stroke="#00d4ff" stroke-width="1.5" stroke-dasharray="4,3" stroke-opacity=".5"/>
+  <polyline points="585,135 610,145 640,165 670,185 710,205 750,218" fill="none" stroke="#00d4ff" stroke-width="2.5"/>
+  <!-- Circuit open -->
+  <circle cx="380" cy="138" r="5" fill="#ff4757"/><text x="380" y="76" text-anchor="middle" fill="#ff4757" font-size="10" font-weight="600">Circuit Open</text><line x1="380" y1="82" x2="380" y2="132" stroke="#ff475744" stroke-width="1" stroke-dasharray="3,3"/>
+  <!-- Divert to backup -->
+  <defs><marker id="tfA" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#FF5533"/></marker></defs>
+  <path d="M 385 145 Q 425 185 465 210" fill="none" stroke="#FF5533" stroke-width="2" marker-end="url(#tfA)"/>
+  <rect x="465" y="198" width="95" height="28" rx="5" fill="#1e0d08" stroke="#FF5533"/><text x="512" y="216" text-anchor="middle" fill="#FF5533" font-size="10" font-weight="600">Backup Target</text>
+  <!-- Passive sampling label -->
+  <text x="490" y="90" text-anchor="middle" fill="#7a8899" font-size="9" font-style="italic">Passive sampling continues</text><text x="490" y="102" text-anchor="middle" fill="#7a8899" font-size="9" font-style="italic">(not blocked for fixed cooldown)</text>
+  <!-- Circuit close -->
+  <circle cx="585" cy="135" r="5" fill="#00e599"/><text x="620" y="76" text-anchor="middle" fill="#00e599" font-size="10" font-weight="600">Circuit Close</text><line x1="585" y1="82" x2="585" y2="130" stroke="#00e59944" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="710" y="76" text-anchor="middle" fill="#00d4ff" font-size="9" font-style="italic">Traffic restored</text>
+  <!-- Legend -->
+  <line x1="80" y1="288" x2="100" y2="288" stroke="#00d4ff" stroke-width="2.5"/><text x="108" y="292" fill="#7a8899" font-size="9" font-family="IBM Plex Mono, monospace">Primary (active)</text>
+  <line x1="290" y1="288" x2="310" y2="288" stroke="#00d4ff" stroke-width="1.5" stroke-dasharray="4,3" stroke-opacity=".5"/><text x="318" y="292" fill="#7a8899" font-size="9" font-family="IBM Plex Mono, monospace">Primary (passive sampling)</text>
+  <line x1="530" y1="288" x2="550" y2="288" stroke="#FF5533" stroke-width="2"/><text x="558" y="292" fill="#7a8899" font-size="9" font-family="IBM Plex Mono, monospace">Diverted to backup</text>
+  <text x="410" y="308" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: truefoundry.com/docs/ai-gateway/load-balancing-overview · Illustrative timing, not measured data</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's adaptive SLA cutoff: unhealthy targets are not blocked for a fixed cooldown. The gateway continues passive sampling and restores traffic when performance recovers — aligning with rapidly fluctuating LLM serving systems. Based on TrueFoundry load-balancing-overview docs; illustrative timing, not measured data.</div>
+
+<div class="code-wrap"><pre><span class="cm"># Adapted TrueFoundry pattern — routing + rate limiting with scoped when clauses</span>
+<span class="key">name</span>: <span class="str">production-llm-routing</span>
+<span class="key">type</span>: <span class="str">gateway-load-balancing-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">"realtime-voice-prod"</span>
+    <span class="key">type</span>: <span class="str">"latency-based-routing"</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        - <span class="str">"team:voice-platform"</span>
+      <span class="key">models</span>:
+        - <span class="str">"realtime-assistant"</span>
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"production"</span>
+        <span class="key">workload</span>: <span class="str">"voice"</span>
+    <span class="key">load_balance_targets</span>:
+      - <span class="key">target</span>: <span class="str">"openai/gpt-5.4"</span>
+        <span class="key">retry_config</span>:
+          <span class="key">attempts</span>: <span class="num">1</span>
+      - <span class="key">target</span>: <span class="str">"anthropic/claude-sonnet-4-6"</span>
+        <span class="key">retry_config</span>:
+          <span class="key">attempts</span>: <span class="num">1</span>
+
+  - <span class="key">id</span>: <span class="str">"support-chat-canary"</span>
+    <span class="key">type</span>: <span class="str">"weight-based-routing"</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        - <span class="str">"team:ai-platform"</span>
+      <span class="key">models</span>:
+        - <span class="str">"support-chat"</span>
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"staging"</span>
+        <span class="key">release_channel</span>: <span class="str">"canary"</span>
+    <span class="key">load_balance_targets</span>:
+      - <span class="key">target</span>: <span class="str">"openai/gpt-5.4"</span>
+        <span class="key">weight</span>: <span class="num">90</span>
+      - <span class="key">target</span>: <span class="str">"openai/gpt-5-mini"</span>
+        <span class="key">weight</span>: <span class="num">10</span>
+<span class="cm">---</span>
+<span class="key">name</span>: <span class="str">ratelimiting-config</span>
+<span class="key">type</span>: <span class="str">gateway-rate-limiting-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">"voice-prod-team-daily"</span>
+    <span class="key">when</span>:
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"production"</span>
+        <span class="key">workload</span>: <span class="str">"voice"</span>
+    <span class="key">limit_to</span>: <span class="num">2000000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_day</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'metadata.team_id'</span>]
+  - <span class="key">id</span>: <span class="str">"support-chat-global-hourly"</span>
+    <span class="key">when</span>:
+      <span class="key">models</span>:
+        - <span class="str">"support-chat"</span>
+    <span class="key">limit_to</span>: <span class="num">500000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_hour</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'model'</span>]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">load-balancing-overview</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">load-balancing-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">ratelimiting</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">budgetlimiting</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">virtual-model</a></div>
+<div class="callout info">
+  <div class="callout-title">How to run this pattern</div>
+  <p>Save the YAML as a gateway policy file and apply it through your normal TrueFoundry configuration workflow, such as the typed YAML / <code>tfy apply</code> path used in your environment. The example assumes your workspace already has matching logical models, subject selectors, and metadata keys, so replace those with the exact names your gateway recognizes before rollout. Validate the result through resolved-model headers, applied-configuration headers, and traces.</p>
+</div>
+
+<p>TrueFoundry's <strong>four-hook guardrail system</strong> (LLM input, LLM output, MCP pre-tool, MCP post-tool) is documented at <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrails-overview</a>. OTEL-compliant trace export is documented at <a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">export-opentelemetry-data</a>. Response headers including <code>x-tfy-resolved-model</code> and <code>x-tfy-applied-configurations</code> expose exactly which routing decisions and control surfaces fired per request.</p>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — K8s Operational Prerequisite</div>
+  <p>The deploy-gateway-plane guide at <a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">deploy-gateway-plane</a> requires a running K8s cluster, domain, TLS certificate, image-pull credentials, and control-plane API key before a single request is handled. For teams without a dedicated K8s platform engineering function, this is a real adoption barrier.</p>
+</div>
+
+<hr>
+
+<!-- ══════ §6 FEATURE MATRIX — UNCHANGED ══════ -->
+<h2>§6 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation as of March 2026. ✅ = native, ⚠ = possible with customization, ❌ = not natively supported.</p>
+
+<div class="matrix-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th style="color:var(--litellm)">LiteLLM</th>
+      <th style="color:var(--kong)">Kong AI GW</th>
+      <th style="color:var(--portkey)">Portkey</th>
+      <th style="color:var(--tf)">TrueFoundry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Weight-based routing</strong></td><td><span class="check">✅</span> <code>weight</code> in <code>litellm_params</code></td><td><span class="check">✅</span> Native upstream <code>targets</code></td><td><span class="check">✅</span> <code>weight</code> in config targets</td><td><span class="check">✅</span> Per-target weight in routing config</td></tr>
+    <tr><td><strong>TTFT / latency-based routing</strong></td><td><span class="check">✅</span> <code>latency-based-routing</code> (EWMA)</td><td><span class="check">✅</span> Documented <em>lowest-latency</em> routing</td><td><span class="partial">⚠</span> Not a documented first-party strategy (March 2026)</td><td><span class="check">✅</span> Native <code>latency-based-routing</code> using time per output token / inter-token latency</td></tr>
+    <tr><td><strong>Fallback chains</strong></td><td><span class="check">✅</span> <code>fallbacks</code> array with model-group targets</td><td><span class="check">✅</span> Native fallback from Kong 3.10+</td><td><span class="check">✅</span> Nested <code>"mode":"fallback"</code> strategy</td><td><span class="check">✅</span> <code>fallback_status_codes</code> / <code>fallback_candidate</code></td></tr>
+    <tr><td><strong>Retry (per-error-type)</strong></td><td><span class="check">✅</span> <code>retry_policy</code> per error class</td><td><span class="check">✅</span> Gateway-native retries, failover, and health-based target selection; less policy-shaped than Portkey/TrueFoundry</td><td><span class="check">✅</span> <code>retry.on_status_codes</code></td><td><span class="check">✅</span> <code>retry_config.on_status_codes</code></td></tr>
+    <tr><td><strong>Circuit breaker</strong></td><td><span class="partial">⚠</span> Retries / fallbacks / cooldown-like reliability controls</td><td><span class="check">✅</span> Balancer failure-threshold behavior</td><td><span class="check">✅</span> Dedicated CB with failure %, cooldown</td><td><span class="partial">⚠</span> Priority routing with adaptive SLA cutoff</td></tr>
+    <tr><td><strong>Conditional / metadata routing</strong></td><td><span class="partial">⚠</span> Per-key/team router overrides; tag filtering</td><td><span class="partial">⚠</span> Route / service / plugin policy matching; less config-native than Portkey</td><td><span class="check">✅</span> <code>"mode":"conditional"</code> with MongoDB-style operators</td><td><span class="check">✅</span> Routing rules support <code>when.subjects</code> / <code>when.models</code> / <code>when.metadata</code></td></tr>
+    <tr><td><strong>Semantic routing</strong></td><td><span class="cross">❌</span></td><td><span class="check">✅</span> AI Proxy Advanced: prompt-to-target embedding match (enterprise)</td><td><span class="cross">❌</span></td><td><span class="cross">❌</span></td></tr>
+    <tr><td><strong>RAG injection at gateway</strong></td><td><span class="cross">❌</span></td><td><span class="check">✅</span> AI RAG Injector (Kong 3.10, enterprise)</td><td><span class="cross">❌</span></td><td><span class="cross">❌</span></td></tr>
+    <tr><td><strong>Rate limiting (token-aware)</strong></td><td><span class="check">✅</span> TPM/RPM caps</td><td><span class="check">✅</span> <code>ai-rate-limiting-advanced</code></td><td><span class="check">✅</span> Per-config + workspace-level</td><td><span class="check">✅</span> <code>gateway-rate-limiting-config</code></td></tr>
+    <tr><td><strong>Budget / cost controls</strong></td><td><span class="check">✅</span> <code>provider_budget_config</code></td><td><span class="partial">⚠</span> Cost-aware quota; no daily-spend routing</td><td><span class="check">✅</span> Workspace credit ceiling</td><td><span class="check">✅</span> <code>gateway-budget-config</code></td></tr>
+    <tr><td><strong>MCP / agentic traffic governance</strong></td><td><span class="partial">⚠</span> Access groups for MCP servers</td><td><span class="check">✅</span> AI MCP Proxy</td><td><span class="partial">⚠</span> MCP support listed</td><td><span class="check">✅</span> Four-hook guardrails include MCP pre/post-tool</td></tr>
+    <tr><td><strong>Observability (OTel)</strong></td><td><span class="check">✅</span> <code>callbacks: ["otel"]</code></td><td><span class="check">✅</span> Gen AI OTel attributes</td><td><span class="check">✅</span> OTel-compliant traces</td><td><span class="check">✅</span> OTEL export; server-timing headers</td></tr>
+    <tr><td><strong>Data residency</strong></td><td><span class="check">✅</span> Fully self-hosted</td><td><span class="check">✅</span> Fully self-hosted</td><td><span class="partial">⚠</span> Hybrid: data plane in VPC, control plane in cloud</td><td><span class="check">✅</span> Self-hostable in-cluster gateway plane*</td></tr>
+    <tr><td><strong>Operational posture (Editorial)</strong></td><td>Python runtime; Redis recommended at scale</td><td>C/Lua non-blocking; high raw concurrency</td><td>SaaS-managed edge; hybrid VPC option</td><td>Stateless Hono pods; scales via K8s HPA</td></tr>
+  </tbody>
+</table>
+</div>
+<p style="font-size:.72rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-top:.3rem;">*Gateway hot path can stay in-cluster; control-plane, auth, and analytics topology depends on deployment mode — see <a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank" style="color:#7a8899;">deployment-overview</a>.</p>
+
+<hr>
+
+<!-- ══════ §7 VERDICT — UNCHANGED ══════ -->
+<h2>§7 — Editorial Verdict</h2>
+<p>Editorial assessments as of March 10, 2026.</p>
+
+<div class="verdict-grid">
+  <div class="verdict-card litellm">
+    <div class="verdict-label">LiteLLM</div>
+    <div class="verdict-name">The Budget-Aware Pragmatist</div>
+    <div class="verdict-text">Wins on iteration velocity and economic intelligence. The <code>model_list</code> + <code>router_settings</code> + <code>provider_budget_config</code> pattern expresses multi-provider routing, fallback chains, and spend governance in a single YAML file.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Fast-moving platform teams, internal tooling, budget-aware multi-provider routing without heavy gateway infrastructure.</div>
+  </div>
+  <div class="verdict-card kong">
+    <div class="verdict-label">Kong AI Gateway</div>
+    <div class="verdict-name">The Network Workhorse with Semantic Depth</div>
+    <div class="verdict-text">The right choice when you're already on Kong, need extreme concurrency, and want semantic routing, RAG injection, or gateway-level PII sanitization.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Existing Kong users, very high-throughput workloads, teams needing semantic cache / RAG injection / MCP governance.</div>
+  </div>
+  <div class="verdict-card portkey">
+    <div class="verdict-label">Portkey</div>
+    <div class="verdict-name">The Composable Control Plane</div>
+    <div class="verdict-text">The config-first model is genuinely sophisticated: conditional routing with MongoDB-style operators, circuit breakers, canary testing, semantic cache, guardrails, and OTel tracing all compose through one JSON object.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Product teams wanting composable routing + observability without K8s or Lua expertise; SaaS applications.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">TrueFoundry</div>
+    <div class="verdict-name">The K8s-Native Platform Contender</div>
+    <div class="verdict-text">Most architecturally coherent for K8s-native platform teams. Native latency-based routing using inter-token latency / TPOT, adaptive priority with SLA cutoff, four-hook guardrails, typed YAML policies, and OTEL export.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> K8s-native platform teams, regulated industries, agentic/MCP workloads, large-scale AI platform builds.</div>
+  </div>
+</div>
+
+<h3>Positioning Map — Operational Complexity vs. AI-Native Feature Depth</h3>
+<div class="svg-wrap">
+<svg viewBox="0 0 620 410" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="620" height="410" fill="#121826"></rect>
+  <line x1="65" y1="20" x2="65" y2="340" stroke="#1e2d45" stroke-width="1"></line>
+  <line x1="65" y1="340" x2="575" y2="340" stroke="#1e2d45" stroke-width="1"></line>
+  <line x1="65" y1="180" x2="575" y2="180" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"></line>
+  <line x1="320" y1="20" x2="320" y2="340" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"></line>
+  <text x="320" y="378" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono, monospace">← Low Operational Complexity — High →</text>
+  <text x="14" y="180" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono, monospace" transform="rotate(-90,14,180)">AI Feature Depth</text>
+  <circle cx="175" cy="140" r="50" fill="#00d4ff" fill-opacity=".1" stroke="#00d4ff" stroke-width="1.5"></circle>
+  <text x="175" y="135" text-anchor="middle" fill="#00d4ff" font-size="13" font-weight="700">LiteLLM</text>
+  <text x="175" y="152" text-anchor="middle" fill="#00d4ff" font-size="9.5" font-family="IBM Plex Mono, monospace">Python · Budget routing</text>
+  <circle cx="145" cy="82" r="46" fill="#7b61ff" fill-opacity=".1" stroke="#7b61ff" stroke-width="1.5"></circle>
+  <text x="145" y="77" text-anchor="middle" fill="#7b61ff" font-size="13" font-weight="700">Portkey</text>
+  <text x="145" y="94" text-anchor="middle" fill="#7b61ff" font-size="9.5" font-family="IBM Plex Mono, monospace">Config-first · SaaS edge</text>
+  <circle cx="460" cy="115" r="54" fill="#00e599" fill-opacity=".1" stroke="#00e599" stroke-width="1.5"></circle>
+  <text x="460" y="108" text-anchor="middle" fill="#00e599" font-size="13" font-weight="700">Kong</text>
+  <text x="460" y="125" text-anchor="middle" fill="#00e599" font-size="9.5" font-family="IBM Plex Mono, monospace">C/Lua · Semantic+RAG</text>
+  <circle cx="480" cy="65" r="54" fill="#ff6b35" fill-opacity=".1" stroke="#ff6b35" stroke-width="1.5"></circle>
+  <text x="480" y="58" text-anchor="middle" fill="#ff6b35" font-size="13" font-weight="700">TrueFoundry</text>
+  <text x="480" y="75" text-anchor="middle" fill="#ff6b35" font-size="9.5" font-family="IBM Plex Mono, monospace">K8s · latency-based · MCP hooks</text>
+  <text x="190" y="335" text-anchor="middle" fill="#1e2d45" font-size="9.5" font-family="IBM Plex Mono, monospace">LOW OPS / LOWER DEPTH</text>
+  <text x="450" y="335" text-anchor="middle" fill="#1e2d45" font-size="9.5" font-family="IBM Plex Mono, monospace">HIGH OPS / LOWER DEPTH</text>
+  <text x="190" y="42" text-anchor="middle" fill="#1e2d45" font-size="9.5" font-family="IBM Plex Mono, monospace">LOW OPS / HIGH DEPTH</text>
+  <text x="450" y="42" text-anchor="middle" fill="#1e2d45" font-size="9.5" font-family="IBM Plex Mono, monospace">HIGH OPS / HIGH DEPTH</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Bubble size reflects relative AI routing feature breadth. Axes are editorial assessments as of March 2026.</p>
+
+<hr>
+
+<!-- ══════ §8 REFERENCES — UNCHANGED ══════ -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://status.openai.com/" target="_blank">OpenAI Status Page</a></li>
+  <li><a href="https://status.claude.com/" target="_blank">Anthropic/Claude Status Page</a></li>
+  <li><a href="https://docs.litellm.ai/docs/routing-load-balancing" target="_blank">LiteLLM — Routing, Loadbalancing &amp; Fallbacks</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/reliability" target="_blank">LiteLLM — Fallbacks / Reliability</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">LiteLLM — Provider Budget Routing</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings" target="_blank">LiteLLM — Router Settings for Keys and Teams</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/" target="_blank">Kong AI Gateway Landing Page</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/load-balancing/" target="_blank">Kong — Load Balancing with AI Proxy Advanced</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">Kong — AI Proxy Advanced Plugin</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">Kong — AI Rate Limiting Advanced Example</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/semantic-similarity/" target="_blank">Kong — Semantic Similarity</a></li>
+  <li><a href="https://developer.konghq.com/mcp/" target="_blank">Kong — MCP Traffic Gateway</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM Metrics</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank">Kong — Gen AI OTel Attributes Reference</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Configs</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/load-balancing" target="_blank">Portkey — Load Balancing</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/fallbacks" target="_blank">Portkey — Fallbacks</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/conditional-routing" target="_blank">Portkey — Conditional Routing</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/circuit-breaker" target="_blank">Portkey — Circuit Breaker</a></li>
+  <li><a href="https://portkey.ai/docs/product/observability/logs" target="_blank">Portkey — Logs</a></li>
+  <li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy in Your Infrastructure (Hybrid)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">TrueFoundry — Load Balancing Overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">TrueFoundry — Load Balancing Configuration</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">TrueFoundry — Budget Limiting</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">TrueFoundry — Export OpenTelemetry Data</a></li>
+</ol>
+
+<hr>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 3 of 15 &nbsp;·&nbsp; March 10, 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
+  Model strings verified against live provider API docs as of March 10, 2026. Feature claims cross-referenced against official public documentation. Verify before production decisions.
+</p>
+
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+
+</body></html>
