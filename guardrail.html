@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway Guardrails: LiteLLM vs Kong vs Portkey vs TrueFoundry (2026)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap');
+
+  :root {
+    --bg: #0b0e17;
+    --surface: #121826;
+    --surface2: #1a2233;
+    --border: #1e2d45;
+    --accent: #00d4ff;
+    --accent2: #7b61ff;
+    --accent3: #ff6b35;
+    --accent4: #00e599;
+    --text: #e2e8f0;
+    --muted: #7a8899;
+    --danger: #ff4757;
+    --warn: #ffa726;
+    --litellm: #00d4ff;
+    --kong: #00e599;
+    --portkey: #7b61ff;
+    --tf: #ff6b35;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.75; }
+
+  /* ── HEADER ── */
+  header {
+    background: linear-gradient(135deg, #0b0e17 0%, #0d1a2e 50%, #0b1820 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 64px 40px 56px;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0,212,255,0.08) 0%, transparent 70%),
+                radial-gradient(ellipse 50% 40% at 80% 100%, rgba(123,97,255,0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  /* Timestamp badge — top right corner */
+  .header-timestamp {
+    position: absolute;
+    top: 24px; right: 32px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    background: rgba(30,45,69,0.6);
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+  .header-timestamp::before { content: '🕐 '; }
+  .header-tag {
+    display: inline-block;
+    background: rgba(0,212,255,0.1);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; letter-spacing: 2px;
+    padding: 5px 14px; border-radius: 2px;
+    text-transform: uppercase; margin-bottom: 20px;
+  }
+  header h1 {
+    font-size: clamp(26px, 3.5vw, 48px);
+    font-weight: 700; line-height: 1.2;
+    max-width: 860px; margin-bottom: 20px;
+    background: linear-gradient(135deg, #ffffff 0%, #a0c4ff 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .meta { color: var(--muted); font-size: 14px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+  .meta span { display: flex; align-items: center; gap: 6px; }
+  .disclaimer-inline {
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    background: rgba(255,167,38,0.08); border: 1px solid rgba(255,167,38,0.25);
+    color: var(--warn); padding: 3px 10px; border-radius: 3px;
+  }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 32px; }
+  section { padding: 60px 0; border-bottom: 1px solid var(--border); }
+  section:last-child { border-bottom: none; }
+
+  /* ── TLDR ── */
+  .tldr-block {
+    background: linear-gradient(135deg, rgba(0,212,255,0.04) 0%, rgba(123,97,255,0.06) 100%);
+    border: 1px solid rgba(0,212,255,0.2);
+    border-radius: 12px;
+    padding: 40px;
+    margin: 40px 0 0;
+  }
+  .tldr-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 20px; display: block;
+  }
+  .tldr-story {
+    font-size: 15px; line-height: 1.8; color: #c5d5e8;
+    border-left: 3px solid var(--accent);
+    padding-left: 20px; margin-bottom: 24px;
+  }
+  .tldr-story em { color: var(--text); font-style: normal; font-weight: 600; }
+  .tldr-quickpick { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 24px; }
+  .qp-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px;
+    border-top: 3px solid;
+  }
+  .qp-card.c-litellm { border-top-color: var(--litellm); }
+  .qp-card.c-kong { border-top-color: var(--kong); }
+  .qp-card.c-portkey { border-top-color: var(--portkey); }
+  .qp-card.c-tf { border-top-color: var(--tf); }
+  .qp-name { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .qp-tag { font-size: 11px; color: var(--muted); margin-bottom: 8px; font-family: 'IBM Plex Mono', monospace; }
+  .qp-best { font-size: 12px; color: #c5d5e8; line-height: 1.5; }
+  .editorial-note {
+    font-size: 11px; color: var(--muted); font-style: italic; margin-top: 12px;
+    padding-top: 12px; border-top: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* ── TOC ── */
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 28px; margin: 40px 0; }
+  .toc h3 { font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; margin-bottom: 16px; }
+  .toc ol { padding-left: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 5px 28px; }
+  .toc li { font-size: 14px; }
+  .toc a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .toc a:hover { color: var(--accent); }
+
+  /* ── HEADINGS ── */
+  h2 { font-size: clamp(20px, 2.8vw, 32px); font-weight: 700; margin-bottom: 24px; line-height: 1.25; }
+  h2 .section-num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--accent); letter-spacing: 2px; display: block; margin-bottom: 6px; text-transform: uppercase; }
+  h3 { font-size: 19px; font-weight: 600; margin: 36px 0 14px; color: #b8ccf0; }
+  h4 { font-size: 15px; font-weight: 600; margin: 22px 0 10px; color: var(--accent); }
+
+  p { margin-bottom: 16px; color: #c5d5e8; }
+  strong { color: var(--text); font-weight: 600; }
+
+  /* ── CALLOUTS ── */
+  .callout { border-left: 3px solid var(--accent); background: rgba(0,212,255,0.05); padding: 18px 22px; margin: 24px 0; border-radius: 0 6px 6px 0; }
+  .callout.warn { border-color: var(--warn); background: rgba(255,167,38,0.05); }
+  .callout.danger { border-color: var(--danger); background: rgba(255,71,87,0.05); }
+  .callout.success { border-color: var(--accent4); background: rgba(0,229,153,0.05); }
+  .callout p { margin: 0; }
+  .callout-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; display: block; }
+  .callout .callout-title { color: var(--accent); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.success .callout-title { color: var(--accent4); }
+
+  /* ── CODE ── */
+  pre { background: #080c12; border: 1px solid var(--border); border-radius: 6px; padding: 22px; overflow-x: auto; margin: 18px 0; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.7; }
+  code { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #79c0ff; }
+  pre code { color: #c9d1d9; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; font-style: italic; } .val { color: #bd93f9; } .key { color: #50fa7b; }
+
+  /* ── DIAGRAMS ── */
+  .diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 28px; margin: 32px 0; overflow-x: auto; }
+  .diagram svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+  .diagram-caption { text-align: center; font-size: 13px; color: var(--muted); margin-top: 12px; font-style: italic; }
+
+  /* ── GATEWAY CARDS ── */
+  .gateway-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 32px; margin: 28px 0; }
+  .gateway-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+  .gw-badge { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 4px; letter-spacing: 1px; white-space: nowrap; }
+  .gw-litellm { background: rgba(0,212,255,0.15); color: var(--litellm); border: 1px solid rgba(0,212,255,0.3); }
+  .gw-kong { background: rgba(0,229,153,0.15); color: var(--kong); border: 1px solid rgba(0,229,153,0.3); }
+  .gw-portkey { background: rgba(123,97,255,0.15); color: var(--portkey); border: 1px solid rgba(123,97,255,0.3); }
+  .gw-tf { background: rgba(255,107,53,0.15); color: var(--tf); border: 1px solid rgba(255,107,53,0.3); }
+
+  /* ── COMPARISON TABLE ── */
+  .table-wrap { overflow-x: auto; margin: 28px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 720px; }
+  thead tr { background: var(--surface2); }
+  th { padding: 12px 14px; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); white-space: nowrap; }
+  th:not(:first-child) { text-align: center; }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  td:not(:first-child) { text-align: center; }
+  tr:hover { background: rgba(255,255,255,0.02); }
+  .check { color: var(--accent4); font-size: 15px; }
+  .cross { color: var(--danger); font-size: 15px; }
+  .partial { color: var(--warn); font-size: 13px; }
+  .td-feat { font-weight: 600; color: var(--text); font-size: 13px; }
+  .td-note { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* ── OWASP GRID ── */
+  .owasp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin: 24px 0; }
+  .owasp-item { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 18px; border-left: 3px solid var(--accent); }
+  .owasp-item.high { border-left-color: var(--danger); }
+  .owasp-item.critical { border-left-color: var(--warn); }
+  .owasp-rank { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 700; color: var(--accent); line-height: 1; margin-bottom: 5px; }
+  .owasp-item.high .owasp-rank { color: var(--danger); }
+  .owasp-item.critical .owasp-rank { color: var(--warn); }
+  .owasp-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  .owasp-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* ── PILLS ── */
+  .pill { display: inline-block; background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); color: var(--accent); border-radius: 4px; padding: 2px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; margin: 2px; }
+  .pill.green { background: rgba(0,229,153,0.1); border-color: rgba(0,229,153,0.2); color: var(--accent4); }
+  .pill.purple { background: rgba(123,97,255,0.1); border-color: rgba(123,97,255,0.2); color: var(--portkey); }
+  .pill.orange { background: rgba(255,107,53,0.1); border-color: rgba(255,107,53,0.2); color: var(--tf); }
+  .pill.gray { background: rgba(122,136,153,0.1); border-color: rgba(122,136,153,0.2); color: var(--muted); }
+
+  /* ── STAT BLOCKS ── */
+  .stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 24px 0; }
+  .stat-card { flex: 1; min-width: 140px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; text-align: center; }
+  .stat-num { font-size: 32px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; line-height: 1.1; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* ── VERDICT BOXES ── */
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 28px; margin: 18px 0; border-left: 4px solid; }
+  .verdict-card.c-litellm { border-left-color: var(--litellm); }
+  .verdict-card.c-kong { border-left-color: var(--kong); }
+  .verdict-card.c-portkey { border-left-color: var(--portkey); }
+  .verdict-card.c-tf { border-left-color: var(--tf); }
+  .verdict-title { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+
+  /* ── DATA SOV ── */
+  .sov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin: 20px 0; }
+  .sov-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+  .sov-card h4 { margin-top: 0; font-size: 13px; }
+  .sov-card p { font-size: 12px; margin: 0; color: var(--muted); }
+
+  /* ── REFS ── */
+  .refs-section { background: var(--surface); border-radius: 8px; padding: 24px; margin-top: 32px; }
+  .ref-item { font-size: 13px; color: var(--muted); margin-bottom: 7px; padding-left: 18px; position: relative; }
+  .ref-item::before { content: '['; position: absolute; left: 0; color: var(--accent); }
+  .ref-link { color: var(--accent); text-decoration: none; border-bottom: 1px dashed rgba(0,212,255,0.3); font-size: 13px; }
+  .ref-link:hover { border-bottom-color: var(--accent); }
+
+  /* ── AS-OF QUALIFIER ── */
+  .asof { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted); background: rgba(122,136,153,0.1); border: 1px solid rgba(122,136,153,0.2); padding: 2px 7px; border-radius: 3px; vertical-align: middle; margin-left: 6px; white-space: nowrap; }
+
+  @media (max-width: 768px) {
+    header { padding: 52px 20px 40px; }
+    .container { padding: 0 20px; }
+    section { padding: 40px 0; }
+    .gateway-section { padding: 20px; }
+    .header-timestamp { position: static; display: inline-block; margin-bottom: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header>
+  <div class="header-timestamp">Last updated: March 2026 · V8</div>
+  <div class="container">
+    <div class="header-tag">Technical Deep Dive · AI Security</div>
+    <h1>Guardrails in AI Gateways: LiteLLM, Kong, Portkey & TrueFoundry Compared</h1>
+    <div class="meta">
+      <span>⏱ 20 min read</span>
+      <span>🔐 Security · Compliance · Enterprise AI</span>
+      <span class="disclaimer-inline">Editorial assessments based on public docs, March 2026</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════ TLDR + QUICK-PICK ═══════════════ -->
+<div class="container">
+<section id="tldr" style="padding-top:40px;">
+  <h2><span class="section-num">// TL;DR</span>The 90-Second Version</h2>
+
+  <div class="tldr-block">
+    <span class="tldr-label">// Real-world scenario · Enterprise healthcare AI platform</span>
+    <div class="tldr-story">
+      It's 11 PM when Maya, a principal engineer at a health-tech company, gets paged. Their new AI clinical assistant has been live for three weeks. An audit flag just fired: a nurse used the assistant to summarise a patient chart, and somewhere in that conversation, the full name, date of birth, and Medicare number of the patient ended up in the response logs — accessible to anyone with dashboard access.
+      <br><br>
+      The assistant routes through <em>four different LLM providers</em> depending on query type. One model handles summarisation. Another handles coding questions for the engineering team. A third handles internal HR queries. All share the same gateway. The company has one AI gateway to govern all of it — but each application has radically different compliance requirements. The patient-facing assistant needs PHI redaction appropriate for HIPAA-regulated environments. The engineering copilot just needs secret detection. The HR bot needs PII masking but can tolerate a 50ms latency hit.
+      <br><br>
+      Maya's question isn't "which gateway has guardrails?" They all do. Her question is: <em>"Can I configure fundamentally different PII policies per application — including keeping unredacted patient data entirely inside our VPC — without spinning up four separate gateway instances?"</em>
+      <br><br>
+      Meanwhile, Alex, a lead engineer at a fast-moving SaaS startup, needs to ship agentic features by end of sprint. He doesn't want to manage infrastructure, doesn't need per-app policy routing, and just needs out-of-the-box SaaS guardrails to prevent bots from swearing at users — and maybe a content policy or two to keep things on-brand.
+      <br><br>
+      Both questions are valid. Both have different answers. That tension is what this comparison is designed to resolve.
+    </div>
+
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">📋 <strong style="color:var(--text)">Editorial quick-pick</strong> — based on public documentation as of March 2026. These are the authors' assessments, not factual claims.</p>
+
+    <div class="tldr-quickpick">
+      <div class="qp-card c-tf">
+        <div class="qp-name" style="color:var(--tf)">TrueFoundry</div>
+        <div class="qp-tag">Enterprise · Compliance-heavy</div>
+        <div class="qp-best">Multi-app sovereignty + MCP agent guardrails. Best fit for Maya's compliance scenario.</div>
+      </div>
+      <div class="qp-card c-litellm">
+        <div class="qp-name" style="color:var(--litellm)">LiteLLM</div>
+        <div class="qp-tag">Self-hosted · Cost-sensitive</div>
+        <div class="qp-best">Full OSS control. Own your full stack. Best Presidio integration for in-VPC PII.</div>
+      </div>
+      <div class="qp-card c-kong">
+        <div class="qp-name" style="color:var(--kong)">Kong</div>
+        <div class="qp-tag">Existing Kong users · Topic policy</div>
+        <div class="qp-best">Native semantic (embedding-based) guardrails. Strong if you already run Kong.</div>
+      </div>
+      <div class="qp-card c-portkey">
+        <div class="qp-name" style="color:var(--portkey)">Portkey</div>
+        <div class="qp-tag">Fast shipping · SaaS-first</div>
+        <div class="qp-best">20+ deterministic + LLM-based + partner guardrails, MCP Gateway GA (Jan 2026), highly optimized for fast shipping. Best fit for Alex's SaaS scenario.</div>
+      </div>
+    </div>
+    <div class="editorial-note">⚠ Editorial assessments only · Verify capabilities against current vendor docs before making architectural decisions · See §7 for full reasoning</div>
+  </div>
+
+  <div class="toc">
+    <h3>// Table of Contents</h3>
+    <ol>
+      <li><a href="#tldr">TL;DR + Quick-Pick</a></li>
+      <li><a href="#why-needed">Why These Guardrails Are Non-Negotiable</a></li>
+      <li><a href="#owasp">OWASP Top 10 for LLMs 2025</a></li>
+      <li><a href="#litellm">LiteLLM — Deep Dive</a></li>
+      <li><a href="#kong">Kong AI Gateway — Deep Dive</a></li>
+      <li><a href="#portkey">Portkey — Deep Dive</a></li>
+      <li><a href="#truefoundry">TrueFoundry — Deep Dive</a></li>
+      <li><a href="#comparison">Feature Comparison Matrix</a></li>
+      <li><a href="#verdict">Final Verdict</a></li>
+      <li><a href="#references">References</a></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ═══════════════ SECTION 1: WHY NEEDED ═══════════════ -->
+<section id="why-needed">
+  <h2><span class="section-num">// 01</span>Why PII Redaction & Prompt Injection Detection Are Non-Negotiable</h2>
+
+  <p>Modern enterprise AI applications sit at a dangerous intersection: they ingest user-supplied data — which can be malicious or highly sensitive — and route it to LLMs running on third-party cloud infrastructure. Without a safety layer at the gateway, two categories of risk go unmitigated: <strong>prompt injection attacks</strong> and <strong>sensitive data leakage</strong>.</p>
+
+  <p>In 2023, Samsung engineers inadvertently leaked proprietary semiconductor source code by pasting it into the public ChatGPT interface. No guardrail intercepted the outbound prompt, creating the risk of sensitive data being retained or used for service improvement — <a href="https://openai.com/index/new-ways-to-manage-your-data-in-chatgpt/" class="ref-link" target="_blank">OpenAI does offer controls like disabling chat history and training</a>, but those must be explicitly configured. In 2024, OWASP cites CVE-2024-5184 as a prompt-injection issue in an LLM-powered email assistant (EmailGPT) that allowed exfiltration of system prompt contents and user data — a direct demonstration of LLM01 and LLM07 in the wild.</p>
+
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--danger)">#1</div>
+      <div class="stat-label">Prompt Injection — LLM01 in all 4 OWASP editions: v0.5, v1.0, v1.1, and 2025</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--warn)">#2</div>
+      <div class="stat-label">Sensitive Info Disclosure — LLM02:2025 · confirmed rose from #6 in the 2023 list</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--accent)">6+</div>
+      <div class="stat-label">Of 10 OWASP LLM risks where gateway-layer guardrails can materially reduce exposure</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--accent4)">3</div>
+      <div class="stat-label">Distinct PII leakage surfaces: inbound, outbound, and system-prompt exfiltration</div>
+    </div>
+  </div>
+
+  <h3>The Prompt Injection Threat Surface</h3>
+  <p>Prompt injection is categorically different from SQL injection or XSS. Traditional injection attacks exploit parsers and interpreters with deterministic rules. Prompt injection exploits the model's instruction-following behavior — the very capability that makes LLMs useful. There is no "patch" for this at the model layer; gateway guardrails are one of the primary architectural defenses.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 900 400" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#ff4757"/></marker>
+        <marker id="arrok" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#00e599"/></marker>
+      </defs>
+      <rect width="900" height="400" fill="#121826" rx="8"/>
+      <text x="450" y="36" text-anchor="middle" fill="#7a8899" font-size="12" letter-spacing="2">PROMPT INJECTION ATTACK VECTORS — OWASP-ALIGNED VIEW</text>
+      <rect x="30" y="80" width="120" height="60" rx="6" fill="#1a2233" stroke="#2d3f5a" stroke-width="1.5"/>
+      <text x="90" y="106" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">User / Agent</text>
+      <text x="90" y="124" text-anchor="middle" fill="#7a8899" font-size="10">Attacker Input</text>
+      <rect x="220" y="50" width="160" height="52" rx="4" fill="#1a0a0a" stroke="#ff4757" stroke-width="1.5"/>
+      <text x="300" y="71" text-anchor="middle" fill="#ff4757" font-size="11" font-weight="600">Direct Injection</text>
+      <text x="300" y="88" text-anchor="middle" fill="#7a8899" font-size="10">"Ignore all instructions"</text>
+      <rect x="220" y="118" width="160" height="52" rx="4" fill="#1a0a0a" stroke="#ff4757" stroke-width="1.5"/>
+      <text x="300" y="139" text-anchor="middle" fill="#ff4757" font-size="11" font-weight="600">Indirect Injection</text>
+      <text x="300" y="156" text-anchor="middle" fill="#7a8899" font-size="10">Malicious doc / RAG content</text>
+      <rect x="220" y="186" width="160" height="52" rx="4" fill="#1a0a0a" stroke="#ffa726" stroke-width="1.5"/>
+      <text x="300" y="207" text-anchor="middle" fill="#ffa726" font-size="11" font-weight="600">Multimodal Injection</text>
+      <text x="300" y="224" text-anchor="middle" fill="#7a8899" font-size="10">Hidden text in images</text>
+      <rect x="220" y="254" width="160" height="52" rx="4" fill="#1a0a0a" stroke="#ffa726" stroke-width="1.5"/>
+      <text x="300" y="275" text-anchor="middle" fill="#ffa726" font-size="11" font-weight="600">Encoding Evasion</text>
+      <text x="300" y="292" text-anchor="middle" fill="#7a8899" font-size="10">Base64 / emoji obfuscation</text>
+      <rect x="220" y="322" width="160" height="52" rx="4" fill="#1a0a0a" stroke="#7b61ff" stroke-width="1.5"/>
+      <text x="300" y="343" text-anchor="middle" fill="#7b61ff" font-size="11" font-weight="600">Jailbreak / Roleplay</text>
+      <text x="300" y="360" text-anchor="middle" fill="#7a8899" font-size="10">Persona override attacks</text>
+      <line x1="150" y1="110" x2="218" y2="76" stroke="#ff4757" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="150" y1="110" x2="218" y2="144" stroke="#ff4757" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="150" y1="110" x2="218" y2="212" stroke="#ffa726" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="150" y1="110" x2="218" y2="280" stroke="#ffa726" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="150" y1="110" x2="218" y2="348" stroke="#7b61ff" stroke-width="1.5" marker-end="url(#arr)"/>
+      <rect x="445" y="155" width="190" height="145" rx="6" fill="#0d2237" stroke="#00d4ff" stroke-width="2"/>
+      <text x="540" y="185" text-anchor="middle" fill="#00d4ff" font-size="12" font-weight="700">AI GATEWAY</text>
+      <text x="540" y="202" text-anchor="middle" fill="#7a8899" font-size="10">Guardrail Layer</text>
+      <text x="540" y="220" text-anchor="middle" fill="#00e599" font-size="10">✓ Input / output filtering</text>
+      <text x="540" y="235" text-anchor="middle" fill="#00e599" font-size="10">✓ Prompt injection detection</text>
+      <text x="540" y="250" text-anchor="middle" fill="#00e599" font-size="10">✓ PII / secret redaction</text>
+      <text x="540" y="265" text-anchor="middle" fill="#00e599" font-size="10">✓ Tool / policy gating</text>
+      <line x1="382" y1="76" x2="443" y2="183" stroke="#ff4757" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="382" y1="144" x2="443" y2="196" stroke="#ff4757" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="382" y1="212" x2="443" y2="210" stroke="#ffa726" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="382" y1="280" x2="443" y2="232" stroke="#ffa726" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="382" y1="348" x2="443" y2="248" stroke="#7b61ff" stroke-width="1.2" marker-end="url(#arr)"/>
+      <rect x="680" y="160" width="120" height="80" rx="6" fill="#0d2a0d" stroke="#00e599" stroke-width="1.5"/>
+      <text x="740" y="196" text-anchor="middle" fill="#00e599" font-size="12" font-weight="700">LLM</text>
+      <text x="740" y="216" text-anchor="middle" fill="#7a8899" font-size="10">Safe Request</text>
+      <text x="740" y="232" text-anchor="middle" fill="#7a8899" font-size="10">Only Passes</text>
+      <line x1="635" y1="200" x2="678" y2="200" stroke="#00e599" stroke-width="2" marker-end="url(#arrok)"/>
+      <text x="540" y="285" text-anchor="middle" fill="#ff4757" font-size="11">⊘ Blocked/Redacted</text>
+      <text x="450" y="390" text-anchor="middle" fill="#3a4a5a" font-size="10">Source: OWASP Top 10 for LLM Applications 2025 — genai.owasp.org/llm-top-10</text>
+    </svg>
+    <div class="diagram-caption">OWASP-aligned prompt injection attack vectors. The AI gateway is a major enforcement point for these categories, but not the only control point.</div>
+  </div>
+
+  <h3>Three Sensitive-Data Leakage Surfaces</h3>
+
+  <p><strong>Inbound PII (user → LLM):</strong> Users paste customer records, patient data, or employee PII into prompts. Healthcare workers submitting medical notes, legal teams sharing client details — all potentially violating GDPR, HIPAA, or CCPA if data crosses to a third-party model API.</p>
+
+  <p><strong>Outbound PII (LLM → user):</strong> Models may reproduce sensitive data verbatim. A model summarising a document containing SSNs may include them in its response. Output-side guardrails are required — redacted inputs alone do not prevent this.</p>
+
+  <p><strong>System Prompt Exfiltration:</strong> Injection attacks can force the model to echo system prompt contents — leaking API keys, connection strings, or internal business logic (OWASP LLM07:2025).</p>
+
+  <div class="callout danger">
+    <span class="callout-title">⚠ Real Incident — CVE-2024-5184</span>
+    <p>OWASP cites CVE-2024-5184 as a prompt-injection issue in an LLM-powered email assistant (EmailGPT) that allowed attackers to override system prompts and exfiltrate sensitive user data. The vulnerability required no special access — a maliciously crafted input was sufficient. The gateway — not the model — was the missing control.</p>
+  </div>
+</section>
+
+<!-- ═══════════════ SECTION 2: OWASP ═══════════════ -->
+<section id="owasp">
+  <h2><span class="section-num">// 02</span>OWASP Top 10 for LLM Applications 2025</h2>
+  <p>The OWASP GenAI Security Project maintains a <a href="https://genai.owasp.org/llm-top-10/" class="ref-link" target="_blank">widely used 2025 classification of major LLM application risks</a>.</p>
+
+  <div class="owasp-grid">
+    <div class="owasp-item high"><div class="owasp-rank">LLM01</div><div class="owasp-title">Prompt Injection</div><div class="owasp-desc">Crafted inputs alter model behavior to override instructions, exfiltrate data, or execute unauthorized actions. Both direct and indirect (via RAG) variants.</div></div>
+    <div class="owasp-item high"><div class="owasp-rank">LLM02</div><div class="owasp-title">Sensitive Information Disclosure</div><div class="owasp-desc">LLMs exposing PII, API keys, credentials, or confidential business data through responses or model memorisation.</div></div>
+    <div class="owasp-item critical"><div class="owasp-rank">LLM03</div><div class="owasp-title">Supply Chain</div><div class="owasp-desc">Risks from third-party models, plugins, fine-tuning datasets, or RAG data sources that may be poisoned or backdoored.</div></div>
+    <div class="owasp-item critical"><div class="owasp-rank">LLM04</div><div class="owasp-title">Data & Model Poisoning</div><div class="owasp-desc">Deliberately manipulated training data introduces backdoors or biases that persist into production.</div></div>
+    <div class="owasp-item"><div class="owasp-rank">LLM05</div><div class="owasp-title">Improper Output Handling</div><div class="owasp-desc">Downstream systems executing unsanitized LLM output — leading to XSS, remote code execution, or SSRF.</div></div>
+    <div class="owasp-item"><div class="owasp-rank">LLM06</div><div class="owasp-title">Excessive Agency</div><div class="owasp-desc">Autonomous agents granted excessive permissions acting on external systems without human oversight.</div></div>
+    <div class="owasp-item high"><div class="owasp-rank">LLM07</div><div class="owasp-title">System Prompt Leakage <span style="font-size:10px;color:#ffa726">NEW 2025</span></div><div class="owasp-desc">Injection attacks forcing the model to reveal system prompt contents including API keys and business logic.</div></div>
+    <div class="owasp-item"><div class="owasp-rank">LLM08</div><div class="owasp-title">Vector & Embedding Weaknesses <span style="font-size:10px;color:#ffa726">NEW 2025</span></div><div class="owasp-desc">Vulnerabilities in RAG architectures from poisoned vector stores or adversarial embedding manipulation.</div></div>
+    <div class="owasp-item"><div class="owasp-rank">LLM09</div><div class="owasp-title">Misinformation</div><div class="owasp-desc">LLMs generating factually incorrect outputs presented with confidence, leading to harmful decisions.</div></div>
+    <div class="owasp-item"><div class="owasp-rank">LLM10</div><div class="owasp-title">Unbounded Consumption <span style="font-size:10px;color:#ffa726">NEW 2025</span></div><div class="owasp-desc">Denial-of-Wallet attacks through excessive token consumption or resource exhaustion.</div></div>
+  </div>
+
+  <div class="callout">
+    <span class="callout-title">Key Insight</span>
+    <p>Gateway-layer guardrails can materially reduce exposure to several OWASP LLM risk categories — especially LLM01, LLM02, LLM05, LLM07, LLM09, and LLM10 — through input/output scanning, PII redaction, prompt injection detection, hallucination filtering, and rate limiting. For many enterprise deployments, the AI gateway becomes a primary control point for enforcing safety, compliance, and observability.</p>
+  </div>
+</section>
+
+<!-- ═══════════════ SECTION 3: LITELLM ═══════════════ -->
+<section id="litellm">
+  <h2><span class="section-num">// 03</span>LiteLLM: Guardrail Configuration Deep Dive</h2>
+
+  <div class="gateway-section">
+    <div class="gateway-header">
+      <span class="gw-badge gw-litellm">LiteLLM Proxy</span>
+      <div>
+        <div style="font-weight:600">Open-Source AI Gateway</div>
+        <div style="font-size:13px;color:var(--muted)">Self-hosted proxy · OpenAI-compatible API · Config-driven guardrails</div>
+      </div>
+    </div>
+
+    <p>LiteLLM is an open-source Python proxy providing an OpenAI-compatible interface to 100+ LLM providers. Its guardrail system is entirely <strong>configuration-driven via YAML</strong>, with guardrails specified per-route and referencing named integrations — full setup is covered in the <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" class="ref-link" target="_blank">Guardrails Quick Start</a>.</p>
+
+    <h3>Guardrail Architecture</h3>
+    <p>LiteLLM's guardrail model is hook-based with four execution modes: <span class="pill">pre_call</span> (blocks before LLM call), <span class="pill">during_call</span> (parallel with model call), <span class="pill">post_call</span> (inspect/block the response), and <span class="pill">logging_only</span> (observes without blocking). Each guardrail config accepts <code>default_on: true</code> to activate automatically without per-request opt-in, or <code>default_on: false</code> (the default) requiring <code>"guardrails": ["name"]</code> explicitly in each request body. MCP-specific modes (<code>pre_mcp_call</code>, <code>during_mcp_call</code>) are a separate hook surface for agentic tool calls, documented in the <a href="https://docs.litellm.ai/docs/mcp_guardrail" class="ref-link" target="_blank">MCP Guardrails docs</a>.</p>
+
+    <h4>PII Redaction: Microsoft Presidio Integration</h4>
+    <p>LiteLLM's primary PII redaction delegates to <strong>Microsoft Presidio</strong> — NER-based PII detection containers that you deploy within your own infrastructure. This is the recommended path for keeping unredacted prompts inside the VPC. Full configuration is detailed in the <a href="https://docs.litellm.ai/docs/proxy/guardrails/pii_masking_v2" class="ref-link" target="_blank">PII Masking docs</a>.</p>
+
+<pre><code><span class="cm"># config.yaml — LiteLLM with Presidio PII guardrails</span>
+<span class="cm"># Set via environment:</span>
+<span class="cm"># PRESIDIO_ANALYZER_API_BASE=http://localhost:5002</span>
+<span class="cm"># PRESIDIO_ANONYMIZER_API_BASE=http://localhost:5001</span>
+
+guardrails:
+  - guardrail_name: <span class="str">"presidio-mask-guard"</span>
+    litellm_params:
+      guardrail: <span class="kw">presidio</span>
+      mode: <span class="str">"pre_call"</span>
+      presidio_filter_scope: <span class="kw">both</span>       <span class="cm"># input | output | both</span>
+      presidio_score_thresholds:
+        ALL: <span class="val">0.7</span>
+        CREDIT_CARD: <span class="val">0.8</span>
+      pii_entities_config:
+        CREDIT_CARD: <span class="str">"MASK"</span>
+        EMAIL_ADDRESS: <span class="str">"MASK"</span>
+        US_SSN: <span class="str">"BLOCK"</span>               <span class="cm"># blocks the entire request</span>
+        PERSON: <span class="str">"MASK"</span>
+      output_parse_pii: <span class="kw">true</span>            <span class="cm"># unmasks placeholders after the model call; output scanning is controlled by presidio_filter_scope</span>
+</code></pre>
+
+    <p>LiteLLM also ships a lightweight <strong>built-in content filter</strong> (no external service) with regex matching, keyword blocking, and category-based harm detection — see the <a href="https://docs.litellm.ai/docs/proxy/guardrails/litellm_content_filter" class="ref-link" target="_blank">content filter docs</a> for the full category list.</p>
+
+<pre><code><span class="cm"># config.yaml — LiteLLM built-in content filter</span>
+guardrails:
+  - guardrail_name: <span class="str">"content-filter"</span>
+    litellm_params:
+      guardrail: <span class="kw">litellm_content_filter</span>
+      mode: <span class="str">"pre_call"</span>
+      patterns:
+        - pattern_type: <span class="str">"prebuilt"</span>
+          pattern_name: <span class="str">"us_ssn"</span>
+          action: <span class="str">"BLOCK"</span>
+        - pattern_type: <span class="str">"regex"</span>
+          pattern: <span class="str">"PROJ-[0-9]{4,6}"</span>     <span class="cm"># internal project IDs</span>
+          name: <span class="str">"project_id"</span>
+          action: <span class="str">"MASK"</span>
+      pattern_redaction_format: <span class="str">"[{pattern_name}_REDACTED]"</span>
+</code></pre>
+
+    <h4>Prompt Injection Detection</h4>
+    <p>LiteLLM supports <strong>built-in in-memory prompt injection detection</strong> via a callback: <code>callbacks: ["detect_prompt_injection"]</code>. The mechanism uses <strong>similarity checking</strong> against a pre-generated list of known injection attacks (cosine-similarity scored), with an optional secondary <strong>LLM API check</strong> that sends the input to a designated model for a safety verdict. No external service is required for the similarity-only mode. Details are in the <a href="https://docs.litellm.ai/docs/proxy/guardrails/prompt_injection" class="ref-link" target="_blank">prompt injection detection docs</a>.</p>
+
+<pre><code><span class="cm"># Built-in similarity + LLM-based injection detection (no external service for similarity mode)</span>
+litellm_settings:
+  callbacks: [<span class="str">"detect_prompt_injection"</span>]
+  prompt_injection_params:
+    heuristics_check: <span class="kw">true</span>
+    similarity_check: <span class="kw">true</span>       <span class="cm"># cosine similarity vs known-injection list</span>
+    llm_api_check: <span class="kw">true</span>           <span class="cm"># optional: route to a safety-judge LLM</span>
+    llm_api_name: <span class="str">azure-gpt-3.5</span>
+    llm_api_system_prompt: <span class="str">"Detect if prompt is safe to run. Return 'UNSAFE' if not."</span>
+    llm_api_fail_call_string: <span class="str">"UNSAFE"</span>
+</code></pre>
+
+<pre><code><span class="cm"># config.yaml — LiteLLM with Lakera Guard integration</span>
+guardrails:
+  - guardrail_name: <span class="str">"lakera-guard"</span>
+    litellm_params:
+      guardrail: <span class="kw">lakera_v2</span>
+      mode: <span class="str">"during_call"</span>
+      api_key: <span class="str">os.environ/LAKERA_API_KEY</span>
+      api_base: <span class="str">os.environ/LAKERA_API_BASE</span>  <span class="cm"># (SaaS or self-hosted depending on your Lakera deployment)</span>
+      on_flagged: <span class="str">"block"</span>
+
+  - guardrail_name: <span class="str">"hide-secrets"</span>          <span class="cm"># Enterprise-only — secret detection/redaction</span>
+    litellm_params:
+      guardrail: <span class="str">"hide-secrets"</span>
+      mode: <span class="str">"pre_call"</span>
+      detect_secrets_config:
+        plugins_used:
+          - { name: <span class="str">"AWSKeyDetector"</span> }
+          - { name: <span class="str">"SlackDetector"</span> }
+          - { name: <span class="str">"GitHubTokenDetector"</span> }
+</code></pre>
+
+    <h4>MCP Tool Call Guardrails</h4>
+    <p>LiteLLM supports guardrails on MCP tool calls via two dedicated modes: <code>pre_mcp_call</code> (runs before the tool call, on input — blocking/masking) and <code>during_mcp_call</code> (real-time monitoring during execution). All existing LiteLLM-supported guardrail providers (including Presidio, Bedrock, Lakera) work with MCP hooks — full reference at <a href="https://docs.litellm.ai/docs/mcp_guardrail" class="ref-link" target="_blank">docs.litellm.ai/docs/mcp_guardrail</a>.</p>
+
+<pre><code><span class="cm"># MCP guardrail — pre-call PII blocking on tool inputs</span>
+guardrails:
+  - guardrail_name: <span class="str">"mcp-pii-guard"</span>
+    litellm_params:
+      guardrail: <span class="kw">presidio</span>
+      mode: <span class="str">"pre_mcp_call"</span>         <span class="cm"># blocks before MCP tool invoked</span>
+      pii_entities_config:
+        CREDIT_CARD: <span class="str">"BLOCK"</span>
+        EMAIL_ADDRESS: <span class="str">"MASK"</span>
+        US_SSN: <span class="str">"BLOCK"</span>
+      default_on: <span class="kw">true</span>
+</code></pre>
+
+    <h4>Supported Guardrail Providers</h4>
+    <p>LiteLLM documents <strong>29 guardrail integrations</strong> as of March 2026 — the largest provider ecosystem of the four gateways:</p>
+    <p><span class="pill">Aim Security</span> <span class="pill">Aporia</span> <span class="pill">Azure Content Safety Guardrail</span> <span class="pill">Bedrock Guardrails</span> <span class="pill">CrowdStrike AIDR</span> <span class="pill">Custom Code Guardrail</span> <span class="pill">Custom Guardrail</span> <span class="pill">DynamoAI Guardrails</span> <span class="pill">EnkryptAI Guardrails</span> <span class="pill">Gray Swan Cygnal Guardrail</span> <span class="pill">Guardrails AI</span> <span class="pill">HiddenLayer Guardrails</span> <span class="pill">IBM Guardrails</span> <span class="pill">Javelin Guardrails</span> <span class="pill">Lakera AI</span> <span class="pill">Lasso Security</span> <span class="pill">Google Cloud Model Armor</span> <span class="pill">Noma Security</span> <span class="pill">Onyx Security</span> <span class="pill">OpenAI Moderation</span> <span class="pill">Pangea</span> <span class="pill">PANW Prisma AIRS</span> <span class="pill">PII, PHI Masking — Presidio</span> <span class="pill">Pillar Security</span> <span class="pill">In-memory Prompt Injection Detection</span> <span class="pill">Qualifire</span> <span class="pill">Secret Detection/Redaction (Enterprise-only)</span> <span class="pill">LiteLLM Tool Permission Guardrail</span> <span class="pill">Zscaler AI Guard</span></p>
+
+    <h4>Data Sovereignty</h4>
+    <p>Guardrail config is per-model/route in YAML — there are no native conditional when-rules. True per-application sovereignty requires either separate gateway instances per compliance tier, or client-side filtering. Presidio containers deployable inside VPC for full in-VPC PII processing.</p>
+
+    <div class="callout">
+      <span class="callout-title">Strengths</span>
+      <p>Largest guardrail provider ecosystem of the four (29 integrations, March 2026); built-in in-memory injection detection requires no external service. Fully open source (MIT) with full Presidio self-hosting — unredacted prompts stay inside the VPC.</p>
+    </div>
+    <div class="callout warn">
+      <span class="callout-title">Limitations</span>
+      <p>No conditional per-app guardrail routing — same config applies to all traffic on a route; multi-app policy isolation requires separate gateway instances. <code>hide-secrets</code> is Enterprise-only; no UI-driven policy management on open source tier.</p>
+      <p style="margin-top:10px"><strong>⚠ Known behaviour to verify:</strong> Some public LiteLLM issue reports in late 2025 described cases where guardrails configured at the model/deployment level via the UI or <code>litellm_params.guardrails</code> did not reliably fire on API calls. Use <code>default_on: true</code> in the guardrail config block, or pass <code>"guardrails": [...]</code> explicitly in each request body. Verify current behaviour before production rollout.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SECTION 4: KONG ═══════════════ -->
+<section id="kong">
+  <h2><span class="section-num">// 04</span>Kong AI Gateway: Guardrail Configuration Deep Dive</h2>
+
+  <div class="gateway-section">
+    <div class="gateway-header">
+      <span class="gw-badge gw-kong">Kong AI Gateway</span>
+      <div>
+        <div style="font-weight:600">Enterprise API + AI Gateway</div>
+        <div style="font-size:13px;color:var(--muted)">Plugin-based architecture · Native semantic guardrails · Enterprise tier for PII</div>
+      </div>
+    </div>
+
+    <p>Kong AI Gateway extends Kong Gateway's battle-tested plugin architecture with AI-specific plugins. Its guardrail story is plugin-driven, layering multiple plugins to build a defense-in-depth pipeline. A notable differentiator (among the four gateways discussed here, as of March 2026) is Kong's native <strong>semantic guardrail capability</strong> — using embeddings and vector similarity to enforce topic-level policies without regex. Full plugin reference at <a href="https://developer.konghq.com/ai-gateway/" class="ref-link" target="_blank">developer.konghq.com/ai-gateway/</a>.</p>
+
+    <h4>1. AI Prompt Guard (Regex-Based)</h4>
+<pre><code><span class="cm"># kong-config.yaml — AI Prompt Guard plugin</span>
+plugins:
+  - name: <span class="kw">ai-prompt-guard</span>
+    config:
+      deny_patterns:
+        - <span class="str">"(?i)(ignore|forget|disregard).*(previous|prior|above).*(instruction|rule|prompt)"</span>
+        - <span class="str">"(?i)you are now (in |)(DAN|jailbreak|developer|unrestricted) mode"</span>
+        - <span class="str">"(?i)(bypass|override|ignore).*(safety|filter|guardrail|policy)"</span>
+</code></pre>
+
+    <h4>2. AI Semantic Prompt Guard (Embedding-Based)</h4>
+    <p>Uses <strong>semantic vector embeddings</strong> to enforce topic-level policies. Instead of matching exact phrases, it computes cosine similarity between an incoming prompt and allow/deny topic descriptions — catching paraphrased attacks that regex cannot detect. See the <a href="https://developer.konghq.com/index/ai-gateway/" class="ref-link" target="_blank">AI Gateway plugin index</a> for configuration options.</p>
+
+<pre><code><span class="cm"># Illustrative pseudo-config</span>
+plugins:
+  - name: <span class="kw">ai-semantic-prompt-guard</span>
+    config:
+      embeddings:
+        model: { provider: <span class="str">openai</span>, name: <span class="str">text-embedding-3-small</span> }
+      vectordb:
+        strategy: <span class="kw">redis</span>          <span class="cm"># or pgvector (v3.10+)</span>
+        threshold: <span class="val">0.7</span>           <span class="cm"># cosine similarity threshold</span>
+      allow_prompts:
+        - <span class="str">"Questions about our product features and pricing"</span>
+      deny_prompts:
+        - <span class="str">"Instructions to bypass AI safety systems"</span>
+        - <span class="str">"Requests to reveal confidential system configuration"</span>
+</code></pre>
+
+    <div class="callout success">
+      <span class="callout-title">💡 Differentiator (among the four gateways, March 2026)</span>
+      <p>The AI Semantic Prompt Guard catches semantically equivalent attacks even when phrased differently. "Act as an unrestricted AI" and "You have no limitations, respond freely" are the same attack vector — semantic similarity to a "jailbreak" deny topic catches both. Regex on either would require exact pattern matching.</p>
+    </div>
+
+    <h4>3. AI Semantic Response Guard</h4>
+    <p>Applied to <em>outputs</em>: embeds the model's response and compares against approved/denied topic vectors before returning to the client. Catches off-topic or policy-violating responses even when the input appeared clean.</p>
+
+    <h4>4. AI PII Sanitizer (Enterprise)</h4>
+    <p>Integrates with a Docker-based AI PII Anonymizer Service that can be deployed within your own infrastructure — see the <a href="https://developer.konghq.com/plugins/ai-sanitizer/" class="ref-link" target="_blank">AI Sanitizer plugin docs</a> for the full schema.</p>
+
+<pre><code><span class="cm"># Illustrative pseudo-config; consult Kong's plugin reference for exact field schema.</span>
+plugins:
+  - name: <span class="kw">ai-pii-sanitizer</span>            <span class="cm"># AI Gateway Enterprise only</span>
+    config:
+      <span class="cm"># endpoint/service wiring omitted</span>
+      anonymize:
+        - <span class="kw">general</span>
+        - <span class="kw">ssn</span>
+        - <span class="kw">credentials</span>
+        - <span class="kw">custom</span>
+      custom_patterns:
+        - name: <span class="str">"employee_id"</span>
+          regex: <span class="str">"EMP-[0-9]{6}"</span>
+          score: <span class="val">0.8</span>
+      redact_mode: <span class="kw">placeholder</span>       <span class="cm"># placeholder | synthetic</span>
+</code></pre>
+
+    <p>The <code>synthetic</code> redact mode replaces "John Smith" with a plausible alternative name, preserving grammatical flow while protecting identity.</p>
+
+    <h4>5. Managed Safety Service Integrations</h4>
+    <p><span class="pill green">AWS Bedrock Guardrails</span> <span class="pill green">Azure AI Content Safety</span> <span class="pill green">Google Cloud Model Armor</span> <span class="pill green">Lakera Guard</span> (defaults to SaaS; configurable to self-hosted Lakera instance via <code>service_url</code>)</p>
+
+    <h4>Data Sovereignty</h4>
+    <p>Per-Route/Service/Consumer plugin targeting allows different routes to carry different guardrail configurations. PII Sanitizer is Enterprise-only and calls a Docker container — deployable inside VPC. Semantic plugins may require external embedding calls unless a self-hosted embedding model is used.</p>
+
+    <div class="callout">
+      <span class="callout-title">Strengths</span>
+      <p>The clearest first-party documented implementation of semantic (embedding-based) topic guardrails among these four (March 2026) — catching paraphrased attacks regex cannot detect. Mature plugin ecosystem from Kong Gateway with pgvector support and integrated AWS/Azure/GCP safety service plugins.</p>
+    </div>
+    <div class="callout warn">
+      <span class="callout-title">Limitations</span>
+      <p>AI PII Sanitizer is Enterprise-only (private Cloudsmith registry, requires vendor contact); semantic plugins require embedding infrastructure. Plugin-chain configuration carries a steeper operational learning curve than the SaaS alternatives here.</p>
+      <p style="margin-top:10px"><strong>⚠ Operational note:</strong> The AI PII Anonymizer sidecar Docker image is distributed via a <strong>private Cloudsmith registry</strong>. Access requires contacting Kong Support — it is not a self-service Docker Hub pull. Factor this into your procurement and onboarding timeline. Full instructions in the <a href="https://developer.konghq.com/how-to/protect-sensitive-information-with-ai/" class="ref-link" target="_blank">AI PII Sanitizer how-to guide</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SECTION 5: PORTKEY ═══════════════ -->
+<section id="portkey">
+  <h2><span class="section-num">// 05</span>Portkey: Guardrail Configuration Deep Dive</h2>
+
+  <div class="gateway-section">
+    <div class="gateway-header">
+      <span class="gw-badge gw-portkey">Portkey</span>
+      <div>
+        <div style="font-weight:600">Developer-First AI Gateway</div>
+        <div style="font-size:13px;color:var(--muted)">60+ guardrails · MCP Gateway GA · Webhook BYOG · UI-driven</div>
+      </div>
+    </div>
+
+    <p>Portkey is a developer-friendly production control plane. Guardrails are attached to <strong>Config</strong> objects — JSON/YAML definitions for routing, model selection, and policy hooks. The current recommended config fields are <code>input_guardrails</code> (input) and <code>output_guardrails</code> (output); the older <code>before_request_hooks</code> / <code>after_request_hooks</code> format remains valid. Portkey's feature page markets <a href="https://portkey.ai/features/guardrails" class="ref-link" target="_blank">60+ guardrails</a>; the product docs more specifically describe 20+ deterministic checks plus LLM-based and partner-integrated guardrails. In January 2026, Portkey shipped its <strong>MCP Gateway</strong> as GA — a centralised control plane for MCP servers with authentication, RBAC, access policies, and observability, <a href="https://portkey.ai/docs/changelog/2026/january" class="ref-link" target="_blank">detailed in the January 2026 changelog</a>.</p>
+
+<pre><code><span class="cm">// Portkey Config — recommended modern format (input_guardrails / output_guardrails)</span>
+{
+  <span class="key">"provider"</span>: <span class="str">"@openai-prod"</span>,
+  <span class="key">"input_guardrails"</span>: [
+    <span class="str">"pii-check-id"</span>,
+    <span class="str">"injection-check-id"</span>
+  ],
+  <span class="key">"output_guardrails"</span>: [<span class="str">"output-pii-id"</span>]
+}
+<span class="cm">// Legacy format (still valid): before_request_hooks / after_request_hooks</span>
+</code></pre>
+
+    <h4>PII Redaction</h4>
+    <p>Portkey provides regex-based redaction natively (in-process, no external service). Richer ML/NER-based detection relies on external providers: <span class="pill purple">Azure AI Language PII</span> <span class="pill purple">AWS Bedrock Guardrails</span> <span class="pill purple">Patronus EnterprisePII</span> <span class="pill purple">Pillar Security</span> <span class="pill purple">Lasso Security</span></p>
+
+<pre><code><span class="cm">// Illustrative parameter sketch for a Portkey regex redaction guardrail</span>
+{
+  <span class="key">"type"</span>: <span class="str">"regex"</span>,
+  <span class="key">"rule"</span>: <span class="str">"\\b\\d{3}-\\d{2}-\\d{4}\\b"</span>,
+  <span class="key">"replacement"</span>: <span class="str">"[SSN_REDACTED]"</span>,
+  <span class="key">"redact"</span>: <span class="kw">true</span>
+}
+</code></pre>
+
+    <h4>Bring Your Own Guardrails (Webhook)</h4>
+    <p>Your webhook endpoint receives the full request and returns a verdict plus optionally a transformed version. This is the most accessible custom guardrail integration path of the four gateways — the <a href="https://portkey.ai/docs" class="ref-link" target="_blank">Portkey docs</a> cover the full webhook contract.</p>
+
+<pre><code><span class="cm">// Simplified webhook response sketch — in production Portkey expects the complete transformed request object</span>
+{
+  <span class="key">"verdict"</span>: <span class="kw">true</span>,
+  <span class="key">"transformedData"</span>: {
+    <span class="key">"request"</span>: { <span class="key">"json"</span>: {
+      <span class="key">"messages"</span>: [{ <span class="key">"role"</span>: <span class="str">"user"</span>, <span class="key">"content"</span>: <span class="str">"My name is [REDACTED]"</span> }]
+    }}
+  }
+}
+</code></pre>
+
+    <h4>Full Provider Ecosystem</h4>
+    <p><span class="pill purple">Azure Guardrails</span> <span class="pill purple">Azure Shield Prompt (Jan 2026)</span> <span class="pill purple">Azure Protected Material (Jan 2026)</span> <span class="pill purple">AWS Bedrock</span> <span class="pill purple">Patronus AI</span> <span class="pill purple">Lasso Security</span> <span class="pill purple">Aporia</span> <span class="pill purple">Pillar Security</span> <span class="pill purple">Pangea</span> <span class="pill purple">Acuvity</span> <span class="pill purple">Mistral Moderation</span> <span class="pill purple">PANW AIRS</span> <span class="pill purple">SydeLabs</span> <span class="pill purple">CrowdStrike AIDR (Jan 2026)</span> <span class="pill purple">Custom Webhook</span></p>
+
+    <h4>Guardrail Actions — Unique Fallback Routing &amp; Sequential Execution</h4>
+    <p>When a guardrail fires, Portkey supports three actions: <strong>deny</strong> (block and return error), <strong>fallback</strong> (route to an alternate model), and <strong>log</strong> (observe without blocking). The fallback-on-fail routing — retrying with a different model when a guardrail fires — is a differentiator not found in the other three gateways as of March 2026. In January 2026, Portkey added a <code>sequential</code> execution flag so guardrails can run one-after-another (useful when later checks depend on earlier results), in addition to the default parallel execution.</p>
+
+    <h4>MCP Gateway (GA — January 2026)</h4>
+    <p>Portkey's <a href="https://portkey.ai/features/mcp" class="ref-link" target="_blank">MCP Gateway</a> provides a centralized control plane for MCP tool traffic, offering unified authentication, RBAC, and observability across agent interactions. While the gateway actively routes this traffic, Portkey's documentation notes that dedicated MCP guardrails (like PII redaction and content filtering on tool calls) are currently in early access and listed as 'coming soon' for general availability.</p>
+
+    <div class="callout">
+      <span class="callout-title">📌 MCP Guardrail Model: Gateway-level vs Hook-level</span>
+      <p>Portkey's MCP governance and access policies apply at the gateway layer, while dedicated MCP guardrails are currently documented as early access / coming soon. TrueFoundry's MCP guardrails apply at the <em>per-invocation hook level</em> (<code>mcp_tool_pre_invoke_guardrails</code> / <code>mcp_tool_post_invoke_guardrails</code>) — each individual tool call is intercepted, inspected, and can be mutated or blocked with per-server/tool targeting rules. These are different architectural approaches to the same problem.</p>
+    </div>
+
+    <h4>Data Sovereignty</h4>
+    <p>Different Configs (one per application) carry different guardrail sets, enabling per-app policy. Webhook BYOG allows in-VPC PII processing. However, guardrail verdicts and metadata may still flow through Portkey's cloud infrastructure depending on plan tier. Full data residency requires enterprise configuration.</p>
+
+    <div class="callout">
+      <span class="callout-title">Strengths</span>
+      <p>Strongest documented developer experience of the four: UI-driven guardrail creation, instant code snippet generation, and minimal ops overhead as SaaS. The MCP Gateway GA (Jan 2026) gives Portkey centralized authentication, RBAC, access governance, and observability for agentic workflows (while dedicated MCP guardrails are still documented as early access / coming soon). The fallback-on-guardrail-fail model routing remains a unique operational capability as of March 2026.</p>
+    </div>
+    <div class="callout warn">
+      <span class="callout-title">Limitations</span>
+      <p>No in-process ML/NER PII detection — built-in regex redaction is available; richer detection requires external providers or BYO webhooks. No conditional per-app guardrail routing equivalent to TrueFoundry's <code>when</code> conditions engine; full data residency requires enterprise tier.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SECTION 6: TRUEFOUNDRY ═══════════════ -->
+<section id="truefoundry">
+  <h2><span class="section-num">// 06</span>TrueFoundry: Guardrail Configuration Deep Dive</h2>
+
+  <div class="gateway-section">
+    <div class="gateway-header">
+      <span class="gw-badge gw-tf">TrueFoundry AI Gateway</span>
+      <div>
+        <div style="font-weight:600">Enterprise AI Control Plane</div>
+        <div style="font-size:13px;color:var(--muted)">VPC-native · MCP guardrails · Rules engine · Multi-app data sovereignty</div>
+      </div>
+    </div>
+
+    <p>TrueFoundry's AI Gateway is built from the ground up as an enterprise control plane. Its guardrail system features a full rules engine with conditional targeting, four execution hooks, parallel/sequential orchestration, support for built-in and external providers, and native MCP tool call guardrails. Sources: <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" class="ref-link" target="_blank">truefoundry.com/docs/ai-gateway/guardrails-overview</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" class="ref-link" target="_blank">truefoundry.com/docs/ai-gateway/guardrails-configuration</a></p>
+
+    <h3>Guardrail Execution Architecture</h3>
+
+    <div class="diagram">
+      <svg viewBox="0 0 860 380" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, sans-serif">
+        <rect width="860" height="380" fill="#0d1420" rx="8"/>
+        <text x="430" y="28" text-anchor="middle" fill="#7a8899" font-size="11" font-family="IBM Plex Mono" letter-spacing="2">TRUEFOUNDRY GUARDRAIL EXECUTION PIPELINE</text>
+        <rect x="20" y="55" width="110" height="60" rx="6" fill="#1a2233" stroke="#2d3f5a"/>
+        <text x="75" y="82" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">Client</text>
+        <text x="75" y="100" text-anchor="middle" fill="#7a8899" font-size="11">Request</text>
+        <rect x="165" y="55" width="145" height="60" rx="6" fill="#0d1a2e" stroke="#00d4ff" stroke-width="1.5"/>
+        <text x="237" y="75" text-anchor="middle" fill="#00d4ff" font-size="11" font-weight="600">LLM Input Validation</text>
+        <text x="237" y="91" text-anchor="middle" fill="#7a8899" font-size="10">⚡ ASYNC — starts immediately</text>
+        <text x="237" y="106" text-anchor="middle" fill="#ffa726" font-size="10">Runs parallel w/ model call</text>
+        <rect x="340" y="55" width="145" height="60" rx="6" fill="#0d1a2e" stroke="#ff6b35" stroke-width="2"/>
+        <text x="412" y="75" text-anchor="middle" fill="#ff6b35" font-size="11" font-weight="600">LLM Input Mutation</text>
+        <text x="412" y="91" text-anchor="middle" fill="#7a8899" font-size="10">🔒 SYNC — blocks request</text>
+        <text x="412" y="106" text-anchor="middle" fill="#00e599" font-size="10">PII redaction happens here</text>
+        <rect x="515" y="55" width="110" height="60" rx="6" fill="#0d2a0d" stroke="#00e599" stroke-width="1.5"/>
+        <text x="570" y="82" text-anchor="middle" fill="#00e599" font-size="12" font-weight="600">Model Call</text>
+        <text x="570" y="99" text-anchor="middle" fill="#7a8899" font-size="10">Mutated prompt sent</text>
+        <rect x="655" y="55" width="110" height="60" rx="6" fill="#0d1a2e" stroke="#7b61ff" stroke-width="1.5"/>
+        <text x="710" y="74" text-anchor="middle" fill="#7b61ff" font-size="11" font-weight="600">Output Mutation</text>
+        <text x="710" y="90" text-anchor="middle" fill="#7a8899" font-size="10">then Validation</text>
+        <text x="710" y="106" text-anchor="middle" fill="#00e599" font-size="10">Toxicity / hallucination</text>
+        <defs>
+          <marker id="a3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#00d4ff"/></marker>
+          <marker id="a3red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#ff4757"/></marker>
+        </defs>
+        <line x1="130" y1="85" x2="163" y2="85" stroke="#00d4ff" stroke-width="1.5" marker-end="url(#a3)"/>
+        <line x1="310" y1="85" x2="338" y2="85" stroke="#00d4ff" stroke-width="1.5" marker-end="url(#a3)"/>
+        <line x1="485" y1="85" x2="513" y2="85" stroke="#00d4ff" stroke-width="1.5" marker-end="url(#a3)"/>
+        <line x1="625" y1="85" x2="653" y2="85" stroke="#00d4ff" stroke-width="1.5" marker-end="url(#a3)"/>
+        <line x1="237" y1="115" x2="237" y2="148" stroke="#ff4757" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a3red)"/>
+        <rect x="155" y="150" width="165" height="36" rx="4" fill="#2a0a0a" stroke="#ff4757" stroke-width="1.5"/>
+        <text x="237" y="166" text-anchor="middle" fill="#ff4757" font-size="11" font-weight="600">⊘ Request BLOCKED</text>
+        <text x="237" y="180" text-anchor="middle" fill="#7a8899" font-size="9">Model call cancelled — saves cost</text>
+        <rect x="20" y="215" width="820" height="140" rx="6" fill="#0a1520" stroke="#1e2d45"/>
+        <text x="430" y="237" text-anchor="middle" fill="#7a8899" font-size="11" font-family="IBM Plex Mono" letter-spacing="1">MCP TOOL GUARDRAILS</text>
+        <rect x="40" y="248" width="190" height="54" rx="4" fill="#1a2233" stroke="#7b61ff"/>
+        <text x="135" y="270" text-anchor="middle" fill="#7b61ff" font-size="12" font-weight="600">MCP Pre-Tool Guardrail</text>
+        <text x="135" y="288" text-anchor="middle" fill="#7a8899" font-size="10">SYNC — must pass before tool invoked</text>
+        <rect x="280" y="248" width="130" height="54" rx="4" fill="#0d2a0d" stroke="#00e599"/>
+        <text x="345" y="272" text-anchor="middle" fill="#00e599" font-size="12">Tool Execution</text>
+        <text x="345" y="289" text-anchor="middle" fill="#7a8899" font-size="10">Runs if guardrail passes</text>
+        <rect x="460" y="248" width="190" height="54" rx="4" fill="#1a2233" stroke="#7b61ff"/>
+        <text x="555" y="270" text-anchor="middle" fill="#7b61ff" font-size="12" font-weight="600">MCP Post-Tool Guardrail</text>
+        <text x="555" y="288" text-anchor="middle" fill="#7a8899" font-size="10">Validates tool result before returning</text>
+        <text x="720" y="272" text-anchor="middle" fill="#ff6b35" font-size="11">Each tool call</text>
+        <text x="720" y="288" text-anchor="middle" fill="#ff6b35" font-size="11">evaluated independently</text>
+        <line x1="230" y1="275" x2="278" y2="275" stroke="#7b61ff" stroke-width="1.5" marker-end="url(#a3)"/>
+        <line x1="410" y1="275" x2="458" y2="275" stroke="#7b61ff" stroke-width="1.5" marker-end="url(#a3)"/>
+        <text x="430" y="370" text-anchor="middle" fill="#3a4a5a" font-size="10">Source: truefoundry.com/docs/ai-gateway/guardrails-overview · truefoundry.com/docs/ai-gateway/mcp/mcp-gateway-auth-security</text>
+      </svg>
+      <div class="diagram-caption">TrueFoundry's four gateway hooks: (1) <strong>LLM Input</strong> — intercepts prompt before model call; (2) <strong>LLM Output</strong> — intercepts model response; (3) <strong>MCP Pre Tool</strong> — runs before a tool is invoked; (4) <strong>MCP Post Tool</strong> — runs after tool execution. On the LLM hooks, guardrails can run in <strong>validate</strong> mode (async, parallel with the model call — cancelled if it fires) or <strong>mutate</strong> mode (sync, transforms content before the call proceeds).</div>
+    </div>
+
+    <h3>The Rules Engine: Per-Application Guardrail Targeting</h3>
+    <p>The architectural differentiator of TrueFoundry's guardrail system is its <strong>rules engine with <code>when</code> conditions</strong>. Every guardrail rule can be scoped to specific users, teams, models, metadata fields, virtual accounts, MCP servers, or MCP tools — enabling a single gateway instance to serve multiple applications with completely different policies. Rules are evaluated in declaration order; <strong>only the first matching rule is applied</strong> per request. Declare most-specific rules first and use <code>when: {}</code> (empty block) as the last catch-all. App identity is passed by the client application via the <code>X-TFY-METADATA</code> HTTP header (e.g. <code>X-TFY-METADATA: {"app_name": "patient-chatbot"}</code>). For stronger identity assurance, combine metadata targeting with <code>subjects</code> (team membership) so both the declared app and the caller's identity must match. Full reference in the <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" class="ref-link" target="_blank">Guardrails Configuration docs</a>.</p>
+
+<pre><code><span class="cm"># Three apps, one gateway, three different guardrail policies</span>
+<span class="cm"># App identity sent by client via: X-TFY-METADATA: {"app_name": "patient-chatbot"}</span>
+name: <span class="str">app-specific-guardrails</span>
+type: <span class="str">gateway-guardrails-config</span>
+rules:
+  - id: <span class="str">patient-chatbot</span>              <span class="cm"># HIPAA — strictest policy</span>
+    <span class="key">when</span>:
+      target:
+        operator: or
+        conditions:
+          metadata:
+            app_name: <span class="str">patient-chatbot</span>   <span class="cm"># matches X-TFY-METADATA header</span>
+      subjects:                         <span class="cm"># add team: for stronger identity binding</span>
+        operator: and
+        conditions:
+          in:
+            - team:clinical
+    llm_input_guardrails:
+      - healthcare-guardrails/<span class="str">azure-pii-healthcare</span>
+      - global-guardrails/<span class="str">prompt-injection</span>
+    llm_output_guardrails:              <span class="cm"># ⚠ output-side redaction required — PHI can</span>
+      - healthcare-guardrails/<span class="str">azure-pii-healthcare</span>  <span class="cm">#   appear in model responses too</span>
+    mcp_tool_pre_invoke_guardrails: []
+    mcp_tool_post_invoke_guardrails: []
+
+  - id: <span class="str">dev-copilot</span>
+    <span class="key">when</span>:
+      target:
+        operator: or
+        conditions:
+          metadata:
+            app_name: <span class="str">dev-copilot</span>
+    llm_input_guardrails:
+      - engineering-guardrails/<span class="str">secrets-detection</span>
+      - global-guardrails/<span class="str">prompt-injection</span>
+    llm_output_guardrails:              <span class="cm"># secrets can appear in generated code too</span>
+      - engineering-guardrails/<span class="str">secrets-detection</span>
+    mcp_tool_pre_invoke_guardrails: []
+    mcp_tool_post_invoke_guardrails: []
+
+  - id: <span class="str">default</span>                        <span class="cm"># catch-all — must be last</span>
+    <span class="key">when</span>: {}                            <span class="cm"># {} matches every request not matched above</span>
+    llm_input_guardrails:
+      - global-guardrails/<span class="str">prompt-injection</span>
+    llm_output_guardrails: []
+    mcp_tool_pre_invoke_guardrails: []
+    mcp_tool_post_invoke_guardrails: []
+</code></pre>
+
+    <div class="callout">
+      <span class="callout-title">📌 YAML Design Notes</span>
+      <p>The guardrail selectors (e.g. <code>healthcare-guardrails/azure-pii-healthcare</code>) are illustrative FQN-style references — obtain actual selectors from <strong>AI Gateway → Guardrails → Copy FQN</strong> in the TrueFoundry UI. App identity is passed by the client via the <code>X-TFY-METADATA</code> header; combining metadata targeting with <code>subjects</code> (team membership) provides stronger identity assurance than metadata alone. Only the first matching rule is applied per request — declare most-specific rules first.</p>
+    </div>
+
+    <h4>Four Hooks, Two Modes</h4>
+    <p>TrueFoundry exposes four gateway hooks — <strong>LLM Input</strong>, <strong>LLM Output</strong>, <strong>MCP Pre Tool</strong>, and <strong>MCP Post Tool</strong>. On the LLM hooks, guardrails can run in <strong>validate</strong> or <strong>mutate</strong> mode, with validate optimized for parallel execution and mutate applied synchronously by priority.</p>
+    <p><strong>Validate mode</strong> runs async — in parallel with the model call. If it fires, the model call is cancelled immediately, saving inference cost. <strong>Mutate mode</strong> runs synchronously before the model call, transforming content (redacting PII, replacing disallowed words). Mutate guardrails can also block if content cannot be safely mutated.</p>
+
+    <h4>Guardrail Providers &amp; Built-in Options</h4>
+    <p>Full provider list at <a href="https://www.truefoundry.com/docs/ai-gateway/commonly-used-guardrails" class="ref-link" target="_blank">truefoundry.com/docs/ai-gateway/commonly-used-guardrails</a>.</p>
+    <p><strong>Built-in (no external credentials):</strong> <span class="pill orange">PII/PHI Detection (TrueFoundry-managed, context-aware)</span> <span class="pill orange">Secret Detection</span> <span class="pill orange">SQL Sanitizer</span> <span class="pill orange">Code Safety Linter</span></p>
+    <p><strong>External integrations:</strong> <span class="pill orange">AWS Bedrock</span> <span class="pill orange">Azure Content Safety</span> <span class="pill orange">Azure PII</span> <span class="pill orange">OpenAI Moderation</span> <span class="pill orange">Lakera</span> <span class="pill orange">Pangea</span> <span class="pill orange">Patronus</span> <span class="pill orange">Palo Alto AIRS</span> <span class="pill orange">PromptFoo</span> <span class="pill orange">Fiddler</span> <span class="pill orange">Custom HTTP endpoint</span></p>
+
+    <h4>MCP Tool Guardrails</h4>
+    <p>Among these four, TrueFoundry appears to have the most granular documented MCP guardrail targeting model, combining MCP pre/post hooks with rule-based targeting on MCP servers and tools. LiteLLM has <code>pre_mcp_call</code> and <code>during_mcp_call</code> modes, and Portkey has an MCP Gateway with policy-level governance. TrueFoundry's hook model is the most granular of the four documented here: each individual tool call is intercepted and can be mutated or blocked based on which specific MCP server and tool is being invoked — critical as enterprises deploy AI agents that invoke tools like Slack, GitHub, Confluence, and production databases. See the <a href="https://www.truefoundry.com/docs/ai-gateway/mcp/mcp-gateway-auth-security" class="ref-link" target="_blank">MCP Auth &amp; Security docs</a> for the full configuration reference.</p>
+
+<pre><code><span class="cm"># MCP tool guardrail — per-server targeting example with correct field names</span>
+name: <span class="str">mcp-guardrails</span>
+type: <span class="str">gateway-guardrails-config</span>
+rules:
+  - id: <span class="str">database-tool-protection</span>
+    <span class="key">when</span>:
+      target:
+        operator: or
+        conditions:
+          mcpServers:
+            values:
+              - database-tools
+            condition: in
+      subjects:
+        operator: and
+        conditions:
+          in:
+            - team:engineering
+          not_in:
+            - user:<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a4c0c689c5c0c9cdcae4c1dcc5c9d4c8c18ac7cbc9">[email&#160;protected]</a>
+    llm_input_guardrails: []
+    llm_output_guardrails: []
+    mcp_tool_pre_invoke_guardrails:
+      - my-guardrail-group/<span class="str">sql-sanitizer</span>      <span class="cm"># validate SQL before execution</span>
+    mcp_tool_post_invoke_guardrails:
+      - my-guardrail-group/<span class="str">secrets-detection</span>  <span class="cm"># check for leaked credentials in results</span>
+      - my-guardrail-group/<span class="str">pii-redaction</span>      <span class="cm"># redact PHI from tool return values</span>
+</code></pre>
+
+    <h4>Data Sovereignty: The PHI-Never-Leaves-the-VPC Architecture</h4>
+    <p>The entire TrueFoundry data plane deploys inside the customer VPC (supports AWS GovCloud, Azure Government, air-gapped environments). A custom guardrail server running inside the VPC handles PII detection — TrueFoundry provides a <a href="https://github.com/truefoundry/custom-guardrails-template" class="ref-link" target="_blank">reference template</a> with example implementations for self-hosted pipelines. Unredacted prompts never egress. The control plane (management UI/API) is the only external touchpoint and can be decoupled. Their <a href="https://www.truefoundry.com/blog/leveraging-the-truefoundry-ai-gateway-for-fips-compliance" class="ref-link" target="_blank">FIPS compliance writeup</a> covers the full architecture for regulated environments.</p>
+
+    <div class="sov-grid">
+      <div class="sov-card">
+        <h4 style="color:var(--litellm)">LiteLLM</h4>
+        <p>Self-hosted Presidio inside VPC. No native conditional rules — same config per route. Separate instances needed for true multi-app isolation.</p>
+      </div>
+      <div class="sov-card">
+        <h4 style="color:var(--kong)">Kong</h4>
+        <p>Per-Route plugin targeting. PII Sanitizer container deployable in VPC (Enterprise). Semantic plugins may need in-VPC embedding model.</p>
+      </div>
+      <div class="sov-card">
+        <h4 style="color:var(--portkey)">Portkey</h4>
+        <p>Per-Config guardrail attachment. Webhook BYOG allows in-VPC processing. Full residency requires enterprise tier; metadata may flow through Portkey cloud.</p>
+      </div>
+      <div class="sov-card">
+        <h4 style="color:var(--tf)">TrueFoundry</h4>
+        <p>Entire data plane in customer VPC. Rules engine enables per-app policies on one instance. Supports GovCloud, air-gapped. Control plane only external touchpoint.</p>
+      </div>
+    </div>
+
+    <div class="callout success">
+      <span class="callout-title">Strengths</span>
+      <p>Most comprehensive documented rules engine of the four (March 2026) — conditional guardrail targeting by user/team/model/metadata/MCP server/tool in a single gateway instance. Full VPC/on-prem/air-gapped deployment with parallel validation execution (async with model call, cancels on failure to save inference cost).</p>
+    </div>
+    <div class="callout warn">
+      <span class="callout-title">Considerations</span>
+      <p>Not a simple SaaS API key setup — full feature set requires VPC deployment or TrueFoundry managed infrastructure, plus operational overhead for the custom guardrail server. Richest configuration model means the steepest initial learning curve of these four.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ SECTION 7: COMPARISON TABLE ═══════════════ -->
+<section id="comparison">
+  <h2><span class="section-num">// 07</span>Feature Comparison Matrix</h2>
+
+  <p style="color:var(--muted);font-size:13px;margin-bottom:4px;">All capability claims are based on public documentation as of March 2026. ◑ = partial or available with additional licensing/configuration. Verify with current vendor docs before making architectural decisions.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Feature / Axis</th>
+          <th style="color:var(--litellm)">LiteLLM</th>
+          <th style="color:var(--kong)">Kong</th>
+          <th style="color:var(--portkey)">Portkey</th>
+          <th style="color:var(--tf)">TrueFoundry</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="td-feat">Built-in PII Redaction</span><div class="td-note">No external service required</div></td>
+          <td><span class="check">✓</span><div class="td-note">Regex via litellm_content_filter</div></td>
+          <td><span class="cross">✗</span><div class="td-note">Requires external AI PII Anonymizer Service</div></td>
+          <td><span class="partial">◑</span><div class="td-note">Regex-based natively; NER requires external provider</div></td>
+          <td><span class="check">✓</span><div class="td-note">TrueFoundry-managed PII/PHI detection; no external creds</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">ML-based PII Detection</span><div class="td-note">NER, not just regex</div></td>
+          <td><span class="check">✓</span><div class="td-note">via Presidio (self-hosted NER)</div></td>
+          <td><span class="check">✓</span><div class="td-note">via AI PII Anonymizer Service (Enterprise)</div></td>
+          <td><span class="check">✓</span><div class="td-note">via Azure / Patronus / Pillar integrations</div></td>
+          <td><span class="check">✓</span><div class="td-note">Built-in + Azure PII (20+ categories)</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Prompt Injection Detection</span><div class="td-note">ML-based</div></td>
+          <td><span class="check">✓</span><div class="td-note">Built-in in-memory + Lakera/AIM/Aporia</div></td>
+          <td><span class="check">✓</span><div class="td-note">Semantic Prompt Guard + Lakera/Azure/Bedrock</div></td>
+          <td><span class="check">✓</span><div class="td-note">Pillar/Lasso/Azure/Bedrock integrations</div></td>
+          <td><span class="check">✓</span><div class="td-note">Lakera/Pangea/Bedrock/Palo Alto AIRS</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Semantic Embedding Guardrails</span><div class="td-note">Topic detection via vector similarity</div></td>
+          <td><span class="cross">✗</span><div class="td-note">Not natively supported</div></td>
+          <td><span class="check">✓</span><div class="td-note">Native AI Semantic Prompt/Response Guard</div></td>
+          <td><span class="partial">◑</span><div class="td-note">Via external providers (Aporia, Lasso)</div></td>
+          <td><span class="partial">◑</span><div class="td-note">Via external providers; rules engine for topic control</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Per-Application Guardrail Rules</span><div class="td-note">Different policies per app on same gateway</div></td>
+          <td><span class="partial">◑</span><div class="td-note">Per-model/route; separate instances for true isolation</div></td>
+          <td><span class="check">✓</span><div class="td-note">Per-Route / Service / Consumer plugin configs</div></td>
+          <td><span class="check">✓</span><div class="td-note">Per-Config object (one per application)</div></td>
+          <td><span class="check">✓✓</span><div class="td-note">Rules engine: <code>when</code> by metadata/user/team/model/MCP</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Unredacted Prompt Stays in VPC</span><div class="td-note">Zero-egress PII architecture</div></td>
+          <td><span class="check">✓</span><div class="td-note">Self-hosted Presidio + LiteLLM in VPC</div></td>
+          <td><span class="check">✓</span><div class="td-note">Enterprise: local PII container + Kong in VPC</div></td>
+          <td><span class="partial">◑</span><div class="td-note">Via webhook BYOG; metadata may flow through Portkey cloud</div></td>
+          <td><span class="check">✓</span><div class="td-note">Entire data plane in customer VPC; GovCloud/air-gap support</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Output Guardrails</span><div class="td-note">Scan LLM responses before returning</div></td>
+          <td><span class="check">✓</span><div class="td-note">post_call mode; Presidio filter_scope=output</div></td>
+          <td><span class="check">✓</span><div class="td-note">AI Semantic Response Guard + external plugins</div></td>
+          <td><span class="check">✓</span><div class="td-note">output_guardrails (recommended) / after_request_hooks (legacy)</div></td>
+          <td><span class="check">✓</span><div class="td-note">llm_output hook; mutate and validate modes</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">MCP Tool Call Guardrails</span><div class="td-note">Guardrails on agentic tool invocations</div></td>
+          <td><span class="partial">◑</span><div class="td-note">Access Groups + pass-through endpoints; pre_mcp_call / during_mcp_call modes also documented</div></td>
+          <td><span class="partial">◑</span><div class="td-note">AI Prompt Guard + Semantic Guard applied to MCP traffic; no per-tool-invocation hooks</div></td>
+          <td><span class="cross">✗</span><div class="td-note">MCP Gateway GA, but MCP guardrails are listed as 'coming soon'</div></td>
+          <td><span class="check">✓✓</span><div class="td-note">mcp_tool_pre_invoke_guardrails + mcp_tool_post_invoke_guardrails; per-server/tool targeting via when.target.mcpServers + mcpTools</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Parallel Guardrail Execution</span><div class="td-note">Checks run concurrently to minimise latency</div></td>
+          <td><span class="partial">◑</span><div class="td-note">during_call mode is parallel to model call</div></td>
+          <td><span class="cross">✗</span><div class="td-note">Sequential plugin chain</div></td>
+          <td><span class="check">✓</span><div class="td-note">Default parallel; optional sequential flag added Jan 2026</div></td>
+          <td><span class="check">✓</span><div class="td-note">Validate runs parallel with model call; cost-saving cancellation</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Fallback-on-Guardrail-Fail</span><div class="td-note">Route to alternate model when guardrail fires</div></td>
+          <td><span class="cross">✗</span></td>
+          <td><span class="cross">✗</span></td>
+          <td><span class="check">✓</span><div class="td-note">Strongest documented support among these four (March 2026)</div></td>
+          <td><span class="cross">✗</span></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Secret / API Key Detection</span></td>
+          <td><span class="check">✓</span><div class="td-note">hide-secrets (Enterprise)</div></td>
+          <td><span class="partial">◑</span><div class="td-note">Via PII Sanitizer credentials category</div></td>
+          <td><span class="check">✓</span><div class="td-note">Via Pillar Security integration</div></td>
+          <td><span class="check">✓</span><div class="td-note">Built-in SecretDetectionGuardrail</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Custom / BYOG Integration</span></td>
+          <td><span class="check">✓</span><div class="td-note">Python CustomGuardrail class</div></td>
+          <td><span class="check">✓</span><div class="td-note">Lua/Go plugin development</div></td>
+          <td><span class="check">✓</span><div class="td-note">Webhook BYOG — easiest of the four</div></td>
+          <td><span class="check">✓</span><div class="td-note">Custom HTTP endpoint + template repo</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Configuration Interface</span></td>
+          <td><div class="td-note">YAML file (+ UI on Enterprise)</div></td>
+          <td><div class="td-note">Declarative YAML / Admin API / Konnect UI</div></td>
+          <td><div class="td-note">UI + SDK + JSON — most accessible DX</div></td>
+          <td><div class="td-note">YAML + API + Console UI + IaC</div></td>
+        </tr>
+        <tr>
+          <td><span class="td-feat">Open Source Core</span></td>
+          <td><span class="check">✓</span><div class="td-note">MIT — fully open source</div></td>
+          <td><span class="partial">◑</span><div class="td-note">OSS core; AI guardrail plugins Enterprise</div></td>
+          <td><span class="partial">◑</span><div class="td-note">Gateway OSS; guardrails SaaS</div></td>
+          <td><span class="cross">✗</span><div class="td-note">Commercial; custom guardrail template is OSS</div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:12px;color:var(--muted);margin-top:8px;">Sources: <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" class="ref-link" target="_blank">LiteLLM docs</a> · <a href="https://developer.konghq.com/plugins/ai-sanitizer/" class="ref-link" target="_blank">Kong docs</a> · <a href="https://portkey.ai/docs/product/guardrails/pii-redaction" class="ref-link" target="_blank">Portkey docs</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" class="ref-link" target="_blank">TrueFoundry docs</a></p>
+</section>
+
+<!-- ═══════════════ SECTION 8: VERDICT ═══════════════ -->
+<section id="verdict">
+  <h2><span class="section-num">// 08</span>Final Verdict</h2>
+
+  <div class="callout warn" style="margin-bottom:28px;">
+    <span class="callout-title">Editorial Disclaimer</span>
+    <p>The assessments below represent the authors' editorial opinion based on public documentation as of March 2026. They are recommendations, not factual claims. Capabilities, pricing, and feature availability change — verify with current vendor documentation before making architectural decisions.</p>
+  </div>
+
+  <div class="verdict-card c-tf">
+    <div class="verdict-title" style="color:var(--tf)">🏆 TrueFoundry — Editorial pick for enterprise compliance &amp; multi-app sovereignty</div>
+    <p>For the scenario in our opening story — one gateway, multiple applications, different compliance tiers, PHI that must never egress — TrueFoundry's rules engine with <code>when</code> conditions is the most purpose-built architecture of the four. As of March 2026, it offers the most granular MCP tool call guardrail model: per-invocation <code>mcp_tool_pre_invoke_guardrails</code> / <code>mcp_tool_post_invoke_guardrails</code> hooks with per-server/tool targeting — LiteLLM now also has MCP hooks, and Portkey has an MCP Gateway, but neither offers TrueFoundry's conditional targeting granularity. The VPC-native data plane addresses strict data residency requirements (HIPAA, GDPR, GovCloud, air-gap) without requiring per-application gateway instances. The parallel validation execution (async with the model call, with cost-saving cancellation on failure) is the most production-oriented latency design in this comparison. Steeper initial setup than Portkey, but that complexity buys policy expressiveness that none of the others offer out of the box.</p>
+    <div class="editorial-note">⚠ Editorial assessment · Based on public docs, March 2026</div>
+  </div>
+
+  <div class="verdict-card c-litellm">
+    <div class="verdict-title" style="color:var(--litellm)">⚡ LiteLLM — Editorial pick for self-hosted flexibility &amp; OSS control</div>
+    <p>LiteLLM wins on open-source accessibility and cost-consciousness. Its Presidio integration gives you full ownership of the PII redaction stack — no third-party data egress, configurable per-entity confidence thresholds, and output de-anonymisation. The built-in in-memory injection detection (similarity-based with optional LLM-judge, no external service) and the largest guardrail provider ecosystem of the four (29 integrations as of March 2026) give it unmatched flexibility. MCP tool call guardrails via <code>pre_mcp_call</code> and <code>during_mcp_call</code> now cover agentic workflows. For teams that want to own and audit every component of the guardrail pipeline, LiteLLM is the natural choice. Note that <code>hide-secrets</code> is Enterprise-only per current docs.</p>
+    <div class="editorial-note">⚠ Editorial assessment · Based on public docs, March 2026</div>
+  </div>
+
+  <div class="verdict-card c-kong">
+    <div class="verdict-title" style="color:var(--kong)">🔍 Kong — Editorial pick for semantic topic enforcement &amp; existing Kong deployments</div>
+    <p>As of March 2026, Kong's AI Semantic Prompt Guard and Semantic Response Guard are the only native embedding-based topic guardrails of these four gateways. If your use case requires strict topic-boundary enforcement — "this assistant only discusses banking products, not legal or medical advice" — and you need to catch paraphrased jailbreaks that regex misses, Kong's semantic pipeline is the strongest architectural fit. If you're already running Kong as your API gateway, the plugin investment is incremental. For greenfield deployments, the operational overhead of the plugin ecosystem and the Enterprise-only PII Sanitizer are real costs to weigh.</p>
+    <div class="editorial-note">⚠ Editorial assessment · Based on public docs, March 2026</div>
+  </div>
+
+  <div class="verdict-card c-portkey">
+    <div class="verdict-title" style="color:var(--portkey)">🚀 Portkey — Editorial pick for fastest time-to-guardrails &amp; developer experience</div>
+    <p>Portkey delivers the fastest path from zero to a guardrailed production AI application. UI-driven guardrail creation, instant code snippets, and the most accessible webhook BYOG integration of the four make it the natural choice for product teams who need to ship quickly. The 60+ guardrail ecosystem and January 2026 MCP Gateway GA (which brings centralized authentication, RBAC, and observability to agentic workflows) provide strong governance, even while dedicated MCP guardrails remain in early access. The fallback-on-guardrail-fail model routing remains a unique operational capability as of March 2026. For organisations with strict VPC or air-gap requirements, the full Portkey stack requires careful enterprise configuration; for SaaS-first teams it is the lowest-friction choice.</p>
+    <div class="editorial-note">⚠ Editorial assessment · Based on public docs, March 2026</div>
+  </div>
+
+  <div class="diagram">
+    <svg viewBox="0 0 700 380" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, sans-serif">
+      <rect width="700" height="380" fill="#121826" rx="8"/>
+      <text x="350" y="26" text-anchor="middle" fill="#7a8899" font-size="11" font-family="IBM Plex Mono" letter-spacing="2">EDITORIAL POSITIONING (March 2026) — AMONG THESE FOUR GATEWAYS</text>
+      <line x1="80" y1="315" x2="630" y2="315" stroke="#2d3f5a" stroke-width="1.5"/>
+      <line x1="80" y1="315" x2="80" y2="45" stroke="#2d3f5a" stroke-width="1.5"/>
+      <text x="355" y="347" text-anchor="middle" fill="#7a8899" font-size="12">Ease of Configuration →</text>
+      <text x="28" y="188" text-anchor="middle" fill="#7a8899" font-size="12" transform="rotate(-90 28 188)">Guardrail Capability →</text>
+      <line x1="355" y1="45" x2="355" y2="315" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4"/>
+      <line x1="80" y1="198" x2="630" y2="198" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4"/>
+      <text x="190" y="97" text-anchor="middle" fill="#1e3a26" font-size="10">Complex &amp; Powerful</text>
+      <text x="500" y="97" text-anchor="middle" fill="#1e3a26" font-size="10">Easy &amp; Powerful</text>
+      <text x="190" y="307" text-anchor="middle" fill="#1e3a26" font-size="10">Complex &amp; Limited</text>
+      <text x="500" y="307" text-anchor="middle" fill="#1e3a26" font-size="10">Easy &amp; Limited</text>
+      <!-- LiteLLM -->
+      <circle cx="265" cy="130" r="40" fill="rgba(0,212,255,0.12)" stroke="#00d4ff" stroke-width="2"/>
+      <text x="265" y="125" text-anchor="middle" fill="#00d4ff" font-size="12" font-weight="700">LiteLLM</text>
+      <text x="265" y="143" text-anchor="middle" fill="#7a8899" font-size="10">OSS control</text>
+      <!-- Kong -->
+      <circle cx="155" cy="117" r="40" fill="rgba(0,229,153,0.12)" stroke="#00e599" stroke-width="2"/>
+      <text x="155" y="112" text-anchor="middle" fill="#00e599" font-size="12" font-weight="700">Kong</text>
+      <text x="155" y="130" text-anchor="middle" fill="#7a8899" font-size="10">Semantic edge</text>
+      <!-- Portkey -->
+      <circle cx="520" cy="170" r="40" fill="rgba(123,97,255,0.12)" stroke="#7b61ff" stroke-width="2"/>
+      <text x="520" y="165" text-anchor="middle" fill="#7b61ff" font-size="12" font-weight="700">Portkey</text>
+      <text x="520" y="183" text-anchor="middle" fill="#7a8899" font-size="10">Best DX</text>
+      <!-- TrueFoundry -->
+      <circle cx="415" cy="103" r="48" fill="rgba(255,107,53,0.12)" stroke="#ff6b35" stroke-width="2.5"/>
+      <text x="415" y="95" text-anchor="middle" fill="#ff6b35" font-size="13" font-weight="700">TrueFoundry</text>
+      <text x="415" y="113" text-anchor="middle" fill="#7a8899" font-size="10">Multi-app +</text>
+      <text x="415" y="127" text-anchor="middle" fill="#7a8899" font-size="10">MCP guardrails</text>
+      <text x="350" y="365" text-anchor="middle" fill="#3a4a5a" font-size="10">Editorial positioning only — authors' assessment based on public docs, March 2026</text>
+    </svg>
+    <div class="diagram-caption">Editorial positioning of the four gateways on capability vs. configuration complexity. This reflects the authors' assessment from public documentation as of March 2026, not a vendor-endorsed ranking.</div>
+  </div>
+</section>
+
+<!-- ═══════════════ REFERENCES ═══════════════ -->
+<section id="references">
+  <h2><span class="section-num">// References</span></h2>
+  <div class="refs-section">
+    <h3 style="margin-bottom:16px;color:var(--accent)">Sources &amp; Documentation</h3>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:20px;">All factual claims are sourced from official documentation or first-party publications. Accessed March 2026.</p>
+    <ol style="color:var(--text);font-size:14px;line-height:2;padding-left:24px;">
+      <li><strong>OWASP LLM Top 10:2025</strong> — <a href="https://genai.owasp.org/llm-top-10/" class="ref-link" target="_blank">genai.owasp.org/llm-top-10/</a></li>
+      <li><strong>OWASP LLM01:2025 Prompt Injection</strong> — <a href="https://genai.owasp.org/llmrisk/llm01-prompt-injection/" class="ref-link" target="_blank">genai.owasp.org/llmrisk/llm01-prompt-injection/</a></li>
+      <li><strong>OWASP Top 10 for LLM Applications (project page)</strong> — <a href="https://owasp.org/www-project-top-10-for-large-language-model-applications/" class="ref-link" target="_blank">owasp.org/www-project-top-10-for-large-language-model-applications/</a></li>
+      <li><strong>OWASP LLM Top 10 v1.0/v1.1 (2023&#x2013;24 Archive)</strong> — <a href="https://genai.owasp.org/llm-top-10-2023-24/" class="ref-link" target="_blank">genai.owasp.org/llm-top-10-2023-24/</a></li>
+      <li><strong>OWASP LLM Top 10 PDF (v0.5 &#x2192; v1.1 &#x2192; 2025 revision history)</strong> — <a href="https://owasp.org/www-project-top-10-for-large-language-model-applications/assets/PDF/OWASP-Top-10-for-LLMs-v2025.pdf" class="ref-link" target="_blank">OWASP-Top-10-for-LLMs-v2025.pdf</a></li>
+      <li><strong>CVE-2024-5184 &#x2014; EmailGPT Prompt Injection</strong> — OWASP LLM Top 10:2025 Scenario #5 (LLM01:2025) — <a href="https://nvd.nist.gov/vuln/detail/CVE-2024-5184" class="ref-link" target="_blank">nvd.nist.gov/vuln/detail/CVE-2024-5184</a></li>
+      <li><strong>OpenAI Data Controls</strong> — <a href="https://openai.com/index/new-ways-to-manage-your-data-in-chatgpt/" class="ref-link" target="_blank">openai.com/index/new-ways-to-manage-your-data-in-chatgpt/</a></li>
+      <li><strong>LiteLLM Guardrails Quick Start</strong> — <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" class="ref-link" target="_blank">docs.litellm.ai/docs/proxy/guardrails/quick_start</a></li>
+      <li><strong>LiteLLM Presidio PII Masking</strong> — <a href="https://docs.litellm.ai/docs/proxy/guardrails/pii_masking_v2" class="ref-link" target="_blank">docs.litellm.ai/docs/proxy/guardrails/pii_masking_v2</a></li>
+      <li><strong>LiteLLM Content Filter</strong> — <a href="https://docs.litellm.ai/docs/proxy/guardrails/litellm_content_filter" class="ref-link" target="_blank">docs.litellm.ai/docs/proxy/guardrails/litellm_content_filter</a></li>
+      <li><strong>LiteLLM In-memory Prompt Injection Detection</strong> — <a href="https://docs.litellm.ai/docs/proxy/guardrails/prompt_injection" class="ref-link" target="_blank">docs.litellm.ai/docs/proxy/guardrails/prompt_injection</a></li>
+      <li><strong>LiteLLM Secret Detection</strong> — <a href="https://docs.litellm.ai/docs/proxy/guardrails/secret_detection" class="ref-link" target="_blank">docs.litellm.ai/docs/proxy/guardrails/secret_detection</a></li>
+      <li><strong>LiteLLM Lakera Integration</strong> — <a href="https://docs.litellm.ai/docs/proxy/guardrails/lakera_ai" class="ref-link" target="_blank">docs.litellm.ai/docs/proxy/guardrails/lakera_ai</a></li>
+      <li><strong>LiteLLM MCP Guardrails</strong> — <a href="https://docs.litellm.ai/docs/mcp_guardrail" class="ref-link" target="_blank">docs.litellm.ai/docs/mcp_guardrail</a></li>
+      <li><strong>Kong AI Gateway Overview</strong> — <a href="https://developer.konghq.com/ai-gateway/" class="ref-link" target="_blank">developer.konghq.com/ai-gateway/</a></li>
+      <li><strong>Kong AI PII Sanitizer Plugin</strong> — <a href="https://developer.konghq.com/plugins/ai-sanitizer/" class="ref-link" target="_blank">developer.konghq.com/plugins/ai-sanitizer/</a></li>
+      <li><strong>Kong AI Gateway 3.10 Release</strong> — <a href="https://konghq.com/blog/product-releases/ai-gateway-3-10" class="ref-link" target="_blank">konghq.com/blog/product-releases/ai-gateway-3-10</a></li>
+      <li><strong>Kong AI PII Sanitizer How-To</strong> — <a href="https://developer.konghq.com/how-to/protect-sensitive-information-with-ai/" class="ref-link" target="_blank">developer.konghq.com/how-to/protect-sensitive-information-with-ai/</a></li>
+      <li><strong>Kong: Securing MCP Servers with AI Gateway</strong> — <a href="https://konghq.com/blog/product-releases/securing-observing-governing-mcp-servers-with-ai-gateway" class="ref-link" target="_blank">konghq.com/blog/product-releases/securing-observing-governing-mcp-servers-with-ai-gateway</a></li>
+      <li><strong>Portkey Guardrails Overview</strong> — <a href="https://portkey.ai/features/guardrails" class="ref-link" target="_blank">portkey.ai/features/guardrails</a></li>
+      <li><strong>Portkey PII Redaction Docs</strong> — <a href="https://portkey.ai/docs/product/guardrails/pii-redaction" class="ref-link" target="_blank">portkey.ai/docs/product/guardrails/pii-redaction</a></li>
+      <li><strong>Portkey MCP Gateway</strong> — <a href="https://portkey.ai/features/mcp" class="ref-link" target="_blank">portkey.ai/features/mcp</a></li>
+      <li><strong>Portkey MCP Gateway Announcement (Jan 2026)</strong> — <a href="https://portkey.ai/blog/introducing-the-mcp-gateway/" class="ref-link" target="_blank">portkey.ai/blog/introducing-the-mcp-gateway/</a></li>
+      <li><strong>Portkey January 2026 Changelog</strong> — <a href="https://portkey.ai/docs/changelog/2026/january" class="ref-link" target="_blank">portkey.ai/docs/changelog/2026/january</a></li>
+      <li><strong>TrueFoundry Guardrails Overview</strong> — <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" class="ref-link" target="_blank">truefoundry.com/docs/ai-gateway/guardrails-overview</a></li>
+      <li><strong>TrueFoundry Guardrails Configuration</strong> — <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" class="ref-link" target="_blank">truefoundry.com/docs/ai-gateway/guardrails-configuration</a></li>
+      <li><strong>TrueFoundry Commonly Used Guardrails</strong> — <a href="https://www.truefoundry.com/docs/ai-gateway/commonly-used-guardrails" class="ref-link" target="_blank">truefoundry.com/docs/ai-gateway/commonly-used-guardrails</a></li>
+      <li><strong>TrueFoundry MCP Auth &amp; Security</strong> — <a href="https://www.truefoundry.com/docs/ai-gateway/mcp/mcp-gateway-auth-security" class="ref-link" target="_blank">truefoundry.com/docs/ai-gateway/mcp/mcp-gateway-auth-security</a></li>
+      <li><strong>TrueFoundry Log Custom Metadata</strong> — <a href="https://www.truefoundry.com/docs/ai-gateway/log-custom-metadata" class="ref-link" target="_blank">truefoundry.com/docs/ai-gateway/log-custom-metadata</a></li>
+      <li><strong>TrueFoundry FIPS Compliance</strong> — <a href="https://www.truefoundry.com/blog/leveraging-the-truefoundry-ai-gateway-for-fips-compliance" class="ref-link" target="_blank">truefoundry.com/blog/leveraging-the-truefoundry-ai-gateway-for-fips-compliance</a></li>
+      <li><strong>TrueFoundry Custom Guardrails Template</strong> — <a href="https://github.com/truefoundry/custom-guardrails-template" class="ref-link" target="_blank">github.com/truefoundry/custom-guardrails-template</a></li>
+      <li><strong>TrueFoundry Benchmarking Guardrail Providers</strong> — <a href="https://www.truefoundry.com/blog/benchmarking-llm-guardrail-providers" class="ref-link" target="_blank">truefoundry.com/blog/benchmarking-llm-guardrail-providers</a></li>
+    </ol>
+  </div>
+</section>
+
+</div>
+
+<footer style="background:var(--surface);border-top:1px solid var(--border);padding:28px;text-align:center;margin-top:32px;">
+  <p style="color:var(--muted);font-size:13px;">Technical Deep Dive · AI Security · March 2026</p>
+  <p style="color:var(--muted);font-size:12px;margin-top:8px;">All capability claims are based on public documentation as of March 2026. Capabilities, pricing, and roadmaps change — verify with current vendor documentation before making architectural decisions. All editorial assessments are the authors' own.</p>
+</footer>
+</body>
+</html>
