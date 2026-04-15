@@ -1,0 +1,954 @@
+
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Gateway Series #13 — Prompt Management &amp; GitOps</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB; --kong: #00D27B; --portkey: #5A67FF; --tf: #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; line-height: 1.75; max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem; }
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+  .series-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .tag-pill { display: inline-block; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace; padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase; }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer { background: #1a1200; border: 1px solid #3d2c00; color: var(--warn); font-size: .78rem; padding: .5rem 1rem; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; }
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre { background: #080c12; border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 0; }
+  .copy-btn { position: absolute; top: .55rem; right: .55rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: .68rem; padding: .22rem .55rem; border-radius: 5px; cursor: pointer; transition: all .15s ease; user-select: none; letter-spacing: .03em; line-height: 1.4; }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+  .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note { font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border); }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn { border-color: var(--warn); background: #1a1200; }
+  .callout.info { border-color: #60a5fa; background: #0a1220; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.info .callout-title { color: #60a5fa; }
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
+  .qp-desc code { overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; overflow-wrap: anywhere; word-break: break-word; }
+  .verdict-text code { overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+</style>
+</head>
+<body>
+<!-- ══════ HEADER ══════ -->
+<div class="series-bar">
+<span class="tag-pill">AI Gateway Series</span>
+<div class="series-dots">
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot active" title="Blog 13 — Prompt Management &amp; GitOps"></div>
+<div class="dot"></div><div class="dot"></div>
+</div>
+<span class="tag-pill active">Blog 13 of 15</span>
+</div>
+<h1>Prompt Management &amp; GitOps:<br/>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+<div class="meta">
+<span class="meta-item">⏱ 22 min read</span>
+<span class="meta-item">🗓 March 2026</span>
+<span class="meta-item">👤 Platform Engineering / MLOps</span>
+<div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 10, 2026. Verify against current vendor docs before architectural decisions.</div>
+</div>
+<p style="font-size:.82rem; color: var(--muted);">Models referenced throughout this post reflect the production-current landscape as of this writing:</p>
+<div class="model-pills">
+<span class="mpill openai">gpt-5.4</span>
+<span class="mpill openai">gpt-5.4-pro</span>
+<span class="mpill openai">gpt-5-mini</span>
+<span class="mpill anthropic">claude-opus-4-6</span>
+<span class="mpill anthropic">claude-sonnet-4-6</span>
+<span class="mpill anthropic">claude-haiku-4-5</span>
+<span class="mpill google">gemini-3.1-pro-preview</span>
+<span class="mpill google">gemini-3-flash-preview</span>
+<span class="mpill google">gemini-3.1-flash-lite-preview</span>
+</div>
+<!-- ══════ §0 TL;DR ══════ -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<div class="scenario">
+<div class="scenario-title">🔥 Real-World Scenario: The Compliance Incident That Wasn't in the Diff</div>
+<p>A growth team at a fintech lending platform decides to sharpen the tone of their AI loan advisory chatbot ahead of a quarterly push. The product manager — confident in the intent, short on time — navigates to the gateway's web UI and rewrites the system prompt directly. The change ships instantly. No pull request. No peer review. No CI evaluation gate. No staging environment.</p>
+<p>Forty-eight hours later, the compliance team flags an issue: the updated prompt was instructing the model to minimize mention of APR disclosures and "emphasize monthly payment flexibility." Two customer complaints and one regulator inquiry later, engineering is asked to produce an audit trail: who changed the prompt, when, and what did it say before? The answer is silence. No Git history. The previous prompt exists only in one engineer's browser history — if the tab was never closed.</p>
+<p>The rollback takes four hours and one all-hands call. The root cause was not a model failure or a provider outage — it was a governance gap that every team building on top of LLMs eventually discovers: <strong>prompt changes are production code changes, but most teams treat them as settings toggles.</strong> With frontier models like <code>gpt-5.4</code> and <code>claude-sonnet-4-6</code> producing legally and commercially significant output, that gap is no longer acceptable.</p>
+<p>The question this post answers is not whether you need prompt governance — you do — but how much your chosen AI gateway helps you get there, and how much you have to build yourself.</p>
+</div>
+<div class="quickpick-grid">
+<div class="qp-card c-litellm">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">LiteLLM</div>
+<div class="qp-desc">Now ships a Beta prompt management UI with versioning and a playground. A companion GitOps path stores prompts as files in a repo. Both are early-stage; deeper production governance needs to be built around them.</div>
+</div>
+<div class="qp-card c-kong">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Kong AI Gateway</div>
+<div class="qp-desc">decK declarative YAML is fully Git-committable. <code>deck gateway diff</code> provides a native diff-before-apply workflow. AI Prompt Decorator and AI Prompt Template inject prompts at the gateway layer. No prompt versioning CMS.</div>
+</div>
+<div class="qp-card c-portkey">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Portkey</div>
+<div class="qp-desc">Full-featured Prompt Engineering Studio: playground, Prompt Library, versioning with labels, dev/staging/prod deployment tags. Portkey also documents <strong>Smart Fallbacks</strong>, where gateway config targets can store different <code>prompt_id</code> values so failover automatically switches to a model-optimized prompt.</div>
+</div>
+<div class="qp-card c-tf">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">TrueFoundry</div>
+<div class="qp-desc">Most integrated public story: <strong>Saved Prompts</strong> with versioning in the Prompt Registry, <strong>Prompt Variables</strong> for reusable templates, and prompt comparison/diff workflows — all connected to routing via <code>override_params.prompt_version_fqn</code> and deployed with <code>tfy apply --dry-run/--show-diff</code>.</div>
+</div>
+</div>
+<!-- ══════ §1 WHY IT MATTERS ══════ -->
+<h2>§1 — Why Prompts Need a CMS and a GitOps Workflow</h2>
+<p>Platform engineers who have spent years managing Kubernetes configs, Terraform state, and CI/CD pipelines often underestimate how quickly prompt governance becomes a production problem. The failure mode is predictable: prompts start as a string constant in application code, graduate to a config file, eventually get moved into a gateway UI for "easier editing," and at that point the engineering control plane loses visibility entirely.</p>
+<ul>
+<li><strong>Prompts are runtime-critical configuration.</strong> A wrong system prompt is functionally equivalent to a bug shipped to production — except it often has no stack trace, no error log, and no automated alert.</li>
+<li><strong>The model-fallback prompt problem.</strong> When your gateway routes between <code>gpt-5.4</code> and <code>claude-sonnet-4-6</code>, a single global prompt is almost never semantically portable. Per-target prompt tuning is a correctness requirement, not an edge case.</li>
+<li><strong>Audit trails are a compliance requirement, not a nice-to-have.</strong> In regulated industries the question "what was the model instructed to say?" is answerable only if prompt changes flow through Git-backed infrastructure.</li>
+<li><strong>Multi-environment promotion must be explicit.</strong> A prompt that performs well in staging should be promoted to production with the same deliberateness as an application deployment.</li>
+<li><strong>Rollback must be possible in minutes.</strong> That is achievable only if the previous state is a tagged, deployable artifact — not "what I remember the old prompt said."</li>
+<li><strong>CI evaluation gates close the quality loop.</strong> Automated prompt evaluation suites belong in the same CI pipeline that reviews code. That integration is natural only when prompt changes are Pull Requests.</li>
+</ul>
+<!-- SVG 1: Governance gap -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="320" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="26">The Prompt Governance Gap — UI-Direct vs. GitOps-Mediated Change Flow</text>
+<rect fill="#1a0a0a" height="258" rx="8" stroke="#ff4757" stroke-opacity=".4" width="385" x="18" y="42"></rect>
+<text fill="#ff4757" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="210" y="64">WITHOUT GOVERNANCE</text>
+<rect fill="#1a2233" height="40" rx="5" stroke="#4a5568" width="105" x="38" y="82"></rect>
+<text fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle" x="90" y="100">PM / Designer</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="90" y="115">edits system prompt</text>
+<defs>
+<marker id="ra" markerheight="6" markerwidth="8" orient="auto" refx="8" refy="3"><polygon fill="#ff4757" points="0 0,8 3,0 6"></polygon></marker>
+<marker id="ga" markerheight="6" markerwidth="8" orient="auto" refx="8" refy="3"><polygon fill="#50fa7b" points="0 0,8 3,0 6"></polygon></marker>
+</defs>
+<line marker-end="url(#ra)" stroke="#ff4757" stroke-width="2" x1="143" x2="168" y1="102" y2="102"></line>
+<rect fill="#1a0808" height="40" rx="5" stroke="#ff4757" stroke-opacity=".6" width="110" x="170" y="82"></rect>
+<text fill="#ff4757" font-size="10" font-weight="700" text-anchor="middle" x="225" y="99">Gateway UI</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="225" y="113">⚡ Changes live instantly</text>
+<line marker-end="url(#ra)" stroke="#ff4757" stroke-width="2.5" x1="280" x2="310" y1="102" y2="102"></line>
+<rect fill="#1a0808" height="68" rx="6" stroke="#ff4757" stroke-width="2" width="80" x="312" y="70"></rect>
+<text fill="#ff4757" font-size="11" font-weight="700" text-anchor="middle" x="352" y="95">PROD</text>
+<text fill="#ff4757" font-size="9" text-anchor="middle" x="352" y="112">⚡ Live</text>
+<text fill="#ff475766" font-size="8" text-anchor="middle" x="352" y="128">No gate</text>
+<text fill="#ff4757" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="38" y="178">✗  No version history or audit trail</text>
+<text fill="#ff4757" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="38" y="196">✗  No peer review or approval gate</text>
+<text fill="#ff4757" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="38" y="214">✗  No rollback artifact — only memory</text>
+<text fill="#ff4757" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="38" y="232">✗  No per-model prompt tuning path</text>
+<text fill="#ff4757" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="38" y="250">✗  No CI evaluation gate before ship</text>
+<text fill="#4a1010" font-size="9" font-style="italic" x="38" y="283">"What did the old prompt say?" — unknown</text>
+<line stroke="#2d3f5a" stroke-dasharray="5,4" stroke-width="1" x1="412" x2="412" y1="48" y2="296"></line>
+<text fill="#2d3f5a" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="412" y="314">vs.</text>
+<rect fill="#0a1a10" height="258" rx="8" stroke="#50fa7b" stroke-opacity=".4" width="382" x="420" y="42"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="611" y="64">WITH GOVERNANCE</text>
+<rect fill="#1a2233" height="38" rx="5" stroke="#4a5568" width="72" x="435" y="82"></rect>
+<text fill="#e2e8f0" font-size="9" font-weight="600" text-anchor="middle" x="471" y="99">Author</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="471" y="113">UI or YAML</text>
+<line marker-end="url(#ga)" stroke="#50fa7b" stroke-width="1.5" x1="507" x2="524" y1="101" y2="101"></line>
+<rect fill="#0a1a10" height="38" rx="5" stroke="#50fa7b" stroke-opacity=".5" width="72" x="526" y="82"></rect>
+<text fill="#50fa7b" font-size="9" font-weight="600" text-anchor="middle" x="562" y="99">Git PR</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="562" y="113">Peer review</text>
+<line marker-end="url(#ga)" stroke="#50fa7b" stroke-width="1.5" x1="598" x2="615" y1="101" y2="101"></line>
+<rect fill="#0a1a10" height="38" rx="5" stroke="#50fa7b" stroke-opacity=".5" width="72" x="617" y="82"></rect>
+<text fill="#50fa7b" font-size="9" font-weight="600" text-anchor="middle" x="653" y="99">CI Gate</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="653" y="113">Eval / lint</text>
+<line stroke="#50fa7b" stroke-width="1.5" x1="689" x2="720" y1="101" y2="101"></line>
+<line stroke="#50fa7b" stroke-width="1.5" x1="720" x2="720" y1="101" y2="155"></line>
+<line marker-end="url(#ga)" stroke="#50fa7b" stroke-width="1.5" x1="720" x2="700" y1="155" y2="155"></line>
+<rect fill="#0a1a10" height="35" rx="5" stroke="#50fa7b" stroke-opacity=".5" width="82" x="617" y="138"></rect>
+<text fill="#50fa7b" font-size="9" font-weight="600" text-anchor="middle" x="658" y="155">Staging test</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="658" y="167">Validated</text>
+<line marker-end="url(#ga)" stroke="#50fa7b" stroke-width="1.5" x1="617" x2="598" y1="155" y2="155"></line>
+<rect fill="#0a1a10" height="35" rx="5" stroke="#50fa7b" width="96" x="500" y="138"></rect>
+<text fill="#50fa7b" font-size="9" font-weight="700" text-anchor="middle" x="548" y="155">tfy apply / deck sync</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="548" y="167">Atomic gateway update</text>
+<line marker-end="url(#ga)" stroke="#50fa7b" stroke-width="1.5" x1="500" x2="482" y1="155" y2="155"></line>
+<rect fill="#0a1a10" height="40" rx="5" stroke="#50fa7b" stroke-width="1.5" width="46" x="435" y="136"></rect>
+<text fill="#50fa7b" font-size="9" font-weight="700" text-anchor="middle" x="458" y="154">PROD</text>
+<text fill="#50fa7b" font-size="8" text-anchor="middle" x="458" y="168">✓ Safe</text>
+<text fill="#50fa7b" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="435" y="208">✓  Full Git history — who, when, what</text>
+<text fill="#50fa7b" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="435" y="226">✓  Peer review + automated CI eval gate</text>
+<text fill="#50fa7b" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="435" y="244">✓  Rollback = re-apply previous YAML tag</text>
+<text fill="#50fa7b" fill-opacity=".8" font-family="IBM Plex Mono, monospace" font-size="9" x="435" y="262">✓  Per-model prompt overrides in config</text>
+<text fill="#0d3a1a" font-size="9" font-style="italic" x="435" y="283">"What did the old prompt say?" — git log</text>
+</svg>
+</div>
+<div class="img-caption">The governance gap: a UI edit goes directly to production with no review, history, or rollback path. A GitOps-mediated flow treats every prompt change as a reviewable, testable, reversible deployment event.</div>
+<hr/>
+<!-- ══════ §2 LITELLM ══════ -->
+<div class="vendor-header litellm">
+<span class="vendor-badge">LiteLLM</span>
+<span class="vendor-title">§2 — Beta Prompt Management + GitOps-by-Convention</span>
+</div>
+<h3>Architecture</h3>
+<p>LiteLLM's gateway is config-driven at its core: <code>config.yaml</code> governs model aliases, routing, rate limits, and auth — documented at <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">docs.litellm.ai/docs/proxy/config_settings</a>. Prompt governance sits on top of this in two distinct layers, both currently marked Beta.</p>
+<p><strong>The first layer is the UI-based prompt management surface</strong>, accessible at <em>Experimental → Prompts</em> in the LiteLLM dashboard (<a href="https://docs.litellm.ai/docs/proxy/litellm_prompt_management" target="_blank">litellm_prompt_management</a>). It provides a create-and-test UI, automatic versioning (v1 → v2 → v3) on every save, and a playground for testing prompt templates with variables before promoting them. Once saved, a prompt is referenced in API calls via <code>prompt_id</code> and an optional <code>prompt_version</code> parameter.</p>
+<p><strong>The second layer is the GitOps path</strong>, documented at <a href="https://docs.litellm.ai/docs/proxy/native_litellm_prompt" target="_blank">Prompt Management (GitOps)</a>, which allows prompts to be stored as files in a repository and synced into LiteLLM. Like the UI layer, this is currently Beta. LiteLLM also documents an API-based model management path (<code>/model/new</code>) for adding models at runtime, so config changes do not always require a full redeployment — but there is no documented dry-run or diff-preview workflow comparable to <code>tfy apply --show-diff</code> or <code>deck gateway diff</code> in the current public docs.</p>
+<p>The key architectural gap for prompt governance: there is no documented mechanism for the routing config to reference a specific prompt version by name as a <em>per-routing-target override</em>. A prompt is called by the application via <code>prompt_id</code>, not assigned to a model target inside the load-balancing config. This means different prompt versions for <code>gpt-5.4</code> vs. <code>claude-sonnet-4-6</code> in a fallback chain still requires application-layer coordination.</p>
+<div class="code-wrap"><pre><span class="cm"># LiteLLM — config.yaml governs routing; prompts referenced separately via API</span>
+<span class="cm"># Default recommended production strategy: simple-shuffle</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/config_settings</span>
+<span class="cm">#         docs.litellm.ai/docs/proxy/load_balancing</span>
+<span class="key">model_list</span>:
+  - <span class="key">model_name</span>: <span class="str">support-chat</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">openai/gpt-5.4</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/OPENAI_API_KEY</span>
+      <span class="key">rpm</span>: <span class="num">500</span>   <span class="cm"># rpm/tpm used by simple-shuffle for weighted picks</span>
+      <span class="key">tpm</span>: <span class="num">200000</span>
+  - <span class="key">model_name</span>: <span class="str">support-chat</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4-6</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/ANTHROPIC_API_KEY</span>
+      <span class="key">rpm</span>: <span class="num">400</span>
+      <span class="key">tpm</span>: <span class="num">150000</span>
+
+<span class="key">router_settings</span>:
+  <span class="key">routing_strategy</span>: <span class="str">simple-shuffle</span>   <span class="cm"># documented default; recommended for production</span>
+  <span class="key">num_retries</span>: <span class="num">2</span>
+
+<span class="key">general_settings</span>:
+  <span class="key">master_key</span>: <span class="str">sk-1234</span>
+
+<span class="cm"># Prompts are managed separately in "Experimental &gt; Prompts" UI (Beta).</span>
+<span class="cm"># Applications reference them via prompt_id + prompt_version at call time.</span>
+<span class="cm"># No per-routing-target prompt assignment exists in the routing config.</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">config_settings</a> · <a href="https://docs.litellm.ai/docs/proxy/load_balancing" target="_blank">proxy load_balancing</a> · <a href="https://docs.litellm.ai/docs/proxy/litellm_prompt_management" target="_blank">litellm_prompt_management (Beta)</a> · <a href="https://docs.litellm.ai/docs/proxy/native_litellm_prompt" target="_blank">Prompt Management GitOps (Beta)</a></div>
+<div class="code-wrap"><pre><span class="cm"># Application call referencing a versioned LiteLLM prompt (Beta feature)</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/litellm_prompt_management</span>
+curl -X POST <span class="str">'http://localhost:4000/chat/completions'</span> \
+  -H <span class="str">'Authorization: Bearer sk-1234'</span> \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{
+    "model": "support-chat",
+    "prompt_id": "support-system-prompt",
+    "prompt_version": 3,
+    "messages": [{"role": "user", "content": "I need help with my loan."}]
+  }'</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/litellm_prompt_management" target="_blank">docs.litellm.ai — LiteLLM AI Gateway Prompt Management</a></div>
+<!-- SVG: LiteLLM architecture -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 210" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="210" width="820"></rect>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="410" y="22">LITELLM — TWO SEPARATE PROMPT GOVERNANCE PATHS (BOTH BETA)</text>
+<defs><marker id="ca" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00C2CB" points="0 0,7 2.5,0 5"></polygon></marker></defs>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="700" x="30" y="48">PATH A — UI Prompt Management (Beta)</text>
+<rect fill="#001d1e" height="52" rx="5" stroke="#00C2CB" stroke-opacity=".6" width="95" x="30" y="56"></rect>
+<text fill="#00C2CB" font-size="9" text-anchor="middle" x="77" y="76">Dashboard</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="77" y="90">Experimental → Prompts</text>
+<text fill="#ffa726" font-size="7" text-anchor="middle" x="77" y="102">⚠ Beta</text>
+<line marker-end="url(#ca)" stroke="#00C2CB" stroke-width="1.5" x1="125" x2="148" y1="82" y2="82"></line>
+<rect fill="#001d1e" height="52" rx="5" stroke="#00C2CB" stroke-opacity=".5" width="90" x="150" y="56"></rect>
+<text fill="#00C2CB" font-size="9" text-anchor="middle" x="195" y="76">Versioning</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="195" y="90">v1 → v2 → v3</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="195" y="102">DB-backed</text>
+<line marker-end="url(#ca)" stroke="#00C2CB" stroke-width="1.5" x1="240" x2="262" y1="82" y2="82"></line>
+<rect fill="#001d1e" height="52" rx="5" stroke="#00C2CB" width="115" x="264" y="56"></rect>
+<text fill="#00C2CB" font-size="9" font-weight="700" text-anchor="middle" x="321" y="74">App calls prompt</text>
+<text fill="#f1fa8c" font-size="8" text-anchor="middle" x="321" y="88">prompt_id + prompt_version</text>
+<text fill="#ffa726" font-size="7" text-anchor="middle" x="321" y="101">⚠ No docs-backed per-target prompt ref</text>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="700" x="30" y="130">PATH B — GitOps Prompt Files (Beta)</text>
+<rect fill="#001d1e" height="45" rx="5" stroke="#00C2CB" stroke-opacity=".6" width="90" x="30" y="138"></rect>
+<text fill="#00C2CB" font-size="9" text-anchor="middle" x="75" y="158">.prompt files</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="75" y="171">in Git repo</text>
+<line marker-end="url(#ca)" stroke="#00C2CB" stroke-width="1.5" x1="120" x2="142" y1="160" y2="160"></line>
+<rect fill="#001d1e" height="45" rx="5" stroke="#00C2CB" stroke-opacity=".5" width="90" x="144" y="138"></rect>
+<text fill="#00C2CB" font-size="9" text-anchor="middle" x="189" y="158">PR / review</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="189" y="172">✓ Git audit trail</text>
+<line marker-end="url(#ca)" stroke="#00C2CB" stroke-width="1.5" x1="234" x2="256" y1="160" y2="160"></line>
+<rect fill="#001d1e" height="45" rx="5" stroke="#00C2CB" width="110" x="258" y="138"></rect>
+<text fill="#00C2CB" font-size="9" text-anchor="middle" x="313" y="157">Sync to LiteLLM</text>
+<text fill="#ffa726" font-size="7" text-anchor="middle" x="313" y="171">⚠ Beta integration</text>
+<rect fill="#0a0e16" height="127" rx="6" stroke="#1e2d45" width="130" x="430" y="56"></rect>
+<text fill="#7a8899" font-size="9" font-weight="700" text-anchor="middle" x="495" y="76">config.yaml</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="495" y="92">Models + routing</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="495" y="107">simple-shuffle (default)</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="495" y="122">✓ Git-committable</text>
+<text fill="#ffa726" font-size="7" text-anchor="middle" x="495" y="137">⚠ No dry-run/diff preview</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="495" y="152">Prompt governance separate</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="495" y="165">Hot model add via /model/new</text>
+<rect fill="#001d1e" height="70" rx="6" stroke="#00C2CB" width="90" x="610" y="70"></rect>
+<text fill="#00C2CB" font-size="10" font-weight="700" text-anchor="middle" x="655" y="92">LiteLLM</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="655" y="107">Proxy + router</text>
+<line stroke="#4a5568" stroke-width="1" x1="655" x2="655" y1="117" y2="130"></line>
+<line stroke="#10a37f" stroke-width="1" x1="655" x2="632" y1="130" y2="140"></line>
+<line stroke="#e8843a" stroke-width="1" x1="655" x2="678" y1="130" y2="140"></line>
+<text fill="#10a37f" font-size="8" x="615" y="152">gpt-5.4</text>
+<text fill="#e8843a" font-size="8" x="658" y="152">sonnet-4.6</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="410" y="195">Source: docs.litellm.ai/docs/proxy/litellm_prompt_management · docs.litellm.ai/docs/proxy/native_litellm_prompt · docs.litellm.ai/docs/proxy/load_balancing</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM has two Beta prompt governance paths: a UI-based surface with auto-versioning, and a GitOps file-sync path. Both are decoupled from the routing config — there is no per-routing-target prompt assignment in the YAML. Editorial reconstruction based on LiteLLM public docs.</div>
+<div class="callout warn">
+<div class="callout-title">⚠ Status — Beta / Experimental</div>
+<p>LiteLLM's prompt management features (UI versioning and GitOps file sync) are currently documented under <strong>Beta / Experimental</strong>. The production recommendation for routing strategy is <code>simple-shuffle</code> (the documented default). The <code>config.yaml</code> is Git-committable, and LiteLLM provides an API-based model management path (<code>/model/new</code>) for adding models at runtime — but there is no documented dry-run or diff-preview workflow for config changes comparable to <code>tfy apply --show-diff</code> or <code>deck gateway diff</code>. Per-routing-target prompt assignment is not natively documented.</p>
+</div>
+<hr/>
+<!-- ══════ §3 KONG ══════ -->
+<div class="vendor-header kong">
+<span class="vendor-badge">Kong</span>
+<span class="vendor-title">§3 — decK Declarative State + Native Diff + AI Prompt Plugins: Strong GitOps, No CMS</span>
+</div>
+<h3>Architecture</h3>
+<p>Kong's prompt governance story is built on two complementary mechanisms. The first is <strong>decK</strong>, Kong's declarative configuration tool, which treats every Gateway configuration object as a YAML state file that can be committed to Git, reviewed in PRs, and synchronized with <code>deck gateway sync</code>. Crucially, decK provides a native <strong><code>deck gateway diff</code></strong> command — documented at <a href="https://developer.konghq.com/deck/gateway/diff/" target="_blank">developer.konghq.com/deck/gateway/diff/</a> — that shows the differences between the live Kong Gateway configuration and a state file. Kong's own guidance is to always run <code>deck gateway diff</code> before running <code>deck gateway sync</code> to preview upcoming changes. This gives Kong a first-class diff-before-apply workflow.</p>
+<p>The second layer is Kong's <strong>AI prompt plugin family</strong>. The <a href="https://developer.konghq.com/plugins/ai-prompt-decorator/" target="_blank">AI Prompt Decorator plugin</a> prepends or appends fixed message arrays to user chat histories — the canonical use is injecting a system prompt at the Service or Route level. The correct schema uses <code>config.prompts.prepend</code> (not <code>config.prepend</code>). The <a href="https://developer.konghq.com/plugins/ai-prompt-template/" target="_blank">AI Prompt Template plugin</a> provides fill-in-the-blank templating with <code>{{variable}}</code> placeholders, allowing operators to define named templates that clients populate at request time. Both plugins are expressed inside decK YAML files, making them full Git citizens.</p>
+<p>Where Kong stops short is on the <em>prompt CMS</em> side: there is no native prompt versioning registry, no standalone prompt playground, and no per-routing-target prompt assignment when using AI Proxy Advanced multi-model pools.</p>
+<div class="code-wrap"><pre><span class="cm"># Kong — decK state file: AI Proxy + AI Prompt Decorator + AI Prompt Template</span>
+<span class="cm"># Commit to Git; run deck gateway diff before deck gateway sync</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-proxy/</span>
+<span class="cm">#         developer.konghq.com/plugins/ai-prompt-decorator/ (schema: config.prompts.prepend)</span>
+<span class="cm">#         developer.konghq.com/plugins/ai-prompt-template/</span>
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">services</span>:
+  - <span class="key">name</span>: <span class="str">support-chat-svc</span>
+    <span class="key">url</span>: <span class="str">http://localhost</span>
+    <span class="key">routes</span>:
+      - <span class="key">name</span>: <span class="str">support-chat-route</span>
+        <span class="key">paths</span>: [<span class="str">/v1/chat/completions</span>]
+
+<span class="key">plugins</span>:
+  - <span class="key">name</span>: <span class="str">ai-proxy</span>
+    <span class="key">service</span>: <span class="str">support-chat-svc</span>
+    <span class="key">config</span>:
+      <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+      <span class="key">auth</span>:
+        <span class="key">header_name</span>: <span class="str">Authorization</span>
+        <span class="key">header_value</span>: <span class="str">"{vault://aws/openai-key}"</span> <span class="cm"># vault secret should resolve to full header value, e.g. Bearer sk-...</span>
+      <span class="key">model</span>:
+        <span class="key">provider</span>: <span class="str">openai</span>
+        <span class="key">name</span>: <span class="str">gpt-5.4</span>
+
+  - <span class="key">name</span>: <span class="str">ai-prompt-decorator</span>          <span class="cm"># Injects system prompt at gateway layer</span>
+    <span class="key">service</span>: <span class="str">support-chat-svc</span>
+    <span class="key">config</span>:
+      <span class="key">prompts</span>:                           <span class="cm"># Verified schema: config.prompts.prepend</span>
+        <span class="key">prepend</span>:
+          - <span class="key">role</span>: <span class="str">system</span>
+            <span class="key">content</span>: <span class="str">"You are a financial advisory assistant. Always disclose APR and risk clearly."</span>
+
+  - <span class="key">name</span>: <span class="str">ai-prompt-template</span>            <span class="cm"># Named templates with {{variable}} placeholders</span>
+    <span class="key">service</span>: <span class="str">support-chat-svc</span>
+    <span class="key">config</span>:
+      <span class="key">templates</span>:
+        - <span class="key">name</span>: <span class="str">loan-inquiry</span>
+          <span class="key">template</span>: |
+            <span class="str">{
+              "messages": [
+                {"role": "system", "content": "You are a loan advisor. Always cite APR."},
+                {"role": "user", "content": "Tell me about a {{loan_type}} loan."}
+              ]
+            }</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-proxy/" target="_blank">ai-proxy</a> · <a href="https://developer.konghq.com/plugins/ai-prompt-decorator/examples/create-a-complex-chat-history/" target="_blank">ai-prompt-decorator example (config.prompts.prepend)</a> · <a href="https://developer.konghq.com/plugins/ai-prompt-template/" target="_blank">ai-prompt-template</a> · <a href="https://developer.konghq.com/deck/gateway/diff/" target="_blank">deck gateway diff</a></div>
+<!-- SVG: Kong pipeline with deck diff -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 195" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="195" width="820"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="410" y="22">KONG — DECK GITOPS PIPELINE WITH NATIVE DIFF</text>
+<defs><marker id="kma" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00D27B" points="0 0,7 2.5,0 5"></polygon></marker></defs>
+<!-- Step 1: decK State YAML -->
+<rect fill="#001e13" height="80" rx="6" stroke="#00D27B" width="115" x="15" y="48"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="72" y="70">decK State YAML</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="72" y="84">ai-proxy config</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="72" y="98">ai-prompt-decorator</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="72" y="112">ai-prompt-template</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="72" y="122">✓ Plain YAML in Git</text>
+<line marker-end="url(#kma)" stroke="#00D27B" stroke-width="1.5" x1="130" x2="152" y1="88" y2="88"></line>
+<!-- Step 2: Git PR -->
+<rect fill="#001e13" height="60" rx="6" stroke="#00D27B" stroke-opacity=".6" width="92" x="154" y="58"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="200" y="78">Git PR</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="200" y="93">Prompt = YAML diff</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="200" y="107">✓ Code review</text>
+<line marker-end="url(#kma)" stroke="#00D27B" stroke-width="1.5" x1="246" x2="268" y1="88" y2="88"></line>
+<!-- Step 3: CI -->
+<rect fill="#001e13" height="60" rx="6" stroke="#00D27B" stroke-opacity=".6" width="105" x="270" y="58"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="322" y="76">CI Pipeline</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="322" y="91">deck gateway validate</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="322" y="105">+ eval tests</text>
+<line marker-end="url(#kma)" stroke="#00D27B" stroke-width="1.5" x1="375" x2="398" y1="88" y2="88"></line>
+<!-- Step 4: deck gateway diff -->
+<rect fill="#001e13" height="80" rx="6" stroke="#00D27B" width="118" x="400" y="48"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="459" y="68">deck gateway diff</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="459" y="83">Native diff preview</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="459" y="97">✓ Shows exact changes</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="459" y="108">✓ Run before sync</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="459" y="122">+ deck validate</text>
+<line marker-end="url(#kma)" stroke="#00D27B" stroke-width="1.5" x1="518" x2="540" y1="88" y2="88"></line>
+<!-- Step 5: deck sync -->
+<rect fill="#001e13" height="66" rx="6" stroke="#00D27B" stroke-opacity=".8" width="100" x="542" y="55"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="592" y="74">deck gateway sync</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="592" y="89">Desired state apply</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="592" y="103">✓ Declarative state sync</text>
+<text fill="#ffa726" font-size="7" text-anchor="middle" x="592" y="114">⚠ No docs-backed per-target prompt ref</text>
+<line marker-end="url(#kma)" stroke="#00D27B" stroke-width="1.5" x1="642" x2="665" y1="88" y2="88"></line>
+<!-- Step 6: Kong GW -->
+<rect fill="#001e13" height="76" rx="6" stroke="#00D27B" width="95" x="667" y="50"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="714" y="70">Kong Gateway</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="714" y="84">Prompt injected</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="714" y="98">Template enforced</text>
+<line stroke="#4a5568" stroke-width="1" x1="714" x2="714" y1="106" y2="118"></line>
+<line stroke="#10a37f" stroke-width="1" x1="714" x2="695" y1="118" y2="128"></line>
+<line stroke="#e8843a" stroke-width="1" x1="714" x2="733" y1="118" y2="128"></line>
+<text fill="#10a37f" font-size="8" x="683" y="138">gpt-5.4</text>
+<text fill="#e8843a" font-size="8" x="720" y="138">sonnet</text>
+<text fill="#00D27B" fill-opacity=".7" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="410" y="163">deck gateway diff = native diff-before-apply · always run before deck gateway sync</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="410" y="179">Source: developer.konghq.com/deck/gateway/diff/ · developer.konghq.com/plugins/ai-prompt-decorator/ · developer.konghq.com/plugins/ai-prompt-template/</text>
+</svg>
+</div>
+<div class="img-caption">Kong's decK pipeline: every prompt change is a reviewable YAML diff. <code>deck gateway diff</code> is a native command specifically for previewing changes before applying. AI Prompt Decorator and AI Prompt Template plugins express gateway-side prompt logic as config. No prompt versioning CMS or per-model-target overrides within a load-balanced pool. Editorial reconstruction based on Kong public documentation.</div>
+<div class="callout warn">
+<div class="callout-title">⚠ Limitation — No Prompt CMS or Per-Target Routing Overrides</div>
+<p>Kong's AI Prompt Decorator operates at the Service or Route level, not at the individual routing target level inside AI Proxy Advanced's multi-model pool. Running different system prompts for <code>gpt-5.4</code> vs. <code>claude-sonnet-4-6</code> within the same load-balanced upstream requires separate Service definitions. Kong has no native prompt versioning registry. Note that <code>deck gateway diff</code> is a separate command from <code>deck gateway sync</code> — there is no combined <code>sync --dry-run</code> flag; the recommended workflow is <code>diff</code> then <code>sync</code>. Advanced features require specific enterprise plugin versions; consult the <a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">plugin compatibility reference</a>.</p>
+</div>
+<hr/>
+<!-- ══════ §4 PORTKEY ══════ -->
+<div class="vendor-header portkey">
+<span class="vendor-badge">Portkey</span>
+<span class="vendor-title">§4 — Prompt Engineering Studio + Config-First Gateway: Two Surfaces, One Team</span>
+</div>
+<h3>Architecture</h3>
+<p>Portkey's prompt governance story has two distinct surfaces. The first is the <strong>Prompt Engineering Studio</strong>, documented at <a href="https://portkey.ai/docs/product/prompt-engineering-studio" target="_blank">portkey.ai/docs/product/prompt-engineering-studio</a>. This is a full production-ready prompt CMS with a multimodal playground, Prompt Library, automatic versioning on every save, labeled deployments for dev/staging/prod promotion, Prompt Partials (reusable snippets), a Prompt API, and observability. It officially launched in March 2025 and is documented as production-ready for AI applications.</p>
+<p>The second surface is the <strong>Config object</strong> — the JSON document that governs routing strategy, fallback chains, retry logic, caching, and guardrails, documented at <a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">portkey.ai/docs/product/ai-gateway/configs</a>. Configs can be committed to Git and referenced by ID. The <code>override_params</code> field allows per-target model name overrides.</p>
+<p>Portkey does document a native integration pattern between these two surfaces for routing workflows that use prompt templates. In the <strong>Smart Fallback with Model-Optimized Prompts</strong> guide, each gateway target stores a <code>prompt_id</code>, so the fallback chain can switch from one saved prompt template to another as providers change. The Prompt Completions API then executes against the config-defined target order rather than requiring the application to hardcode prompt-switching logic. What the docs still emphasize, however, is prompt IDs and the Prompt API — not a routing field analogous to TrueFoundry's <code>prompt_version_fqn</code>. Prompt lifecycle management, labels, and version history still live primarily in the Studio.</p>
+<div class="code-wrap"><pre>{
+  "strategy": {
+    "mode": "fallback"
+  },
+  "targets": [
+    {
+      "prompt_id": "task_to_subtasks_anthropic"
+    },
+    {
+      "prompt_id": "task_to_subtasks_openai"
+    }
+  ]
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/guides/use-cases/smart-fallback-with-model-optimized-prompts" target="_blank">Smart Fallback with Model-Optimized Prompts</a> · <a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Configs</a> · <a href="https://portkey.ai/docs/product/prompt-engineering-studio" target="_blank">Prompt Engineering Studio</a><br/>This example matches Portkey's documented Smart Fallback pattern and is valid JSON. Each target stores a <code>prompt_id</code>; prompt lifecycle management and version history still live in the Prompt Engineering Studio.</div>
+<!-- SVG: Portkey two-surface architecture -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 220" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="220" width="820"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="410" y="22">PORTKEY — TWO SEPARATE GOVERNANCE SURFACES</text>
+<defs><marker id="pma" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#5A67FF" points="0 0,7 2.5,0 5"></polygon></marker></defs>
+<!-- Surface A -->
+<rect fill="#0a0c24" height="130" rx="8" stroke="#5A67FF" stroke-opacity=".7" width="355" x="20" y="42"></rect>
+<text fill="#5A67FF" font-size="10" font-weight="700" text-anchor="middle" x="197" y="61">SURFACE A — Prompt Engineering Studio (Production-Ready)</text>
+<rect fill="#0a0c24" height="45" rx="5" stroke="#5A67FF" stroke-opacity=".5" width="90" x="35" y="70"></rect>
+<text fill="#5A67FF" font-size="8" font-weight="600" text-anchor="middle" x="80" y="87">Playground</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="80" y="101">Create + test</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="80" y="111">Multi-model compare</text>
+<line marker-end="url(#pma)" stroke="#5A67FF" stroke-width="1.2" x1="125" x2="145" y1="92" y2="92"></line>
+<rect fill="#0a0c24" height="45" rx="5" stroke="#5A67FF" stroke-opacity=".5" width="90" x="147" y="70"></rect>
+<text fill="#5A67FF" font-size="8" font-weight="600" text-anchor="middle" x="192" y="87">Prompt Library</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="192" y="101">Versioning + labels</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="192" y="111">dev/staging/prod tags</text>
+<line marker-end="url(#pma)" stroke="#5A67FF" stroke-width="1.2" x1="237" x2="257" y1="92" y2="92"></line>
+<rect fill="#0a0c24" height="45" rx="5" stroke="#5A67FF" stroke-opacity=".5" width="100" x="259" y="70"></rect>
+<text fill="#5A67FF" font-size="8" font-weight="600" text-anchor="middle" x="309" y="87">Prompt API</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="309" y="101">Integrate via code</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="309" y="111">Render endpoint</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="197" y="154">✓ Rollbacks · Partials · Observability · Collaboration</text>
+<!-- Bridge -->
+<line stroke="#ffa726" stroke-dasharray="5,3" stroke-width="1.5" x1="372" x2="404" y1="107" y2="107"></line>
+<text fill="#50fa7b" font-size="8" text-anchor="end" x="404" y="98">Smart Fallbacks</text>
+<text fill="#7a8899" font-size="7" text-anchor="end" x="404" y="120"><tspan font-family="IBM Plex Mono, monospace">prompt_id</tspan> targets</text>
+<!-- Surface B -->
+<rect fill="#0a0c24" height="130" rx="8" stroke="#5A67FF" stroke-opacity=".5" width="220" x="415" y="42"></rect>
+<text fill="#5A67FF" font-size="10" font-weight="700" text-anchor="middle" x="525" y="61">SURFACE B — Gateway Config</text>
+<rect fill="#0a0c24" height="85" rx="5" stroke="#5A67FF" stroke-opacity=".4" width="190" x="430" y="72"></rect>
+<text fill="#5A67FF" font-size="8" font-weight="600" text-anchor="middle" x="525" y="90">Config Object (JSON)</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="525" y="104">strategy + fallback + retry</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="525" y="117">override_params: model name</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="525" y="130">✓ Git-storable by ID</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="525" y="143">✓ <tspan font-family="IBM Plex Mono, monospace">prompt_id</tspan> in config targets</text>
+<!-- Gateway edge -->
+<line marker-end="url(#pma)" stroke="#5A67FF" stroke-width="1.5" x1="635" x2="658" y1="107" y2="107"></line>
+<rect fill="#0a0c24" height="78" rx="6" stroke="#5A67FF" width="105" x="660" y="68"></rect>
+<text fill="#5A67FF" font-size="9" font-weight="700" text-anchor="middle" x="712" y="87">Portkey cloud edge</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="712" y="100">Global edge workers</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="712" y="113">Routing enforced</text>
+<line stroke="#4a5568" stroke-width="1" x1="712" x2="712" y1="121" y2="130"></line>
+<line stroke="#10a37f" stroke-width="1" x1="712" x2="693" y1="130" y2="140"></line>
+<line stroke="#e8843a" stroke-width="1" x1="712" x2="731" y1="130" y2="140"></line>
+<text fill="#10a37f" font-size="8" x="682" y="149">gpt-5.4</text>
+<text fill="#e8843a" font-size="8" x="720" y="149">sonnet</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="410" y="198">Smart Fallbacks let config targets reference saved prompts, while prompt lifecycle stays in the Studio.</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="410" y="213">Source: portkey.ai/docs/product/prompt-engineering-studio · portkey.ai/docs/guides/use-cases/smart-fallback-with-model-optimized-prompts</text>
+</svg>
+</div>
+<div class="img-caption">Portkey provides a production-ready Prompt Engineering Studio (versioning, labels, Prompt Library) plus a Config object for routing. Portkey's Smart Fallback docs show a native bridge for this flow: config targets can store different <code>prompt_id</code> values so failover automatically switches to model-optimized prompt templates, while lifecycle management still remains in the Studio. Editorial reconstruction based on Portkey public documentation.</div>
+<div class="callout info">
+<div class="callout-title">ℹ Portkey Hybrid Deployment — Data Residency</div>
+<p>The hybrid deployment option at <a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">portkey.ai/docs/enterprise/hybrid2</a> runs the data plane inside your VPC via Helm, meaning runtime LLM traffic stays within your network. The control plane and higher-level dashboard features remain hosted by Portkey. This provides meaningful data-residency control for prompt payloads at the request execution layer. The Prompt Engineering Studio and config management surfaces remain cloud-hosted.</p>
+</div>
+<hr/>
+<!-- ══════ §5 TRUEFOUNDRY ══════ -->
+<div class="vendor-header tf">
+<span class="vendor-badge">TrueFoundry</span>
+<span class="vendor-title">§5 — Native Prompt Management + Routing Integration + tfy apply GitOps</span>
+</div>
+<h3>Architecture</h3>
+<p>TrueFoundry currently has the most integrated public story across prompt management, prompt version references in routing, and GitOps-friendly deployment controls. The prompt workflow spans the <a href="https://www.truefoundry.com/docs/ai-gateway/prompt-playground" target="_blank">Prompt Playground</a>, <a href="https://www.truefoundry.com/docs/ai-gateway/prompt-versioning" target="_blank">Prompt Versioning</a>, and <a href="https://www.truefoundry.com/docs/ai-gateway/using-prompts" target="_blank">Using Prompts</a> docs: teams can create, test, save, and reuse prompts, define <strong>prompt variables</strong> for reusable templates, inspect version history in the <strong>Prompt Registry</strong>, and compare prompt versions in a GitHub-like diff view before promoting a change. Prompt versions are identified by a <strong>Fully Qualified Name (FQN)</strong> — for example, <code>chat_prompt:truefoundry/default/my-prompt:3</code>.</p>
+<p>That matters operationally because the “saved prompt” is not just a UI convenience. It is a versioned artifact that can be rendered server-side through the gateway or fetched via SDK, with <code>prompt_variables</code> supplied at runtime. Product, operations, and compliance teams can review exactly what changed, while engineers can promote the right version instead of copying raw prompt text between environments.</p>
+<p>The connection between the prompt registry and the routing config is what sets TrueFoundry apart. The routing configuration schema exposes an <code>override_params</code> object at the per-target level. The <code>prompt_version_fqn</code> parameter — documented in <a href="https://www.truefoundry.com/docs/ai-gateway/using-prompts" target="_blank">Using Prompts</a> as the primary mechanism for specifying which prompt version to execute — can be set inside a routing target's <code>override_params</code>. This means <code>anthropic/claude-sonnet-4-6</code> and <code>openai/gpt-5.4</code> in the same load-balanced pool can each receive model-tuned prompt versions, all expressed in one routing config YAML.</p>
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — routing config with per-target prompt version references</span>
+<span class="cm"># Source: truefoundry.com/docs/ai-gateway/load-balancing-configuration (override_params)</span>
+<span class="cm">#         truefoundry.com/docs/ai-gateway/using-prompts (prompt_version_fqn)</span>
+<span class="key">name</span>: <span class="str">support-chat-routing</span>
+<span class="key">type</span>: <span class="str">gateway-load-balancing-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">"support-chat-prod"</span>
+    <span class="key">type</span>: <span class="str">"latency-based-routing"</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        - <span class="str">"team:product-ai"</span>
+      <span class="key">models</span>:
+        - <span class="str">"support-assistant"</span>
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"production"</span>
+    <span class="key">load_balance_targets</span>:
+      - <span class="key">target</span>: <span class="str">"openai/gpt-5.4"</span>
+        <span class="key">override_params</span>:
+          <span class="key">prompt_version_fqn</span>: <span class="str">"chat_prompt:company/default/support-system:3"</span>
+        <span class="key">retry_config</span>:
+          <span class="key">attempts</span>: <span class="num">2</span>
+          <span class="key">on_status_codes</span>: [<span class="str">"429"</span>, <span class="str">"503"</span>]
+      - <span class="key">target</span>: <span class="str">"anthropic/claude-sonnet-4-6"</span>
+        <span class="key">override_params</span>:
+          <span class="key">prompt_version_fqn</span>: <span class="str">"chat_prompt:company/default/support-claude:2"</span>
+        <span class="key">retry_config</span>:
+          <span class="key">attempts</span>: <span class="num">2</span>
+          <span class="key">on_status_codes</span>: [<span class="str">"429"</span>, <span class="str">"503"</span>]
+
+  - <span class="key">id</span>: <span class="str">"support-chat-staging"</span>
+    <span class="key">type</span>: <span class="str">"weight-based-routing"</span>
+    <span class="key">when</span>:
+      <span class="key">models</span>:
+        - <span class="str">"support-assistant"</span>
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">"staging"</span>
+    <span class="key">load_balance_targets</span>:
+      - <span class="key">target</span>: <span class="str">"openai/gpt-5.4"</span>
+        <span class="key">weight</span>: <span class="num">100</span>
+        <span class="key">override_params</span>:
+          <span class="key">prompt_version_fqn</span>: <span class="str">"chat_prompt:company/default/support-system:4"</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">load-balancing-configuration</a> (<code>override_params</code> schema) · <a href="https://www.truefoundry.com/docs/ai-gateway/using-prompts" target="_blank">using-prompts</a> (<code>prompt_version_fqn</code> parameter)</div>
+<div class="code-wrap"><pre><span class="cm"># tfy apply — GitOps deployment with preview flags</span>
+<span class="cm"># Source: truefoundry.com/docs/using-tfy-apply</span>
+
+<span class="cm"># 1. Validate YAML syntax (no gateway state changed)</span>
+tfy apply --file gateway-routing.yaml --dry-run
+
+<span class="cm"># 2. Show human-readable diff vs current live state (for PR review step)</span>
+tfy apply --file gateway-routing.yaml --dry-run --show-diff
+
+<span class="cm"># 3. Apply after CI approval — atomic config push to stateless gateway plane</span>
+tfy apply --file gateway-routing.yaml</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/using-tfy-apply" target="_blank">truefoundry.com/docs/using-tfy-apply</a></div>
+<div class="code-wrap"><pre><span class="cm">// Deployment validation policy — enforce prompt_version_fqn in routing targets</span>
+<span class="cm">// Source: truefoundry.com/docs/applying-custom-policies</span>
+<span class="cm">// Note: policies evaluate manifest fields; this example checks routing config structure</span>
+<span class="kw">import</span> { ValidationInput, ValidationError } <span class="kw">from</span> <span class="str">'@src/types'</span>;
+
+<span class="kw">export function</span> <span class="key">validate</span>(validationInput: ValidationInput): <span class="kw">void</span> {
+  <span class="kw">const</span> { manifest } = validationInput;
+
+  <span class="cm">// Only check gateway routing configs</span>
+  <span class="kw">if</span> (manifest.type !== <span class="str">'gateway-load-balancing-config'</span>) <span class="kw">return</span>;
+
+  <span class="cm">// Enforce: every routing target must reference a versioned prompt</span>
+  <span class="kw">for</span> (<span class="kw">const</span> rule <span class="kw">of</span> manifest.rules ?? []) {
+    <span class="kw">for</span> (<span class="kw">const</span> target <span class="kw">of</span> rule.load_balance_targets ?? []) {
+      <span class="kw">if</span> (!target.override_params?.prompt_version_fqn) {
+        <span class="kw">throw new</span> ValidationError(
+          <span class="str">`Rule "${rule.id}": target "${target.target}" must specify override_params.prompt_version_fqn`</span>
+        );
+      }
+    }
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/applying-custom-policies" target="_blank">applying-custom-policies</a> — policy checks <code>manifest</code> fields; <code>override_params.prompt_version_fqn</code> sourced from <a href="https://www.truefoundry.com/docs/ai-gateway/using-prompts" target="_blank">using-prompts</a>. Language: <strong>TypeScript</strong>.</div>
+<!-- SVG: TrueFoundry integrated pipeline -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 230" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="230" width="820"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="410" y="22">TRUEFOUNDRY — INTEGRATED PROMPT + ROUTING + GITOPS PIPELINE</text>
+<defs>
+<marker id="tfa" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#FF5533" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="#1e0d08" height="80" rx="6" stroke="#FF5533" width="105" x="15" y="42"></rect>
+<text fill="#FF5533" font-size="9" font-weight="700" text-anchor="middle" x="67" y="63">Prompt CMS</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="67" y="78">Saved Prompts</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="67" y="92">Versioning</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="67" y="106">Variables + FQN</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="67" y="116">Compare / diff</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="120" x2="142" y1="82" y2="82"></line>
+<rect fill="#1e0d08" height="80" rx="6" stroke="#FF5533" stroke-opacity=".7" width="110" x="144" y="42"></rect>
+<text fill="#FF5533" font-size="9" font-weight="700" text-anchor="middle" x="199" y="63">Typed YAML</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="199" y="78">gateway-lb-config</text>
+<text fill="#f1fa8c" font-size="7" text-anchor="middle" x="199" y="92">override_params:</text>
+<text fill="#f1fa8c" font-size="7" text-anchor="middle" x="199" y="104">  prompt_version_fqn</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="199" y="116">✓ Git-committable</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="254" x2="276" y1="82" y2="82"></line>
+<rect fill="#1e0d08" height="80" rx="6" stroke="#FF5533" stroke-opacity=".7" width="105" x="278" y="42"></rect>
+<text fill="#FF5533" font-size="9" font-weight="700" text-anchor="middle" x="330" y="63">Git PR</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="330" y="78">Peer review</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="330" y="92">tfy apply --show-diff</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="330" y="106">✓ Human-readable diff</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="383" x2="405" y1="82" y2="82"></line>
+<rect fill="#1e0d08" height="80" rx="6" stroke="#FF5533" stroke-opacity=".7" width="110" x="407" y="42"></rect>
+<text fill="#FF5533" font-size="9" font-weight="700" text-anchor="middle" x="462" y="61">CI Gate</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="462" y="76">tfy apply --dry-run</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="462" y="90">Validation policy</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="462" y="104">prompt_version_fqn</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="462" y="116">✓ Enforced in code</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="517" x2="539" y1="82" y2="82"></line>
+<rect fill="#1e0d08" height="80" rx="6" stroke="#FF5533" width="100" x="541" y="42"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="591" y="61">tfy apply</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="591" y="76">Atomic config push</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="591" y="90">Queue → stateless</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="591" y="104">gateway plane</text>
+<text fill="#50fa7b" font-size="7" text-anchor="middle" x="591" y="116">✓ K8s-native GitOps</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="641" x2="663" y1="82" y2="82"></line>
+<rect fill="#1e0d08" height="95" rx="6" stroke="#FF5533" width="145" x="665" y="35"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="737" y="56">Gateway Plane</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="737" y="70">Resolves prompt FQN</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="737" y="84">per routing target</text>
+<line stroke="#2d3f5a" stroke-width="1" x1="680" x2="795" y1="95" y2="95"></line>
+<line stroke="#10a37f" stroke-width="1" x1="737" x2="720" y1="97" y2="115"></line>
+<line stroke="#e8843a" stroke-width="1" x1="737" x2="754" y1="97" y2="115"></line>
+<text fill="#10a37f" font-size="7" x="702" y="124">gpt-5.4+v3</text>
+<text fill="#e8843a" font-size="7" x="745" y="124">sonnet+v2</text>
+<rect fill="#0a1a10" height="32" rx="4" stroke="#50fa7b" stroke-opacity=".4" width="100" x="541" y="148"></rect>
+<text fill="#50fa7b" font-size="8" text-anchor="middle" x="591" y="162">Rollback = re-apply</text>
+<text fill="#7a8899" font-size="7" text-anchor="middle" x="591" y="174">previous YAML tag</text>
+<line stroke="#50fa7b" stroke-dasharray="3,3" stroke-opacity=".4" stroke-width="1" x1="591" x2="591" y1="148" y2="122"></line>
+<rect fill="#0a0e16" height="28" rx="4" stroke="#1e2d45" width="255" x="144" y="150"></rect>
+<text fill="#7a8899" font-size="7.5" text-anchor="middle" x="271" y="163">K8s-native: stateless gateway plane syncs config via queue</text>
+<text fill="#4a5568" font-size="7" text-anchor="middle" x="271" y="174">Source: truefoundry.com/docs/platform/gateway-plane-architecture</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="410" y="208">Source: truefoundry.com/docs/using-tfy-apply · truefoundry.com/docs/ai-gateway/using-prompts · truefoundry.com/docs/ai-gateway/load-balancing-overview</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's integrated pipeline: saved, versioned prompts from the registry are referenced by FQN in typed YAML routing config, reviewed as Git diffs, validated by CI with <code>tfy apply --dry-run</code>, and deployed atomically. The product surface also exposes prompt variables and version comparison/diff workflows, while each model in a load-balanced pool can reference its own prompt version via <code>override_params.prompt_version_fqn</code>. Editorial reconstruction based on TrueFoundry public documentation.</div>
+<div class="callout info">
+<div class="callout-title">ℹ K8s-Native GitOps Compatibility</div>
+<p>TrueFoundry's stateless gateway plane subscribes to configuration updates via a queue with HTTP fallback, as documented at <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway-plane-architecture</a>. Teams already using GitOps can manage TrueFoundry gateway YAML alongside their other reviewed configuration. The <code>tfy apply</code> CLI and typed YAML format make that workflow straightforward without introducing a separate prompt-specific control plane.</p>
+</div>
+<div class="callout warn">
+<div class="callout-title">⚠ Limitation — K8s Operational Prerequisite</div>
+<p>The gateway plane deployment at <a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">deploy-gateway-plane</a> requires a running Kubernetes cluster, a domain, TLS, image-pull credentials, and a control-plane API key. For teams without existing K8s infrastructure, this is a real adoption barrier compared to LiteLLM's container-first or Portkey's cloud-edge paths.</p>
+</div>
+<hr/>
+<!-- ══════ §6 FEATURE MATRIX ══════ -->
+<h2>§6 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's current official public documentation as of March 2026. ✅ = native and stable, ⚠ = available with caveats or partial, ❌ = not natively documented.</p>
+<div class="matrix-wrap">
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th style="color:var(--litellm)">LiteLLM</th>
+<th style="color:var(--kong)">Kong AI GW</th>
+<th style="color:var(--portkey)">Portkey</th>
+<th style="color:var(--tf)">TrueFoundry</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Dedicated Prompt CMS / Versioning</strong></td>
+<td><span class="partial">⚠</span> UI-based auto-versioning — currently <strong>Beta/Experimental</strong></td>
+<td><span class="cross">❌</span> No prompt version registry; prompts live in decK plugin config without versioning</td>
+<td><span class="check">✅</span> Full Prompt Engineering Studio: Prompt Library, versioning, labeled deployments, Partials</td>
+<td><span class="check">✅</span> Saved Prompts in the Prompt Registry, version history, compare-diff view, FQN-based registry</td>
+</tr>
+<tr>
+<td><strong>Interactive Prompt Playground</strong></td>
+<td><span class="partial">⚠</span> Available in "Experimental → Prompts" UI (<strong>Beta</strong>)</td>
+<td><span class="cross">❌</span> Not documented as standalone prompt playground</td>
+<td><span class="check">✅</span> Multimodal playground with side-by-side model comparison, AI-assisted improvements</td>
+<td><span class="check">✅</span> <a href="https://www.truefoundry.com/docs/ai-gateway/prompt-playground" target="_blank">Playground</a> — create/test prompts, save templates, use variables, generate code, and configure guardrails/tools</td>
+</tr><tr><td><strong>Prompt Variables</strong></td><td><span class="check">✅</span> Beta prompt flows support runtime variables via <code>prompt_variables</code></td><td><span class="check">✅</span> AI Prompt Template supports variable placeholders in gateway templates</td><td><span class="check">✅</span> Prompt Playground and Prompt API support runtime variables</td><td><span class="check">✅</span> Playground variables plus <code>prompt_variables</code> in Prompt Run API / SDK</td></tr><tr><td><strong>Prompt Comparison / Diff</strong></td><td><span class="cross">❌</span> No documented native prompt diff or comparison view in current public docs</td><td><span class="partial">⚠</span> Git/YAML diff through decK, but no prompt-native compare UI</td><td><span class="check">✅</span> Prompt Playground explicitly supports comparing prompt runs</td><td><span class="check">✅</span> Prompt Versioning includes GitHub-like version diff; Playground docs position it as a place to create, test, save, and compare prompts</td></tr>
+<tr>
+<td><strong>Per-Routing-Target Prompt Assignment</strong></td>
+<td><span class="cross">❌</span> No per-target prompt ref in routing config; called by app via <code>prompt_id</code></td>
+<td><span class="partial">⚠</span> AI Prompt Decorator at Service/Route level; separate Services needed per model target</td>
+<td><span class="check">✅</span> Config targets can store <code>prompt_id</code>; Smart Fallbacks document target-level prompt switching, while version/label lifecycle stays in the Studio</td>
+<td><span class="check">✅</span> <code>override_params.prompt_version_fqn</code> per <code>load_balance_target</code> — routing config and prompt registry connected</td>
+</tr>
+<tr>
+<td><strong>Declarative Config (Git-committable)</strong></td>
+<td><span class="check">✅</span> <code>config.yaml</code> for gateway config; <code>.prompt</code> files for prompt GitOps (<strong>Beta</strong>)</td>
+<td><span class="check">✅</span> decK state files — entire gateway config incl. prompt plugins as YAML</td>
+<td><span class="check">✅</span> Config objects (JSON) — store in code, reference by ID or inline header</td>
+<td><span class="check">✅</span> Typed YAML (<code>gateway-load-balancing-config</code>) — routing + prompt FQN refs in one file</td>
+</tr>
+<tr>
+<td><strong>GitOps CLI Tooling</strong></td>
+<td><span class="partial">⚠</span> YAML + config redeployment for changes; API-based hot model add (<code>/model/new</code>); no diff-preview CLI documented</td>
+<td><span class="check">✅</span> <code>deck gateway diff</code> + <code>deck gateway validate</code> + <code>deck gateway sync</code> — full GitOps workflow</td>
+<td><span class="partial">⚠</span> Configs via API/SDK; Helm for data-plane; no config-apply CLI with diff preview documented</td>
+<td><span class="check">✅</span> <code>tfy apply --dry-run --show-diff</code> — documented primary GitOps CLI</td>
+</tr>
+<tr>
+<td><strong>Dry-run / Diff Preview Before Apply</strong></td>
+<td><span class="cross">❌</span> No documented dry-run or diff workflow in the current public docs</td>
+<td><span class="check">✅</span> <code>deck gateway diff</code> — native diff command; always run before <code>deck gateway sync</code></td>
+<td><span class="cross">❌</span> Not documented</td>
+<td><span class="check">✅</span> <code>tfy apply --dry-run</code> and <code>--show-diff</code> — explicitly documented in tfy apply guide</td>
+</tr>
+<tr>
+<td><strong>Deployment Validation Policy</strong></td>
+<td><span class="cross">❌</span></td>
+<td><span class="cross">❌</span></td>
+<td><span class="cross">❌</span></td>
+<td><span class="check">✅</span> TypeScript validation hooks — can enforce <code>override_params.prompt_version_fqn</code> presence</td>
+</tr>
+<tr>
+<td><strong>Multi-Environment Promotion</strong></td>
+<td><span class="partial">⚠</span> Separate config files; manual or CI-scripted</td>
+<td><span class="check">✅</span> decK state files with environment-specific tag filters</td>
+<td><span class="check">✅</span> Prompt Library: labeled deployments (dev/staging/prod); Config: separate API keys per env</td>
+<td><span class="check">✅</span> <code>when.metadata.environment</code>-scoped rules in single YAML; Prompt versioning for staged promotion</td>
+</tr>
+<tr>
+<td><strong>Prompt Change Audit Trail</strong></td>
+<td><span class="partial">⚠</span> Git history of <code>config.yaml</code>; prompt DB versioning in Beta UI; GitOps prompt files in Beta</td>
+<td><span class="check">✅</span> Git history of decK files provides prompt change trail; gateway-side audit logging depends on Kong deployment</td>
+<td><span class="check">✅</span> Prompt Library version history; gateway logs with config ID; OTel traces</td>
+<td><span class="check">✅</span> Prompt Registry version history; OTEL traces; <code>x-tfy-applied-configurations</code> response header</td>
+</tr>
+<tr>
+<td><strong>Gateway-Side System Prompt Injection</strong></td>
+<td><span class="cross">❌</span> Not a documented gateway routing feature; prompts referenced at call time by app</td>
+<td><span class="check">✅</span> AI Prompt Decorator (<code>config.prompts.prepend/append</code>) at Service/Route level</td>
+<td><span class="partial">⚠</span> No documented native gateway injection; Prompt API handles at call time</td>
+<td><span class="check">✅</span> <code>override_params.prompt_version_fqn</code> per routing target — gateway resolves at call time</td>
+</tr>
+<tr>
+<td><strong>Data Residency for Prompt Payloads</strong></td>
+<td><span class="check">✅</span> Fully self-hosted</td>
+<td><span class="check">✅</span> Fully self-hosted</td>
+<td><span class="partial">⚠</span> Hybrid: runtime LLM traffic in VPC; control plane and Studio remain Portkey-hosted</td>
+<td><span class="check">✅</span> Self-hostable in-cluster gateway plane; hot path has no external calls on data path</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr/>
+<!-- ══════ §7 VERDICT ══════ -->
+<h2>§7 — Editorial Verdict</h2>
+<p>Editorial assessments as of March 10, 2026.</p>
+<div class="verdict-grid">
+<div class="verdict-card litellm">
+<div class="verdict-label">LiteLLM</div>
+<div class="verdict-name">The Evolving Minimalist</div>
+<div class="verdict-text">LiteLLM now ships a Beta prompt management UI with auto-versioning and a playground, plus a companion GitOps file-sync path. Both are meaningful additions. The Beta caveat is real — teams building compliance-critical workflows should stress-test stability. The deeper structural gap: no per-routing-target prompt assignment in the load-balancing config, and no documented dry-run/diff workflow for config changes.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams comfortable with Beta features and simple routing needs. Not yet suited for organizations where compliance requires production-grade, fully integrated prompt governance.</div>
+</div>
+<div class="verdict-card kong">
+<div class="verdict-label">Kong AI Gateway</div>
+<div class="verdict-name">The GitOps Infrastructure Champion</div>
+<div class="verdict-text">decK gives Kong a first-class GitOps story: <code>deck gateway diff</code> previews changes before apply, state files are plain YAML in Git, and AI Prompt Decorator plus AI Prompt Template inject and template prompts at the gateway layer. The gap is on CMS depth: no versioning registry, no standalone playground, and no per-model-target prompt overrides within a load-balanced pool.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Organizations already operating Kong who want prompt and gateway config in the same GitOps pipeline. Best when prompt complexity is low and infrastructure maturity is high.</div>
+</div>
+<div class="verdict-card portkey">
+<div class="verdict-label">Portkey</div>
+<div class="verdict-name">The Prompt Studio + Cloud Gateway</div>
+<div class="verdict-text">Portkey offers the most mature standalone prompt management CMS of the four: the Prompt Engineering Studio has versioning, labeled deployments, Prompt Partials, and a Prompt API. The routing Config object provides sophisticated fallback and load-balancing governance storable as code. A standout capability is <strong>Smart Fallbacks</strong>: Portkey docs show config targets storing different <code>prompt_id</code> values so failover can automatically switch to model-optimized prompt templates. Prompt lifecycle management still lives primarily in the Studio.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams that want a full-featured prompt CMS alongside sophisticated routing config, accept cloud or hybrid data plane, and value native Smart Fallback patterns for model-optimized prompt switching during failover.</div>
+</div>
+<div class="verdict-card tf">
+<div class="verdict-label">TrueFoundry</div>
+<div class="verdict-name">The Integrated GitOps Platform</div>
+<div class="verdict-text">TrueFoundry currently has the most integrated public story: Saved Prompts and version history in the registry, prompt variables for reusable templates, compare/diff workflows for reviewing changes, <code>override_params.prompt_version_fqn</code> in routing config, and <code>tfy apply --dry-run/--show-diff</code> for deploy previews. Validation policies can enforce prompt version references as a CI gate. K8s-native stateless gateway plane aligns with standard GitOps workflows. Operational cost: a real K8s prerequisite.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Platform engineering teams in regulated industries, K8s-native shops, and organizations scaling multi-model prompt operations where prompt changes must be as auditable as application code.</div>
+</div>
+</div>
+<h3>Positioning Map — GitOps Maturity vs. Native Prompt CMS Depth</h3>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 620 410" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="410" width="620"></rect>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="65" y1="20" y2="340"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="575" y1="340" y2="340"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="65" x2="575" y1="180" y2="180"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="320" x2="320" y1="20" y2="340"></line>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" x="320" y="378">← Low GitOps Maturity — High →</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" transform="rotate(-90,14,180)" x="14" y="180">Prompt CMS Depth</text>
+<!-- LiteLLM: low-medium GitOps, low CMS (Beta — dashed) -->
+<circle cx="160" cy="275" fill="#00d4ff" fill-opacity=".09" r="42" stroke="#00d4ff" stroke-dasharray="5,3" stroke-width="1.5"></circle>
+<text fill="#00d4ff" font-size="13" font-weight="700" text-anchor="middle" x="160" y="270">LiteLLM</text>
+<text fill="#00d4ff" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="160" y="287">YAML · Beta CMS</text>
+<!-- Kong: high GitOps, low CMS -->
+<circle cx="460" cy="290" fill="#00e599" fill-opacity=".09" r="46" stroke="#00e599" stroke-width="1.5"></circle>
+<text fill="#00e599" font-size="13" font-weight="700" text-anchor="middle" x="460" y="284">Kong</text>
+<text fill="#00e599" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="460" y="300">deck diff · Prompt plugins</text>
+<!-- Portkey: medium GitOps, high CMS -->
+<circle cx="210" cy="88" fill="#7b61ff" fill-opacity=".09" r="50" stroke="#7b61ff" stroke-width="1.5"></circle>
+<text fill="#7b61ff" font-size="13" font-weight="700" text-anchor="middle" x="210" y="83">Portkey</text>
+<text fill="#7b61ff" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="210" y="100">Studio · Smart Fallbacks</text>
+<!-- TrueFoundry: high GitOps, high CMS -->
+<circle cx="478" cy="68" fill="#ff6b35" fill-opacity=".1" r="56" stroke="#ff6b35" stroke-width="1.5"></circle>
+<text fill="#ff6b35" font-size="13" font-weight="700" text-anchor="middle" x="478" y="61">TrueFoundry</text>
+<text fill="#ff6b35" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="478" y="78">tfy apply · CMS + routing</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="190" y="335">LOW OPS / LOW CMS</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="450" y="335">HIGH OPS / LOW CMS</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="190" y="42">LOW OPS / HIGH CMS</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="450" y="42">HIGH OPS / HIGH CMS</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">LiteLLM's dashed border reflects Beta status for its CMS features. Kong bubble updated to reflect <code>deck gateway diff</code> native capability. Axes and positions are editorial assessments as of March 2026.</p>
+<hr/>
+<!-- ══════ §8 REFERENCES ══════ -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/prompt-management" target="_blank">TrueFoundry — Prompt Management Overview</a></li><li><a href="https://www.truefoundry.com/docs/ai-gateway/prompt-playground" target="_blank">TrueFoundry — Prompt Playground (saved prompts, variables)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/prompt-versioning" target="_blank">TrueFoundry — Prompt Versioning</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/using-prompts" target="_blank">TrueFoundry — Using Prompts (prompt_version_fqn)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">TrueFoundry — Load Balancing Overview</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">TrueFoundry — Load Balancing Configuration (override_params)</a></li>
+<li><a href="https://www.truefoundry.com/docs/using-tfy-apply" target="_blank">TrueFoundry — tfy apply (--dry-run, --show-diff)</a></li>
+<li><a href="https://www.truefoundry.com/docs/applying-custom-policies" target="_blank">TrueFoundry — Deployment Guardrails and Policies</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/playground-overview" target="_blank">TrueFoundry — AI Gateway Playground Overview</a></li>
+<li><a href="https://developer.konghq.com/deck/gateway/diff/" target="_blank">Kong — deck gateway diff (native diff-before-apply command)</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-prompt-decorator/examples/create-a-complex-chat-history/" target="_blank">Kong — AI Prompt Decorator: config.prompts.prepend example</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-prompt-template/" target="_blank">Kong — AI Prompt Template Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-proxy/" target="_blank">Kong — AI Proxy Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">Kong — AI Proxy Advanced Plugin</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/load-balancing/" target="_blank">Kong — Load Balancing with AI Proxy Advanced</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/ai-audit-log-reference/" target="_blank">Kong — AI Gateway Audit Log Reference</a></li>
+<li><a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">Kong — Plugin Compatibility Reference</a></li>
+<li><a href="https://portkey.ai/docs/product/prompt-engineering-studio" target="_blank">Portkey — Prompt Engineering Studio</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Configs</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway/load-balancing" target="_blank">Portkey — Load Balancing</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway/fallbacks" target="_blank">Portkey — Fallbacks</a></li>
+<li><a href="https://portkey.ai/docs/guides/use-cases/smart-fallback-with-model-optimized-prompts" target="_blank">Portkey — Smart Fallback with Model-Optimized Prompts</a></li>
+<li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy in Your Infrastructure (Hybrid)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/litellm_prompt_management" target="_blank">LiteLLM — AI Gateway Prompt Management (Beta)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/native_litellm_prompt" target="_blank">LiteLLM — Prompt Management GitOps (Beta)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Config Settings Reference</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/load_balancing" target="_blank">LiteLLM — Proxy Load Balancing (simple-shuffle default)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/deploy" target="_blank">LiteLLM — Deployment Guide</a></li>
+<li><a href="https://docs.litellm.ai/docs/routing" target="_blank">LiteLLM — Router / Load Balancing (simple-shuffle default)</a></li>
+<li><a href="https://www.truefoundry.com/docs/changelog" target="_blank">TrueFoundry — Changelog</a></li>
+</ol>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 13 of 15  ·  March 10, 2026  ·  All vendor names are trademarks of their respective owners.<br/>
+  Feature claims cross-referenced against official public documentation as of March 10, 2026. Verify before production decisions.
+</p>
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied'; btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+</body></html>
