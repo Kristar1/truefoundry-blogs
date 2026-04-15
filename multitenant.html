@@ -1,0 +1,1058 @@
+
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway Series #2 — Organization, Team Management &amp; Multi-tenancy</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg:#0b0e17;--surface:#121826;--surface2:#1a2233;--border:#1e2d45;
+    --litellm:#00C2CB;--kong:#00D27B;--portkey:#5A67FF;--tf:#FF5533;
+    --text:#e2e8f0;--muted:#7a8899;--danger:#ff4757;--warn:#ffa726;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.75;max-width:900px;margin:0 auto;padding:2rem 1.5rem 6rem;}
+  code,pre,.mono{font-family:'IBM Plex Mono',monospace;}
+  h1{font-size:2.2rem;font-weight:700;line-height:1.2;margin-bottom:1rem;}
+  h2{font-size:1.5rem;font-weight:700;margin:3rem 0 1rem;padding-bottom:.4rem;border-bottom:1px solid var(--border);}
+  h3{font-size:1.15rem;font-weight:600;margin:1.8rem 0 .6rem;}
+  p{margin-bottom:1rem;}
+  a{color:#60a5fa;text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  ul,ol{padding-left:1.5rem;margin-bottom:1rem;}
+  li{margin-bottom:.3rem;}
+
+  .series-bar{display:flex;align-items:center;gap:.6rem;margin-bottom:1.2rem;flex-wrap:wrap;}
+  .tag-pill{display:inline-block;background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:.72rem;font-family:'IBM Plex Mono',monospace;padding:.25rem .7rem;border-radius:999px;letter-spacing:.05em;text-transform:uppercase;}
+  .tag-pill.active{background:#0f1d2e;border-color:#60a5fa;color:#60a5fa;}
+  .series-dots{display:flex;gap:.3rem;align-items:center;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--border);}
+  .dot.active{background:#60a5fa;}
+  .meta{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap;}
+  .meta-item{font-size:.82rem;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+
+  .methodology{background:#0a1220;border:1px solid #1e3a5f;color:#94b8d8;font-size:.8rem;padding:.8rem 1.2rem;border-radius:8px;font-family:'IBM Plex Mono',monospace;line-height:1.7;}
+  .methodology strong{color:#60a5fa;}
+
+  .code-wrap{position:relative;margin:1rem 0 .4rem;}
+  .code-wrap pre{background:#080c12;border:1px solid var(--border);border-radius:8px;padding:1.2rem 1.4rem;padding-right:3.2rem;overflow-x:auto;font-size:.83rem;line-height:1.6;margin:0;}
+  .copy-btn{position:absolute;top:.55rem;right:.55rem;background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:.68rem;padding:.22rem .55rem;border-radius:5px;cursor:pointer;transition:all .15s ease;user-select:none;letter-spacing:.03em;line-height:1.4;}
+  .copy-btn:hover{background:var(--border);color:var(--text);border-color:#2e4060;}
+  .copy-btn.copied{color:#50fa7b;border-color:#50fa7b44;background:#0a1a10;}
+  .kw{color:#ff79c6;}.str{color:#f1fa8c;}.cm{color:#6272a4;}.key{color:#50fa7b;}.num{color:#bd93f9;}
+  .source-note{font-size:.74rem;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:1.4rem;padding:.3rem .8rem;border-left:2px solid var(--border);}
+  .source-note a{color:#7a8899;}
+  .source-note a:hover{color:#60a5fa;}
+
+  .callout{border-left:3px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;padding:1rem 1.2rem;margin:1.2rem 0;}
+  .callout.danger{border-color:var(--danger);background:#1a0a0a;}
+  .callout.warn{border-color:var(--warn);background:#1a1200;}
+  .callout.info{border-color:#60a5fa;background:#0a1220;}
+  .callout.ok{border-color:#50fa7b;background:#091510;}
+  .callout-title{font-size:.75rem;font-weight:700;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.4rem;}
+  .callout.danger .callout-title{color:var(--danger);}
+  .callout.warn .callout-title{color:var(--warn);}
+  .callout.info .callout-title{color:#60a5fa;}
+  .callout.ok .callout-title{color:#50fa7b;}
+
+  .quickpick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0;}
+  .qp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.1rem;}
+  .qp-label{font-size:.7rem;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;}
+  .qp-name{font-size:1.05rem;font-weight:700;margin-bottom:.3rem;}
+  .qp-desc{font-size:.82rem;color:var(--muted);line-height:1.5;}
+  .c-litellm{color:var(--litellm);border-top:3px solid var(--litellm);}
+  .c-kong{color:var(--kong);border-top:3px solid var(--kong);}
+  .c-portkey{color:var(--portkey);border-top:3px solid var(--portkey);}
+  .c-tf{color:var(--tf);border-top:3px solid var(--tf);}
+
+  .vendor-header{display:flex;align-items:center;gap:.8rem;padding:1rem 1.4rem;border-radius:10px;margin:2.5rem 0 1.2rem;}
+  .vendor-header.litellm{background:#001d1e;border:1px solid var(--litellm);}
+  .vendor-header.kong{background:#001e13;border:1px solid var(--kong);}
+  .vendor-header.portkey{background:#0a0c24;border:1px solid var(--portkey);}
+  .vendor-header.tf{background:#1e0d08;border:1px solid var(--tf);}
+  .vendor-badge{font-family:'IBM Plex Mono',monospace;font-size:.7rem;font-weight:700;padding:.2rem .6rem;border-radius:4px;text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;}
+  .vendor-header.litellm .vendor-badge{background:var(--litellm);color:#000;}
+  .vendor-header.kong .vendor-badge{background:var(--kong);color:#000;}
+  .vendor-header.portkey .vendor-badge{background:var(--portkey);color:#fff;}
+  .vendor-header.tf .vendor-badge{background:var(--tf);color:#fff;}
+  .vendor-title{font-size:1.2rem;font-weight:700;}
+
+  .matrix-wrap{overflow-x:auto;margin:1.5rem 0;}
+  table{width:100%;border-collapse:collapse;font-size:.83rem;}
+  thead tr{background:var(--surface2);}
+  th{padding:.7rem 1rem;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;border-bottom:2px solid var(--border);}
+  td{padding:.62rem 1rem;border-bottom:1px solid var(--border);vertical-align:top;}
+  tr:hover td{background:var(--surface);}
+  .check{color:#50fa7b;}.cross{color:var(--danger);}.partial{color:var(--warn);}
+
+  .verdict-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0;}
+  .verdict-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem;position:relative;}
+  .verdict-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:10px 10px 0 0;}
+  .verdict-card.litellm::before{background:var(--litellm);}
+  .verdict-card.kong::before{background:var(--kong);}
+  .verdict-card.portkey::before{background:var(--portkey);}
+  .verdict-card.tf::before{background:var(--tf);}
+  .verdict-label{font-size:.7rem;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;}
+  .verdict-card.litellm .verdict-label{color:var(--litellm);}
+  .verdict-card.kong .verdict-label{color:var(--kong);}
+  .verdict-card.portkey .verdict-label{color:var(--portkey);}
+  .verdict-card.tf .verdict-label{color:var(--tf);}
+  .verdict-name{font-weight:700;font-size:1.05rem;margin-bottom:.5rem;}
+  .verdict-text{font-size:.83rem;color:var(--muted);line-height:1.55;}
+  .verdict-use{font-size:.78rem;color:var(--text);margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--border);}
+  .verdict-use strong{color:#a5f3fc;}
+
+  .scenario{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin:1.5rem 0;}
+  .scenario-title{font-family:'IBM Plex Mono',monospace;font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--warn);margin-bottom:.7rem;}
+  .svg-wrap{overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem;margin:1.5rem 0;}
+  .svg-wrap svg{display:block;max-width:100%;margin:0 auto;}
+  .img-caption{font-size:.76rem;color:var(--muted);text-align:center;margin-top:.4rem;margin-bottom:1rem;font-family:'IBM Plex Mono',monospace;}
+  hr{border:none;border-top:1px solid var(--border);margin:2.5rem 0;}
+  .ref-list{font-size:.83rem;}
+  .ref-list li{margin-bottom:.4rem;color:var(--muted);}
+  .ref-list a{color:#60a5fa;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="series-bar">
+  <span class="tag-pill">AI Gateway Series</span>
+  <div class="series-dots">
+    <div class="dot"></div>
+    <div class="dot active"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+  <span class="tag-pill active">Blog 2 of 15</span>
+</div>
+
+<h1>Organization, Team Management &amp; Multi-tenancy:<br>Tenant Isolation, Budget Segmentation &amp; SCIM Provisioning<br>in LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 20 min read</span>
+  <span class="meta-item">🗓 March 2026</span>
+  <span class="meta-item">👤 Platform Engineering · FinOps · Enterprise IT</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology &amp; scope:</strong> This comparison is derived from vendors' publicly documented features as of the publication date, sourced from the combined AI Gateway vendor handbooks. Configuration snippets are <strong>illustrative</strong> — field names are sourced from published docs but should be validated against your deployed version. Where documentation is ambiguous, statements are labeled as <em>inference</em> or flagged for verification. Editorial verdicts represent the authors' judgment and are not vendor claims.
+</div>
+
+<br>
+
+<!-- §0 TL;DR -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">🔥 Illustrative Scenario: The Midnight Embedding Job</div>
+  <p>Your ML-Ops team ships a batch pipeline overnight — 2.1 million historical customer support tickets queued for embedding via <code>text-embedding-3-large</code>. The pipeline runs unattended against a shared service-account key attached to your organization's AI gateway. By the time the job finishes in the small hours, it has consumed 940 million tokens, exhausting the platform's <strong>entire $300/day OpenAI budget ceiling</strong>.</p>
+  <p>At 9:00 AM, the production customer-facing support chatbot (backed by <code>gpt-4o</code>) begins returning HTTP 429 errors. The on-call engineer is paged. After 40 minutes of investigation, the root cause is clear: the embedding batch job and the customer-support chatbot shared the same spend envelope. There was no team-level budget isolation. There were no spending alerts targeted at the embedding workload. No circuit breaker stopped the runaway job. A single night of batch processing has made your highest-value AI product unavailable for the first six hours of the business day — right when customer success managers are trying to clear overnight ticket queues.</p>
+  <p><em>(This scenario is illustrative — a composite example designed to make the architecture problem concrete. The underlying failure mode it represents — teams sharing a single spend envelope with no enforced isolation — is the specific gap that team-level budgeting and rate limiting features in each gateway are designed to close.)</em> The question every architecture review must answer before go-live: <strong>does the gateway enforce team-level isolation by policy, or does it leave that enforcement to application developers and hope they remember?</strong></p>
+</div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 210" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+<rect width="820" height="210" fill="#121826"/>
+<text x="410" y="17" text-anchor="middle" fill="#e2e8f0" font-size="12.5" font-weight="700">The Noisy-Neighbor Problem: One Team Exhausts the Shared Pool</text>
+
+<!-- Left: two teams -->
+<rect x="20" y="36" width="130" height="44" rx="5" fill="#001d1e" stroke="#00C2CB" stroke-width="1.5"/>
+<text x="85" y="54" text-anchor="middle" fill="#00C2CB" font-size="9.5" font-weight="700">ML-Ops Team</text>
+<text x="85" y="68" text-anchor="middle" fill="#7a8899" font-size="8.5">Batch embedding job</text>
+
+<rect x="20" y="96" width="130" height="44" rx="5" fill="#0a1220" stroke="#60a5fa" stroke-width="1.5"/>
+<text x="85" y="114" text-anchor="middle" fill="#60a5fa" font-size="9.5" font-weight="700">Customer Success</text>
+<text x="85" y="128" text-anchor="middle" fill="#7a8899" font-size="8.5">Production chatbot</text>
+
+<!-- Arrows to gateway -->
+<line x1="150" y1="58" x2="244" y2="80" stroke="#ff4757" stroke-width="2.5" stroke-dasharray="5,3"/>
+<line x1="150" y1="118" x2="244" y2="100" stroke="#60a5fa" stroke-width="1.5"/>
+
+<!-- Gateway -->
+<rect x="246" y="58" width="150" height="60" rx="6" fill="#1a0808" stroke="#ff4757" stroke-width="2"/>
+<text x="321" y="80" text-anchor="middle" fill="#ff4757" font-size="10" font-weight="700">Shared Gateway</text>
+<text x="321" y="95" text-anchor="middle" fill="#ffa726" font-size="9">No team isolation</text>
+<text x="321" y="108" text-anchor="middle" fill="#7a8899" font-size="8">One spend envelope</text>
+
+<!-- Budget exhausted bar -->
+<rect x="420" y="60" width="190" height="56" rx="5" fill="#1a0a0a" stroke="#ff4757" stroke-width="1.5"/>
+<text x="515" y="78" text-anchor="middle" fill="#ff4757" font-size="10" font-weight="700">Daily Budget: $300</text>
+<rect x="430" y="84" width="170" height="14" rx="3" fill="#1e2d45"/>
+<rect x="430" y="84" width="170" height="14" rx="3" fill="#ff4757"/>
+<text x="515" y="108" text-anchor="middle" fill="#ff4757" font-size="8.5" font-family="IBM Plex Mono,monospace">940M tokens consumed @ 3:47 AM</text>
+
+<!-- Impact -->
+<rect x="630" y="36" width="172" height="44" rx="5" fill="#1a0808" stroke="#ff4757" stroke-width="1.5"/>
+<text x="716" y="54" text-anchor="middle" fill="#ff4757" font-size="9.5" font-weight="700">Chatbot: HTTP 429</text>
+<text x="716" y="68" text-anchor="middle" fill="#7a8899" font-size="8.5">6 hours of downtime</text>
+
+<rect x="630" y="96" width="172" height="44" rx="5" fill="#0a1220" stroke="#1e2d45" stroke-width="1"/>
+<text x="716" y="114" text-anchor="middle" fill="#7a8899" font-size="9.5">ML-Ops batch:</text>
+<text x="716" y="128" text-anchor="middle" fill="#50fa7b" font-size="8.5">Completed successfully ✓</text>
+
+<line x1="610" y1="78" x2="628" y2="58" stroke="#ff4757" stroke-width="1.5"/>
+<line x1="610" y1="95" x2="628" y2="118" stroke="#60a5fa" stroke-width="1.2"/>
+
+<!-- Bottom note -->
+<rect x="140" y="156" width="540" height="44" rx="5" fill="#0a1220" stroke="#1e2d45"/>
+<text x="410" y="172" text-anchor="middle" fill="#7a8899" font-size="10">With team-level budget isolation: the batch job hits its ceiling at $150 and stops.</text>
+<text x="410" y="188" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="700">The production chatbot never loses a single token of its guaranteed quota.</text>
+</svg>
+</div>
+<div class="img-caption">The noisy-neighbor failure mode: shared token budgets with no team-level isolation. Original diagram.</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-litellm">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">LiteLLM</div>
+    <div class="qp-desc">Team objects as budget containers with per-key model allowlists. OIDC JWT maps K8s ServiceAccount namespace claims to team aliases. Tag-based budget routing for workload-class separation. Per-team router overrides via <code>keys_teams_router_settings</code>.</div>
+  </div>
+  <div class="qp-card c-kong">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Kong AI Gateway</div>
+    <div class="qp-desc">Consumer Groups as the multi-tenant isolation primitive. Different AI rate-limiting quotas and content-guard policies per group, all on the same Route. Consumer identity anchors AI audit attribution from v3.11 onward.</div>
+  </div>
+  <div class="qp-card c-portkey">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Portkey</div>
+    <div class="qp-desc">Workspaces as the documented workspace-scoping boundary — keys are workspace-scoped, no cross-workspace access described in reviewed docs. SCIM auto-provisions IdP groups (Okta, Azure Entra) to workspaces (Enterprise). Admin SDK enforces workspace budget and RPM ceilings.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">Workspaces backed by K8s namespace boundaries for physical isolation. Two-layer RBAC (platform + gateway). Metadata-scoped rate limits and budgets by <code>metadata.project_id</code>. Secret groups with FQNs isolate provider credentials per workspace.</div>
+  </div>
+</div>
+
+<!-- §1 WHY MULTI-TENANCY IS HARD -->
+<h2>§1 — Why Multi-tenancy Is Specifically Hard for AI Gateways</h2>
+
+<p>Enterprise API gateways have handled multi-tenancy for years — rate-limit a consumer, scope it to a route, done. AI gateways introduce at least four new dimensions that make the problem substantially harder:</p>
+
+<ul>
+  <li><strong>Spend is non-linear and difficult to predict.</strong> A single <code>claude-opus-4-6</code> call with a 200k-token context can cost more than a thousand <code>gpt-4o-mini</code> calls. Budget segmentation must happen at the token and dollar level, not just the request-count level. A team that "only sends 50 requests/minute" can still blow through a monthly budget in hours if those requests carry large contexts.</li>
+  <li><strong>The model endpoint is not a stable resource URI.</strong> A request to <code>/v1/chat/completions</code> can resolve to <code>gpt-4o</code>, <code>claude-opus-4-6</code>, or a self-hosted <code>Qwen-72B</code> depending on routing policy. URL-level ACLs are meaningless. The gateway must enforce which <em>resolved model targets</em> a team may access, after routing, not before it.</li>
+  <li><strong>Provider credentials are a shared-tenancy blast radius.</strong> If every team consumes from the same OpenAI API key, a quota exhaustion by one team is an outage for all teams. True isolation requires each team or workload class to consume from its own spend envelope — and ideally from its own credential context.</li>
+  <li><strong>Identity and workload identity are fundamentally different.</strong> Human engineers authenticate with SSO. Kubernetes pods authenticate with ServiceAccount tokens. Batch pipelines authenticate with long-lived API keys. A production AI gateway must handle all three identity surfaces simultaneously and map each to the correct team budget and policy context without requiring manual coordination.</li>
+</ul>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 270" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+<rect width="820" height="270" fill="#121826"/>
+<text x="410" y="20" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Five Dimensions of AI Gateway Multi-tenancy</text>
+
+<rect x="28" y="34" width="764" height="36" rx="5" fill="#0f1c2e" stroke="#1e2d45"/>
+<text x="46" y="48" fill="#60a5fa" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">DIM 1 · IDENTITY &amp; PROVISIONING</text>
+<text x="46" y="63" fill="#e2e8f0" font-size="11">SSO / OIDC / SCIM for human users · K8s workload identity for pods · long-lived keys for pipelines.</text>
+
+<rect x="28" y="76" width="764" height="36" rx="5" fill="#0a1620" stroke="#1e2d45"/>
+<text x="46" y="90" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">DIM 2 · MODEL ENDPOINT ACL</text>
+<text x="46" y="105" fill="#e2e8f0" font-size="11">Which teams may invoke which resolved model targets? Enforced after routing — URL-level ACLs are insufficient.</text>
+
+<rect x="28" y="118" width="764" height="36" rx="5" fill="#1a0f00" stroke="#1e2d45"/>
+<text x="46" y="132" fill="#ffa726" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">DIM 3 · ECONOMIC SEGMENTATION</text>
+<text x="46" y="147" fill="#e2e8f0" font-size="11">Per-team token velocity limits · per-team cumulative spend ceilings · workload-class tag budgets · alerts &amp; hard stops.</text>
+
+<rect x="28" y="160" width="764" height="36" rx="5" fill="#0f1a10" stroke="#1e2d45"/>
+<text x="46" y="174" fill="#bd93f9" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">DIM 4 · CREDENTIAL ISOLATION</text>
+<text x="46" y="189" fill="#e2e8f0" font-size="11">Provider API keys scoped per team or workspace · secret vaulting · no raw key exposure in application manifests.</text>
+
+<rect x="28" y="202" width="764" height="36" rx="5" fill="#0a0a1a" stroke="#1e2d45"/>
+<text x="46" y="216" fill="#7a8899" font-size="10" font-family="IBM Plex Mono,monospace" font-weight="700">DIM 5 · PHYSICAL VS. LOGICAL ISOLATION</text>
+<text x="46" y="231" fill="#e2e8f0" font-size="11">Logical: shared proxy process, isolated policy. Physical: separate K8s namespaces, separate compute, separate network subnet.</text>
+
+<rect x="28" y="244" width="764" height="20" rx="4" fill="#080c12" stroke="#1e2d45"/>
+<text x="410" y="258" text-anchor="middle" fill="#7a8899" font-size="10">Each vendor addresses these dimensions with different architectural depth. The sections below compare them across all five.</text>
+</svg>
+</div>
+<div class="img-caption">Five dimensions of AI gateway multi-tenancy. Each vendor below addresses these with different architectural depth. Original diagram.</div>
+
+<p>The sections that follow evaluate how each gateway addresses all five dimensions, with particular emphasis on what happens when different teams with different workload characteristics share the same gateway instance.</p>
+
+<hr>
+
+<!-- §2 LITELLM -->
+<div class="vendor-header litellm">
+  <span class="vendor-badge">LiteLLM</span>
+  <span class="vendor-title">§2 — Virtual Key Hierarchy, K8s Workload Identity &amp; Tag Budget Routing</span>
+</div>
+
+<h3>Tenant Isolation Architecture</h3>
+<p>LiteLLM's multi-tenancy model is built around a three-tier hierarchy: <strong>organizations → teams → virtual keys</strong>. Each virtual key is an identity-and-policy bundle that carries a <code>team_id</code>, a model allowlist (<code>models[]</code>), and an optional personal spend cap (<code>max_budget</code>). When a key carries a <code>team_id</code>, its spend is debited from the team's budget rather than the key holder's personal budget, as documented at <a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">proxy/users</a>. This means budget enforcement is structural, not advisory — a key assigned to the ML-Ops team cannot silently borrow from the Customer Success team's envelope.</p>
+
+<p>The "Life of a Request" page at <a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">proxy/architecture</a> documents that virtual-key validation and budget checks happen <em>before</em> the router — identity and economic controls precede routing decisions. This means a runaway batch job is stopped at the gate, not after it has already reached the provider.</p>
+
+<h3>OIDC / JWT + Kubernetes ServiceAccount Namespace Mapping</h3>
+<p>LiteLLM's JWT authentication, documented at <a href="https://docs.litellm.ai/docs/proxy/token_auth" target="_blank">proxy/token_auth</a>, is one of the most operationally significant multi-tenancy features in its public docs: a single configuration field (<code>team_alias_jwt_field</code>) can map a Kubernetes ServiceAccount token's namespace claim directly to a LiteLLM team alias. This eliminates the "secret management for pod AI keys" problem. Pods authenticate with their cluster-native identity; the gateway resolves team membership — and therefore budget and model access — from the token.</p>
+
+<p>Multiple OIDC providers are supported simultaneously via a comma-separated <code>JWT_PUBLIC_KEY_URL</code> environment variable, letting human engineers authenticate through the corporate IdP while K8s workloads authenticate through the cluster's OIDC issuer — both resolving to the same team-aware authorization model.</p>
+
+<h3>Tag-Based Budget Routing</h3>
+<p>For workload-class isolation that goes beyond organizational teams, LiteLLM offers <strong>tag budgets</strong>, documented at <a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">proxy/provider_budget_routing</a>. Tags like <code>"team:ml-ops"</code> or <code>"workload:batch-embedding"</code> can carry their own daily spend ceilings in addition to provider-level ceilings. The router excludes exhausted targets from selection when a provider or tag budget is depleted. This is the mechanism that would have prevented the midnight embedding incident: the batch embedding tag runs out at its own daily ceiling; the production chatbot tag's ceiling remains untouched.</p>
+
+<h3>Per-Team Router Configuration</h3>
+<p>Routing behavior is configurable per virtual key or per team at <a href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings" target="_blank">proxy/keys_teams_router_settings</a>. A production team's key can use latency-based routing with aggressive fallbacks, while a development team's key uses simple round-robin with no fallback. This makes the routing policy itself a multi-tenant concern, not just the budget policy.</p>
+
+<div class="code-wrap"><pre><span class="cm"># LiteLLM — Multi-tenant isolation via teams + virtual keys + OIDC K8s mapping</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/users · docs.litellm.ai/docs/proxy/token_auth</span>
+
+<span class="cm"># Step 1: Create team budgets (team budget is applied when a key has team_id)</span>
+<span class="cm"># POST /team/new — Source: proxy/team_budgets</span>
+<span class="cm"># {</span>
+<span class="cm">#   "team_alias": "ml-ops",</span>
+<span class="cm">#   "team_id": "ml-ops",</span>
+<span class="cm">#   "max_budget": 200.0,</span>
+<span class="cm">#   "budget_duration": "30d"</span>
+<span class="cm"># }</span>
+<span class="cm"># {</span>
+<span class="cm">#   "team_alias": "customer-success",</span>
+<span class="cm">#   "team_id": "customer-success",</span>
+<span class="cm">#   "max_budget": 80.0,</span>
+<span class="cm">#   "budget_duration": "30d"</span>
+<span class="cm"># }</span>
+
+<span class="cm"># Step 2: Issue virtual keys scoped to those teams</span>
+<span class="cm"># POST /key/generate — Source: proxy/users</span>
+<span class="cm"># {</span>
+<span class="cm">#   "team_id": "ml-ops",</span>
+<span class="cm">#   "models": ["text-embedding-3-large", "gpt-4o-mini"]</span>
+<span class="cm"># }</span>
+<span class="cm"># {</span>
+<span class="cm">#   "team_id": "customer-success",</span>
+<span class="cm">#   "models": ["gpt-4o"]</span>
+<span class="cm"># }</span>
+
+<span class="cm"># Step 3: OIDC JWT — K8s ServiceAccount namespace → team alias</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/token_auth</span>
+<span class="key">general_settings</span>:
+  <span class="key">master_key</span>: <span class="str">os.environ/LITELLM_MASTER_KEY</span>
+  <span class="key">enable_jwt_auth</span>: <span class="kw">true</span>
+
+<span class="key">litellm_jwtauth</span>:
+  <span class="key">team_alias_jwt_field</span>: <span class="str">"kubernetes.io.namespace"</span>
+  <span class="cm"># K8s ServiceAccount token carries the "kubernetes.io/namespace" claim.</span>
+  <span class="cm"># LiteLLM resolves that namespace string as a team alias →</span>
+  <span class="cm"># the pod inherits that team's model allowlist and budget.</span>
+
+<span class="cm"># Step 4: Budget-aware routing — provider budgets + enterprise tag budgets</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/provider_budget_routing · proxy/tag_budgets</span>
+<span class="key">router_settings</span>:
+  <span class="key">provider_budget_config</span>:
+    <span class="key">openai</span>:
+      <span class="key">budget_limit</span>: <span class="num">500</span>
+      <span class="key">time_period</span>: <span class="str">1d</span>
+    <span class="key">anthropic</span>:
+      <span class="key">budget_limit</span>: <span class="num">200</span>
+      <span class="key">time_period</span>: <span class="str">1d</span>
+
+<span class="key">litellm_settings</span>:
+  <span class="key">tag_budget_config</span>:
+    <span class="str">"team:ml-ops"</span>:
+      <span class="key">max_budget</span>: <span class="num">200</span>
+      <span class="key">budget_duration</span>: <span class="str">1d</span>
+    <span class="str">"team:customer-success"</span>:
+      <span class="key">max_budget</span>: <span class="num">80</span>
+      <span class="key">budget_duration</span>: <span class="str">1d</span>
+    <span class="str">"workload:batch-embed"</span>:
+      <span class="key">max_budget</span>: <span class="num">150</span>
+      <span class="key">budget_duration</span>: <span class="str">1d</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">proxy/users</a> · <a href="https://docs.litellm.ai/docs/proxy/team_budgets" target="_blank">proxy/team_budgets</a> · <a href="https://docs.litellm.ai/docs/proxy/token_auth" target="_blank">proxy/token_auth</a> · <a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">proxy/provider_budget_routing</a> · <a href="https://docs.litellm.ai/docs/proxy/tag_budgets" target="_blank">proxy/tag_budgets</a> · <a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">proxy/virtual_keys</a></div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+<rect width="820" height="220" fill="#121826"/>
+<text x="410" y="18" text-anchor="middle" fill="#e2e8f0" font-size="12.5" font-weight="700">LiteLLM: Three-Tier Tenant Hierarchy</text>
+
+<!-- Tier 1: Org -->
+<rect x="320" y="30" width="180" height="34" rx="5" fill="#001d1e" stroke="#00C2CB" stroke-width="2"/>
+<text x="410" y="52" text-anchor="middle" fill="#00C2CB" font-size="11" font-weight="700">Organization (Master Key)</text>
+
+<!-- Lines to teams -->
+<line x1="290" y1="64" x2="170" y2="96" stroke="#00C2CB" stroke-width="1.5"/>
+<line x1="410" y1="64" x2="410" y2="96" stroke="#00C2CB" stroke-width="1.5"/>
+<line x1="530" y1="64" x2="650" y2="96" stroke="#00C2CB" stroke-width="1.5"/>
+
+<!-- Tier 2: Teams -->
+<rect x="60" y="96" width="140" height="34" rx="5" fill="#001d1e" stroke="#00C2CB"/>
+<text x="130" y="118" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="600">Team: ML-Ops</text>
+
+<rect x="330" y="96" width="160" height="34" rx="5" fill="#001d1e" stroke="#00C2CB"/>
+<text x="410" y="118" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="600">Team: Customer Success</text>
+
+<rect x="580" y="96" width="140" height="34" rx="5" fill="#001d1e" stroke="#00C2CB"/>
+<text x="650" y="118" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="600">Team: Data Science</text>
+
+<!-- Budget labels under teams -->
+<text x="130" y="140" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">$200/month budget</text>
+<text x="130" y="151" text-anchor="middle" fill="#7a8899" font-size="8" font-family="IBM Plex Mono,monospace">models: [text-embedding-*, gpt-4o-mini]</text>
+<text x="410" y="140" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">$80/month budget</text>
+<text x="410" y="151" text-anchor="middle" fill="#7a8899" font-size="8" font-family="IBM Plex Mono,monospace">models: [gpt-4o]</text>
+<text x="650" y="140" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">$120/month budget</text>
+<text x="650" y="151" text-anchor="middle" fill="#7a8899" font-size="8" font-family="IBM Plex Mono,monospace">models: [gpt-4o, claude-*]</text>
+
+<!-- Lines to keys -->
+<line x1="100" y1="130" x2="80" y2="170" stroke="#7a8899" stroke-width="1"/>
+<line x1="160" y1="130" x2="180" y2="170" stroke="#7a8899" stroke-width="1"/>
+<line x1="390" y1="130" x2="380" y2="170" stroke="#7a8899" stroke-width="1"/>
+<line x1="430" y1="130" x2="440" y2="170" stroke="#7a8899" stroke-width="1"/>
+
+<!-- Tier 3: Keys -->
+<rect x="30" y="170" width="100" height="28" rx="4" fill="#0a1a1a" stroke="#00C2CB" stroke-opacity=".5"/>
+<text x="80" y="188" text-anchor="middle" fill="#7a8899" font-size="8.5">sk-mlops-batch</text>
+<rect x="142" y="170" width="100" height="28" rx="4" fill="#0a1a1a" stroke="#00C2CB" stroke-opacity=".5"/>
+<text x="192" y="188" text-anchor="middle" fill="#7a8899" font-size="8.5">K8s SA (namespace)</text>
+<rect x="338" y="170" width="82" height="28" rx="4" fill="#0a1a1a" stroke="#00C2CB" stroke-opacity=".5"/>
+<text x="379" y="188" text-anchor="middle" fill="#7a8899" font-size="8.5">sk-cs-app</text>
+<rect x="428" y="170" width="100" height="28" rx="4" fill="#0a1a1a" stroke="#00C2CB" stroke-opacity=".5"/>
+<text x="478" y="188" text-anchor="middle" fill="#7a8899" font-size="8.5">sk-cs-agent</text>
+
+<!-- OIDC label -->
+<rect x="142" y="160" width="100" height="12" rx="2" fill="#00C2CB" fill-opacity=".2"/>
+<text x="192" y="170" text-anchor="middle" fill="#00C2CB" font-size="7.5" font-family="IBM Plex Mono,monospace">OIDC JWT</text>
+
+<!-- Footer note -->
+<text x="410" y="208" text-anchor="middle" fill="#7a8899" font-size="9">Each key consumes from its team's budget; budget + model-allowlist checks happen before routing. Source: proxy/architecture · proxy/users.</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM tenant hierarchy: organization → teams → virtual keys. Each key inherits its team's budget and model allowlist. K8s ServiceAccount tokens map namespace claims to team aliases via OIDC JWT. Original diagram.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Gap: Logical Isolation Only</div>
+  <p>LiteLLM's tenant isolation is <strong>logical</strong>. All teams share the same proxy process, the same Redis instance, and the same database. Physical compute separation — separate pods, separate network namespaces — is not a feature of the LiteLLM proxy itself. Teams that require workload-level compute isolation must achieve it outside the gateway (e.g., with separate deployments per team). The shared-process model is appropriate for most enterprise use cases but may not satisfy strict regulatory requirements for data residency or compute isolation.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">📌 LiteLLM Multi-tenancy Summary</div>
+  <p><strong>Tenant primitive:</strong> Organization → Team → Virtual Key. <strong>Model ACL:</strong> <code>models[]</code> allowlist per key, enforced before routing. <strong>Budget isolation:</strong> <code>max_budget</code> + <code>budget_duration</code> per team; tag budgets for workload-class isolation. <strong>Workload identity:</strong> K8s ServiceAccount JWT → team alias via <code>team_alias_jwt_field</code>. <strong>Gap:</strong> Logical isolation only; per-team provider credential isolation not documented in reviewed materials (operator-dependent sidecar/Vault); no SCIM provisioning documented.</p>
+</div>
+
+<hr>
+
+<!-- §3 KONG -->
+<div class="vendor-header kong">
+  <span class="vendor-badge">Kong</span>
+  <span class="vendor-title">§3 — Consumer Group-Composed Tenant Policies</span>
+</div>
+
+<h3>Tenant Isolation Architecture</h3>
+<p>Kong's multi-tenancy model inherits from its mature API gateway heritage: <strong>Consumers</strong> represent individual callers and <strong>Consumer Groups</strong> are the policy-bearing tenant primitive. AI-specific plugins — rate limiting, prompt guards, content safety — are attached at the Consumer Group level, meaning the same Route can serve multiple tenant classes simultaneously with completely different governance policies. As the AI audit log reference documents, from Kong 3.11 onward all AI metrics carry a <code>consumer</code> label, making tenant attribution first-class in observability — not a post-processing inference.</p>
+
+<h3>Plugin-Composed Group Policies</h3>
+<p>Each Consumer Group receives its own plugin stack. The <code>ai-rate-limiting-advanced</code> plugin, documented at the <a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">llm-provider-rate-limiting example</a>, supports per-group token quotas across multiple time windows: the <code>limit[]</code> array and <code>window_size[]</code> array allow simultaneous per-minute and per-day limits on the same Consumer Group. A data science group can have a generous hourly limit but a hard daily ceiling; an external contractor group can have a much tighter per-minute cap. Both coexist on the same Service without separate routes or deployments.</p>
+
+<h3>Plugin-Level Vault-Backed Provider Credential Isolation</h3>
+<p>Kong's Vault integration, documented in the AI Proxy Advanced handbook section, allows provider API credentials to be referenced as <code>{vault://aws/team-openai-key}</code> rather than inlined. Different Consumer Groups can be routed to targets that consume different Vault-backed credentials, providing credential-level isolation between tenant classes at the proxy target layer. Raw keys never appear in declarative config or Admin API responses — a meaningful security posture for multi-tenant environments where configuration is managed by multiple operators.</p>
+
+<h3>Limitations of the Consumer Group Model</h3>
+<p>Consumer Group scoping is Route-and-Service–level, not metadata-key–level. Kong's AI rate-limiting plugin does not support segmentation by arbitrary request metadata fields (like <code>metadata.project_id</code>). A Consumer Group represents one tenant class; splitting traffic further within a group requires additional Consumers or additional Routes. For organizations with dozens of product teams that need independent limits, this can result in a large number of Consumer Groups to manage. Additionally, SCIM-based auto-provisioning from enterprise IdPs to Consumer Groups is not documented in Kong's AI Gateway public docs.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Kong decK — Consumer Groups with differentiated AI rate limiting</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-prompt-guard</span>
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">consumers</span>:
+  - <span class="key">username</span>: <span class="str">mlops-batch-pipeline</span>
+  - <span class="key">username</span>: <span class="str">cs-chatbot-svc</span>
+  - <span class="key">username</span>: <span class="str">ds-notebook-alice</span>
+
+<span class="key">consumer_groups</span>:
+  - <span class="key">name</span>: <span class="str">ml-ops-team</span>
+    <span class="key">plugins</span>:
+      - <span class="key">name</span>: <span class="str">ai-rate-limiting-advanced</span>
+        <span class="key">config</span>:
+          <span class="key">llm_providers</span>:
+            - <span class="key">name</span>: <span class="str">openai</span>
+              <span class="key">limit</span>: [<span class="num">200000</span>, <span class="num">1500000</span>]   <span class="cm"># tokens per hour, per day</span>
+              <span class="key">window_size</span>: [<span class="num">3600</span>, <span class="num">86400</span>]
+      - <span class="key">name</span>: <span class="str">ai-prompt-guard</span>
+        <span class="key">config</span>:
+          <span class="key">deny_patterns</span>:
+            - <span class="str">"(?i)internal.credential"</span>
+            - <span class="str">"(\xE2\x80[\x8B-\x8D]|\xEF\xBB\xBF)"</span>  <span class="cm"># Unicode injection — from handbook</span>
+
+  - <span class="key">name</span>: <span class="str">customer-success-team</span>
+    <span class="key">plugins</span>:
+      - <span class="key">name</span>: <span class="str">ai-rate-limiting-advanced</span>
+        <span class="key">config</span>:
+          <span class="key">llm_providers</span>:
+            - <span class="key">name</span>: <span class="str">openai</span>
+              <span class="key">limit</span>: [<span class="num">50000</span>, <span class="num">600000</span>]    <span class="cm"># tighter hourly, guaranteed daily envelope</span>
+              <span class="key">window_size</span>: [<span class="num">3600</span>, <span class="num">86400</span>]
+
+<span class="cm"># Vault-backed provider credential — raw key never in config</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-proxy-advanced</span>
+<span class="key">plugins</span>:
+  - <span class="key">name</span>: <span class="str">ai-proxy-advanced</span>
+    <span class="key">config</span>:
+      <span class="key">targets</span>:
+        - <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">Authorization</span>
+            <span class="key">header_value</span>: <span class="str">{vault://aws/openai-prod-key}</span>
+          <span class="key">model</span>: { <span class="key">provider</span>: <span class="str">openai</span>, <span class="key">name</span>: <span class="str">gpt-4o</span> }</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">ai-rate-limiting-advanced example</a> · <a href="https://developer.konghq.com/plugins/ai-prompt-guard/" target="_blank">ai-prompt-guard</a> · <a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">ai-proxy-advanced (Vault refs)</a></div>
+
+<div class="callout info">
+  <div class="callout-title">📌 Kong Multi-tenancy Summary</div>
+  <p><strong>Tenant primitive:</strong> Consumer + Consumer Group. <strong>Model ACL:</strong> <code>acl</code> plugin scopes Routes to Consumer Groups. <strong>Cost-aware rate limiting:</strong> <code>ai-rate-limiting-advanced</code> tracks token usage and cost data per provider per Consumer Group across multi-window configurations. <strong>Credential isolation:</strong> Vault-referenced provider credentials via <code>{vault://...}</code> (Enterprise). <strong>Attribution:</strong> <code>consumer</code> label on all AI metrics from v3.11+. <strong>Gap:</strong> No metadata-key segmentation in AI plugins; no SCIM provisioning documented. Kong's rate-limiting model enforces velocity windows (tokens or cost per time window), but does not expose the same explicit cumulative-budget object with <code>periodic_reset</code> and <code>alert_threshold</code> that LiteLLM, Portkey, and TrueFoundry document natively.</p>
+</div>
+
+<hr>
+
+<!-- §4 PORTKEY -->
+<div class="vendor-header portkey">
+  <span class="vendor-badge">Portkey</span>
+  <span class="vendor-title">§4 — Workspace-First Isolation with SCIM Auto-Provisioning</span>
+</div>
+
+<h3>Tenant Isolation Architecture</h3>
+<p>Portkey's fundamental multi-tenancy primitive is the <strong>Workspace</strong>. Workspaces are the documented workspace-scoping boundary: the Workspaces page states that workspace API keys are scoped to the workspace by default and can only execute actions within that workspace, while the budget and rate-limit enforcement page documents workspace-level usage controls. This means a key provisioned for the ML-Ops workspace does not, per the documented model, reach configurations or budgets of the Customer Success workspace.</p>
+
+<h3>SCIM Auto-Provisioning (Enterprise)</h3>
+<p>Portkey documents <strong>SCIM (System for Cross-domain Identity Management)</strong> provisioning from enterprise IdPs. The SCIM pages documented at <a href="https://portkey.ai/docs/product/enterprise-offering/org-management/scim/okta" target="_blank">scim/okta</a> and <a href="https://portkey.ai/docs/product/enterprise-offering/org-management/scim/azure-ad" target="_blank">scim/azure-ad</a> cover automated user provisioning and deprovisioning for Okta (via SAML app) and Microsoft Azure Entra. The SCIM Group Management guide documents two modes for mapping IdP groups to Portkey workspaces: a pattern-based naming convention and a flexible group-to-workspace mapping configured in the control plane.</p>
+
+<p>This is the enterprise onboarding story that avoids manual provisioning: when a new engineer joins the ML-Ops team in Okta, they are automatically granted access to the ML-Ops workspace in Portkey and removed when they leave — no platform team ticket required.</p>
+
+<h3>JWT Gateway Authentication (Enterprise Add-on)</h3>
+<p>In addition to SCIM for control-plane access, Portkey documents JWT gateway authentication at the request level. Clients pass a JWT token validated against a configured JWKS (JSON Web Key Set). The JWT gateway authentication setup — including JWKS URL vs. static JWKS JSON configuration and the Admin Settings → Organisation → Authentication path — is documented at <a href="https://portkey.ai/docs/product/enterprise-offering/org-management/jwt" target="_blank">org-management/jwt</a>. The inference API authentication page at <a href="https://portkey.ai/docs/api-reference/inference-api/authentication" target="_blank">inference-api/authentication</a> confirms JWT+JWKS as the request-level auth mechanism. This surfaces at the gateway request level — distinct from OIDC/SAML SSO which governs dashboard login. Configured under Admin Settings → Organisation → Authentication, it supports both a dynamic JWKS URL and a static JWKS JSON payload.</p>
+
+<h3>Workspace Budget and Rate Limit Enforcement</h3>
+<p>The Admin SDK, documented at <a href="https://portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits" target="_blank">enforce-workspace-budget-limts-and-rate-limits</a>, provides programmatic workspace-level spend ceilings and RPM limits. The <code>credit_limit</code> field with <code>periodic_reset</code> creates the monthly spend envelope per workspace that prevents one team's spending from affecting another. Alert thresholds generate warnings before the ceiling is hit.</p>
+
+<h3>Provider Credential Isolation (Enterprise)</h3>
+<p>In Enterprise deployments, Portkey's Secret References feature, documented at <a href="https://portkey.ai/docs/product/enterprise-offering/secret-references" target="_blank">secret-references</a>, stores only a reference path in the control plane while the data plane fetches the actual secret at runtime from AWS Secrets Manager, Azure Key Vault, or HashiCorp Vault (with a 5-minute cache). In the standard Model Catalog, provider keys are decrypted in-memory within sandboxed workers at the exact moment of a request. Raw credentials never appear in config objects returned by the API.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Portkey — Workspace isolation via Admin SDK</span>
+<span class="cm"># Source: portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits</span>
+<span class="cm"># Verified fields: workspace_id, usage_limits, rate_limits (type, credit_limit,</span>
+<span class="cm">#   alert_threshold, periodic_reset, unit, value)</span>
+<span class="kw">from</span> portkey_ai <span class="kw">import</span> Portkey
+<span class="kw">import</span> os
+
+portkey = Portkey(api_key=os.environ[<span class="str">"PORTKEY_API_KEY"</span>])
+
+<span class="cm"># ML-Ops workspace: generous budget, soft RPM cap</span>
+portkey.admin.workspaces.update(
+  workspace_id=<span class="str">"ws_ml_ops"</span>,
+  usage_limits=[{
+    <span class="str">"type"</span>: <span class="str">"cost"</span>,
+    <span class="str">"credit_limit"</span>: <span class="num">200</span>,
+    <span class="str">"alert_threshold"</span>: <span class="num">170</span>,
+    <span class="str">"periodic_reset"</span>: <span class="str">"monthly"</span>
+  }],
+  rate_limits=[{
+    <span class="str">"type"</span>: <span class="str">"requests"</span>,
+    <span class="str">"unit"</span>: <span class="str">"rpm"</span>,
+    <span class="str">"value"</span>: <span class="num">120</span>
+  }]
+)
+
+<span class="cm"># Customer Success workspace: protected envelope</span>
+portkey.admin.workspaces.update(
+  workspace_id=<span class="str">"ws_customer_success"</span>,
+  usage_limits=[{
+    <span class="str">"type"</span>: <span class="str">"cost"</span>,
+    <span class="str">"credit_limit"</span>: <span class="num">80</span>,
+    <span class="str">"alert_threshold"</span>: <span class="num">65</span>,
+    <span class="str">"periodic_reset"</span>: <span class="str">"monthly"</span>
+  }],
+  rate_limits=[{
+    <span class="str">"type"</span>: <span class="str">"requests"</span>,
+    <span class="str">"unit"</span>: <span class="str">"rpm"</span>,
+    <span class="str">"value"</span>: <span class="num">60</span>
+  }]
+)</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits" target="_blank">enforce-workspace-budget-limts-and-rate-limits</a> · <a href="https://portkey.ai/docs/product/enterprise-offering/budget-policies" target="_blank">budget-policies</a></div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 230" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+<rect width="820" height="230" fill="#121826"/>
+<text x="410" y="18" text-anchor="middle" fill="#5A67FF" font-size="12.5" font-weight="700">Portkey: SCIM Auto-Provisioning from IdP to Workspace</text>
+
+<!-- IdP box -->
+<rect x="20" y="38" width="150" height="160" rx="7" fill="#0a0c24" stroke="#5A67FF" stroke-width="1.5"/>
+<text x="95" y="58" text-anchor="middle" fill="#5A67FF" font-size="11" font-weight="700">Enterprise IdP</text>
+<text x="95" y="72" text-anchor="middle" fill="#7a8899" font-size="9">(Okta / Azure Entra)</text>
+
+<rect x="32" y="84" width="126" height="22" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/>
+<text x="95" y="99" text-anchor="middle" fill="#e2e8f0" font-size="8.5">Group: ml-ops-engineers</text>
+<rect x="32" y="110" width="126" height="22" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/>
+<text x="95" y="125" text-anchor="middle" fill="#e2e8f0" font-size="8.5">Group: customer-success</text>
+<rect x="32" y="136" width="126" height="22" rx="3" fill="#1a2233" stroke="#5A67FF" stroke-opacity=".4"/>
+<text x="95" y="151" text-anchor="middle" fill="#e2e8f0" font-size="8.5">Group: data-science</text>
+
+<text x="95" y="185" text-anchor="middle" fill="#7a8899" font-size="8">Automated sync</text>
+<text x="95" y="196" text-anchor="middle" fill="#50fa7b" font-size="8">SCIM 2.0 (Enterprise)</text>
+
+<!-- Arrow -->
+<line x1="170" y1="118" x2="226" y2="118" stroke="#5A67FF" stroke-width="2.5"/>
+<polygon points="222,113 234,118 222,123" fill="#5A67FF"/>
+<text x="198" y="110" text-anchor="middle" fill="#5A67FF" font-size="8.5" font-family="IBM Plex Mono,monospace">SCIM</text>
+
+<!-- Portkey Workspaces -->
+<rect x="236" y="38" width="380" height="160" rx="7" fill="#0a0c24" stroke="#5A67FF" stroke-width="2"/>
+<text x="426" y="58" text-anchor="middle" fill="#5A67FF" font-size="11" font-weight="700">Portkey Workspaces</text>
+
+<rect x="248" y="68" width="166" height="54" rx="5" fill="#0f0f2a" stroke="#5A67FF" stroke-opacity=".6"/>
+<text x="331" y="84" text-anchor="middle" fill="#5A67FF" font-size="9.5" font-weight="700">ws_ml_ops</text>
+<text x="331" y="97" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">$200/month · 120 rpm</text>
+<text x="331" y="110" text-anchor="middle" fill="#7a8899" font-size="8">Keys workspace-scoped</text>
+
+<rect x="430" y="68" width="166" height="54" rx="5" fill="#0f0f2a" stroke="#5A67FF" stroke-opacity=".6"/>
+<text x="513" y="84" text-anchor="middle" fill="#5A67FF" font-size="9.5" font-weight="700">ws_customer_success</text>
+<text x="513" y="97" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">$80/month · 60 rpm</text>
+<text x="513" y="110" text-anchor="middle" fill="#7a8899" font-size="8">No cross-workspace access</text>
+
+<rect x="248" y="134" width="346" height="26" rx="4" fill="#080c12" stroke="#1e2d45"/>
+<text x="421" y="151" text-anchor="middle" fill="#7a8899" font-size="8.5">All API keys are workspace-scoped. Cross-workspace access not permitted via public API.</text>
+
+<text x="426" y="195" text-anchor="middle" fill="#7a8899" font-size="8.5">New engineer joins group in IdP → auto-provisioned to correct Portkey workspace.</text>
+
+<!-- Right: outcomes -->
+<rect x="636" y="38" width="166" height="160" rx="7" fill="#0a0c24" stroke="#50fa7b" stroke-opacity=".5"/>
+<text x="719" y="58" text-anchor="middle" fill="#50fa7b" font-size="10" font-weight="700">Outcomes</text>
+<text x="719" y="76" text-anchor="middle" fill="#7a8899" font-size="8.5">✓ Zero manual workspace</text>
+<text x="719" y="88" text-anchor="middle" fill="#7a8899" font-size="8.5">provisioning tickets</text>
+<text x="719" y="106" text-anchor="middle" fill="#7a8899" font-size="8.5">✓ De-provisioned when</text>
+<text x="719" y="118" text-anchor="middle" fill="#7a8899" font-size="8.5">user leaves IdP group</text>
+<text x="719" y="136" text-anchor="middle" fill="#7a8899" font-size="8.5">✓ Budget isolation</text>
+<text x="719" y="148" text-anchor="middle" fill="#7a8899" font-size="8.5">enforced per workspace</text>
+<text x="719" y="166" text-anchor="middle" fill="#ffa726" font-size="7.5" font-family="IBM Plex Mono,monospace">Enterprise tier required</text>
+</svg>
+</div>
+<div class="img-caption">Portkey's SCIM auto-provisioning flow: IdP groups sync to Portkey workspaces. Workspace budgets and RPM ceilings are enforced programmatically via Admin SDK. Adapted from architectural analysis; editorial diagram.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Note: Plan-Tier Dependency</div>
+  <p>Several of Portkey's multi-tenancy features — SCIM provisioning, JWT gateway authentication, Secret References, and the enterprise policy engine — are Enterprise-tier features. Workspace-level budget and rate-limit availability may vary by plan. Verify feature availability for your specific plan with Portkey before building architecture around these surfaces.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">📌 Portkey Multi-tenancy Summary</div>
+  <p><strong>Tenant primitive:</strong> Workspace (documented workspace-scoping boundary; keys are workspace-scoped). <strong>SSO:</strong> OIDC + SAML 2.0 for control-plane dashboard login. <strong>SCIM:</strong> Okta + Azure Entra; groups auto-map to workspaces (Enterprise). <strong>JWT gateway auth:</strong> JWKS-validated JWT (Enterprise add-on). <strong>Budget isolation:</strong> <code>credit_limit</code> + <code>periodic_reset</code> per workspace via Admin SDK. <strong>Credential isolation:</strong> Model Catalog slugs + Secret References from customer Vault (Enterprise). <strong>Gap:</strong> No K8s workload identity mapping documented in reviewed materials; no per-workspace physical compute isolation (SaaS-edge PEP by default, hybrid VPC option for data plane only).</p>
+</div>
+
+<hr>
+
+<!-- §5 TRUEFOUNDRY -->
+<div class="vendor-header tf">
+  <span class="vendor-badge">TrueFoundry</span>
+  <span class="vendor-title">§5 — K8s-Native Workspace Isolation, Two-Layer RBAC &amp; Metadata-Scoped Limits</span>
+</div>
+
+<h3>Tenant Isolation Architecture</h3>
+<p>TrueFoundry's multi-tenancy model is the most architecturally layered of the four vendors reviewed here, and — in this review's judgment based on the public documentation examined — the only one where tenant isolation is <strong>physically backed by Kubernetes namespace boundaries</strong>. The key-concepts page at <a href="https://www.truefoundry.com/docs/key-concepts" target="_blank">key-concepts</a> documents Workspaces as Kubernetes namespaces. Workspaces are the primary scoping unit: deployments, secrets, and model access are all workspace-scoped, and workspace membership combined with environment defines what a workload may access at runtime. The gateway-plane architecture page documents a stateless, in-cluster gateway plane (Hono-based) running inside the customer's K8s cluster, meaning the runtime enforcement plane sits inside the customer's network perimeter.</p>
+
+<h3>Two-Layer RBAC: Platform + Gateway</h3>
+<p>TrueFoundry documents two distinct RBAC layers across its public product pages. The <strong>platform-level RBAC</strong> at <a href="https://www.truefoundry.com/docs/platform/manage-user-roles-and-permissions" target="_blank">manage-user-roles-and-permissions</a> governs tenant and resource permissions for configuration management. The <strong>gateway-level access control</strong> at <a href="https://www.truefoundry.com/docs/ai-gateway/gateway-access-control" target="_blank">gateway-access-control</a> governs which subjects may access which model endpoints at runtime. This separation is architecturally deliberate: a team member can have read-only visibility to a workspace's configuration without being able to invoke model endpoints, and vice versa.</p>
+
+<h3>Workspaces as K8s Namespace Boundaries</h3>
+<p>Because TrueFoundry's platform runs as K8s-native infrastructure, workspace isolation maps to K8s namespace boundaries. Workloads in one workspace run in a different K8s namespace than workloads in another workspace. This means the physical compute isolation that other vendors achieve only with separate deployments is structural in TrueFoundry's model. Provider credentials live in Secret groups with FQNs (documented at <a href="https://www.truefoundry.com/docs/manage-secrets" target="_blank">manage-secrets</a>), meaning the raw provider API key is never embedded in application manifests — it is consumed only by workloads with the appropriate workspace membership and secret group access.</p>
+
+<h3>Metadata-Scoped Rate Limits and Budgets</h3>
+<p>TrueFoundry's rate-limiting page at <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">ai-gateway/ratelimiting</a> explicitly documents <code>rate_limit_applies_per: ['metadata.project_id']</code> as a supported configuration. The <code>x-tfy-metadata</code> request header (documented as stringified JSON with string key-value pairs) carries caller context into the gateway policy engine. This means a single static rate-limit rule can generate <em>dynamically scoped instances</em> — one per distinct <code>project_id</code> value observed in the header. An organization with 50 product teams does not need 50 separate rate-limit rules; one rule with <code>rate_limit_applies_per: ['metadata.project_id']</code> creates an isolated counter per team automatically.</p>
+
+<p>The same pattern applies to budgets: <code>budget_applies_per: ['metadata.project_id']</code> at <a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">ai-gateway/budgetlimiting</a> creates a dynamically-instantiated budget per project. This is in this review's judgment the most scalable metadata-based multi-tenancy control surface documented among the four vendors.</p>
+
+<h3>Subject-Scoped Guardrail Policies</h3>
+<p>TrueFoundry's guardrail rules support a <code>subjects</code> condition inside <code>when</code> clauses, documented at <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">guardrails-configuration</a>. This means content firewall policies are identity-aware: the ML-Ops team can have aggressive PII redaction and SQL injection checks on MCP tool calls, while the Data Science team gets the same PII redaction but with prompt injection detection added. Current docs say <em>all</em> matching guardrail rules are evaluated and the union of their guardrails is applied, so a platform team can express baseline and team-specific controls in one YAML without endpoint proliferation.</p>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — Metadata-scoped rate limits + per-project budgets</span>
+<span class="cm"># Source: www.truefoundry.com/docs/ai-gateway/ratelimiting</span>
+<span class="cm"># Source: www.truefoundry.com/docs/ai-gateway/budgetlimiting</span>
+<span class="cm"># Verified: rate_limit_applies_per with ['model'] and ['metadata.project_id']</span>
+<span class="cm"># Verified: budget_applies_per with ['metadata.project_id']</span>
+<span class="key">name</span>: <span class="str">org-wide-rate-limits</span>
+<span class="key">type</span>: <span class="str">gateway-rate-limiting-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">per-project-hourly</span>
+    <span class="key">when</span>: {}
+    <span class="key">limit_to</span>: <span class="num">500000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_hour</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'metadata.project_id'</span>]
+    <span class="cm"># One counter per distinct project_id in x-tfy-metadata header.</span>
+    <span class="cm"># 50 teams → 50 isolated counters from one rule.</span>
+  - <span class="key">id</span>: <span class="str">per-model-daily</span>
+    <span class="key">when</span>: {}
+    <span class="key">limit_to</span>: <span class="num">5000000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_day</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'model'</span>]
+<span class="cm">---</span>
+<span class="key">name</span>: <span class="str">org-wide-budgets</span>
+<span class="key">type</span>: <span class="str">gateway-budget-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">project-daily-budget</span>
+    <span class="key">when</span>: {}
+    <span class="key">limit_to</span>: <span class="num">50</span>
+    <span class="key">unit</span>: <span class="str">cost_per_day</span>
+    <span class="key">budget_applies_per</span>: [<span class="str">'metadata.project_id'</span>]
+<span class="cm">---</span>
+<span class="cm"># Subject-scoped guardrail policies per team</span>
+<span class="cm"># Source: www.truefoundry.com/docs/ai-gateway/guardrails-configuration</span>
+<span class="cm"># Verified: subjects.operator, subjects.conditions.in[], union semantics across matching rules</span>
+<span class="key">name</span>: <span class="str">org-guardrails</span>
+<span class="key">type</span>: <span class="str">gateway-guardrails-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">ml-ops-policy</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        <span class="key">operator</span>: <span class="str">and</span>
+        <span class="key">conditions</span>:
+          <span class="key">in</span>:
+            - <span class="str">"team:ml-ops"</span>
+    <span class="key">llm_input_guardrails</span>:
+      - <span class="str">"org-guardrails/pii-redact"</span>
+    <span class="key">llm_output_guardrails</span>:
+      - <span class="str">"org-guardrails/secrets-detection"</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>:
+      - <span class="str">"org-guardrails/sql-injection-check"</span>
+    <span class="key">mcp_tool_post_invoke_guardrails</span>:
+      - <span class="str">"org-guardrails/result-pii-redact"</span>
+  - <span class="key">id</span>: <span class="str">customer-success-policy</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        <span class="key">operator</span>: <span class="str">and</span>
+        <span class="key">conditions</span>:
+          <span class="key">in</span>: [<span class="str">"team:customer-success"</span>]
+    <span class="key">llm_input_guardrails</span>:
+      - <span class="str">"org-guardrails/pii-redact"</span>
+      - <span class="str">"org-guardrails/prompt-injection-detect"</span>
+    <span class="key">llm_output_guardrails</span>:
+      - <span class="str">"org-guardrails/secrets-detection"</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>: []
+    <span class="key">mcp_tool_post_invoke_guardrails</span>: []</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">ratelimiting</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">budgetlimiting</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">guardrails-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/request-headers" target="_blank">request-headers (x-tfy-metadata)</a> · <a href="https://www.truefoundry.com/docs/manage-secrets" target="_blank">manage-secrets</a></div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 820 240" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+<rect width="820" height="240" fill="#121826"/>
+<text x="410" y="18" text-anchor="middle" fill="#e2e8f0" font-size="12.5" font-weight="700">TrueFoundry: K8s-Native Workspace Isolation</text>
+
+<!-- K8s Cluster outer border -->
+<rect x="18" y="28" width="784" height="198" rx="8" fill="none" stroke="#1e2d45" stroke-width="1.5" stroke-dasharray="8,4"/>
+<text x="40" y="46" fill="#7a8899" font-size="9.5" font-family="IBM Plex Mono,monospace">Kubernetes Cluster (Customer-Operated)</text>
+
+<!-- Workspace 1: ML-Ops (K8s namespace) -->
+<rect x="34" y="52" width="230" height="160" rx="7" fill="#1e0d08" stroke="#FF5533" stroke-width="2"/>
+<text x="149" y="72" text-anchor="middle" fill="#FF5533" font-size="10" font-weight="700">Workspace: ml-ops</text>
+<text x="149" y="85" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono,monospace">K8s namespace: ml-ops</text>
+<rect x="48" y="92" width="202" height="26" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+<text x="149" y="109" text-anchor="middle" fill="#e2e8f0" font-size="8.5">Batch embedding pod</text>
+<rect x="48" y="122" width="202" height="26" rx="4" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+<text x="149" y="139" text-anchor="middle" fill="#e2e8f0" font-size="8.5">Secret Group: ml-ops/openai-key (FQN)</text>
+<rect x="48" y="152" width="202" height="32" rx="4" fill="#080c12" stroke="#1e2d45"/>
+<text x="149" y="166" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">rate: 500k tph per project_id</text>
+<text x="149" y="178" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">budget: $50/day per project_id</text>
+<text x="149" y="194" text-anchor="middle" fill="#7a8899" font-size="8" font-family="IBM Plex Mono,monospace">guardrails: pii-redact + sql-injection</text>
+
+<!-- Workspace 2: Customer Success -->
+<rect x="296" y="52" width="230" height="160" rx="7" fill="#0a1220" stroke="#60a5fa" stroke-width="2"/>
+<text x="411" y="72" text-anchor="middle" fill="#60a5fa" font-size="10" font-weight="700">Workspace: customer-success</text>
+<text x="411" y="85" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono,monospace">K8s namespace: customer-success</text>
+<rect x="310" y="92" width="202" height="26" rx="4" fill="#0a1620" stroke="#60a5fa" stroke-opacity=".4"/>
+<text x="411" y="109" text-anchor="middle" fill="#e2e8f0" font-size="8.5">Support chatbot pod</text>
+<rect x="310" y="122" width="202" height="26" rx="4" fill="#0a1620" stroke="#60a5fa" stroke-opacity=".4"/>
+<text x="411" y="139" text-anchor="middle" fill="#e2e8f0" font-size="8.5">Secret Group: cs/openai-key (FQN)</text>
+<rect x="310" y="152" width="202" height="32" rx="4" fill="#080c12" stroke="#1e2d45"/>
+<text x="411" y="166" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">rate: 500k tph per project_id</text>
+<text x="411" y="178" text-anchor="middle" fill="#ffa726" font-size="8.5" font-family="IBM Plex Mono,monospace">budget: $50/day per project_id</text>
+<text x="411" y="194" text-anchor="middle" fill="#7a8899" font-size="8" font-family="IBM Plex Mono,monospace">guardrails: pii-redact + prompt-inject</text>
+
+<!-- Gateway Plane -->
+<rect x="558" y="52" width="228" height="160" rx="7" fill="#1e0d08" stroke="#FF5533" stroke-width="1.5"/>
+<text x="672" y="72" text-anchor="middle" fill="#FF5533" font-size="10" font-weight="700">Hono Gateway Plane</text>
+<text x="672" y="85" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono,monospace">Stateless · In-cluster PEP</text>
+<rect x="572" y="92" width="200" height="24" rx="4" fill="#2a1508"/>
+<text x="672" y="108" text-anchor="middle" fill="#50fa7b" font-size="8.5">In-memory auth + rate-limit eval</text>
+<rect x="572" y="120" width="200" height="24" rx="4" fill="#2a1508"/>
+<text x="672" y="136" text-anchor="middle" fill="#50fa7b" font-size="8.5">No external dep on hot path</text>
+<rect x="572" y="148" width="200" height="24" rx="4" fill="#2a1508"/>
+<text x="672" y="164" text-anchor="middle" fill="#ffa726" font-size="8.5">x-tfy-metadata: project_id</text>
+<rect x="572" y="176" width="200" height="24" rx="4" fill="#080c12" stroke="#1e2d45"/>
+<text x="672" y="192" text-anchor="middle" fill="#7a8899" font-size="8.5">Workspace RBAC (platform + gateway)</text>
+
+<!-- Separation line indicator -->
+<line x1="269" y1="52" x2="269" y2="212" stroke="#ff4757" stroke-width="1.5" stroke-dasharray="4,3"/>
+<text x="275" y="120" fill="#ff4757" font-size="8" font-family="IBM Plex Mono,monospace" transform="rotate(90,275,120)">K8s namespace boundary</text>
+<line x1="531" y1="52" x2="531" y2="212" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,3"/>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's K8s-native tenant isolation: each workspace maps to a K8s namespace boundary. Provider credentials live in per-workspace Secret groups (FQNs). The in-cluster gateway plane enforces metadata-scoped limits with no external hot-path dependencies. Original diagram based on documented architecture.</div>
+
+<div class="callout ok">
+  <div class="callout-title">✅ Strongest Tenant Isolation Architecture in This Review</div>
+  <p>Based on the public documentation reviewed for this article, TrueFoundry is the only product among the four with documented <strong>workspace isolation backed by K8s namespace boundaries</strong>, <strong>two-layer RBAC across separate dedicated pages</strong>, <strong>metadata-scoped rate limits and budgets that dynamically instantiate per team without additional rules</strong>, and <strong>subject-scoped guardrail policies</strong> with union semantics across matching rules. Secret groups with FQNs provide credential isolation without raw key exposure in application manifests. These assessments reflect this review's conclusions from the examined documentation and are not universal vendor claims.</p>
+</div>
+
+<hr>
+
+<!-- §6 FEATURE MATRIX -->
+<h2>§6 — Multi-tenancy Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation. ✅ = native, ⚠ = possible with customization or operator-dependent, ❌ = not documented natively.</p>
+
+<div class="matrix-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th style="color:var(--litellm)">LiteLLM</th>
+      <th style="color:var(--kong)">Kong AI GW</th>
+      <th style="color:var(--portkey)">Portkey</th>
+      <th style="color:var(--tf)">TrueFoundry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Tenant isolation primitive</strong></td>
+      <td><span class="check">✅</span> Organization → Team → Virtual Key. Spend debited from team budget when <code>team_id</code> is set. <em>proxy/users</em></td>
+      <td><span class="check">✅</span> Consumer → Consumer Group. Plugin policies scoped per group on the same Route. <em>plugin catalog; ai-rate-limiting-advanced</em></td>
+      <td><span class="check">✅</span> Workspace as documented workspace-scoping boundary. API keys are workspace-scoped; workspace API keys can only execute actions within that workspace per Portkey's documentation. <em>org-management/workspaces; enforce-workspace-budget</em></td>
+      <td><span class="check">✅</span> Workspace + Environment. Workspace isolation backed by K8s namespace boundaries. <em>key-concepts; platform/gateway-plane-architecture</em></td>
+    </tr>
+    <tr>
+      <td><strong>SSO / OIDC</strong></td>
+      <td><span class="check">✅</span> <code>enable_jwt_auth</code>; multi-provider JWKs; K8s ServiceAccount JWT. <em>proxy/token_auth</em></td>
+      <td><span class="check">✅</span> <code>jwt</code> plugin (OSS, local PDP); <code>openid-connect</code> with Consumer auto-mapping (Enterprise). <em>plugin catalog</em></td>
+      <td><span class="check">✅</span> OIDC + SAML 2.0 SSO for control-plane dashboard (Enterprise). JWT gateway auth for API requests (Enterprise add-on, JWKS-validated). <em>org-management/sso; inference-api/authentication</em></td>
+      <td><span class="check">✅</span> OIDC + SAML v2 SSO documented for platform and AI Gateway login. <em>sso; setup-ai-gateway-in-org</em></td>
+    </tr>
+    <tr>
+      <td><strong>SCIM provisioning</strong></td>
+      <td><span class="cross">❌</span> Not documented.</td>
+      <td><span class="cross">❌</span> Not documented for AI gateway context.</td>
+      <td><span class="check">✅</span> Okta + Azure Entra. Groups auto-map to Portkey workspaces and roles. Pattern-based or flexible mapping modes. Enterprise. <em>scim/okta; scim/azure-ad; scim/group-management</em></td>
+      <td><span class="check">✅</span> SCIM provisioning documented for SAML v2 SSO setups; SCIM v2 Users/Groups APIs are published. <em>sso; api-reference/scim-v2</em></td>
+    </tr>
+    <tr>
+      <td><strong>Machine / workload app identity (pods, pipelines → team)</strong></td>
+      <td><span class="check">✅</span> Native. K8s ServiceAccount JWT → team alias via <code>team_alias_jwt_field: "kubernetes\.io.namespace"</code>. Namespace claim in the token automatically resolves to a LiteLLM team alias and its budget/model policy. <em>proxy/token_auth</em></td>
+      <td><span class="partial">⚠</span> Possible via <code>openid-connect</code> plugin + K8s OIDC provider; no AI-specific workload identity docs confirmed in reviewed materials. Enterprise.</td>
+      <td><span class="cross">❌</span> Not documented in reviewed materials.</td>
+      <td><span class="partial">⚠</span> Workload-scoped bearer tokens and virtual accounts are documented, and workspaces map to K8s namespaces, but the reviewed docs do not describe an automatic ServiceAccount JWT namespace-claim → team-alias mapping equivalent to LiteLLM's. <em>request-headers; setup-ai-gateway-in-org; key-concepts</em></td>
+    </tr>
+    <tr>
+      <td><strong>Per-team spend budget ceiling</strong></td>
+      <td><span class="check">✅</span> <code>max_budget</code> + <code>budget_duration</code> on <code>team_id</code>. Keys with team_id consume from team budget. <em>proxy/users</em></td>
+      <td><span class="partial">⚠</span> <code>ai-rate-limiting-advanced</code> tracks cost data per provider and can enforce cost-per-window limits per Consumer Group. This review found no documented equivalent of an explicit cumulative-budget object with <code>periodic_reset</code> and alert thresholds (as LiteLLM, Portkey, and TrueFoundry expose). <em>ai-rate-limiting-advanced</em></td>
+      <td><span class="check">✅</span> <code>credit_limit</code> + <code>periodic_reset</code> per workspace via Admin SDK. Alert threshold configurable. <em>enforce-workspace-budget</em></td>
+      <td><span class="check">✅</span> <code>budget_applies_per: ['metadata.project_id']</code> — one rule creates dynamically scoped budget per team. <em>budgetlimiting</em></td>
+    </tr>
+    <tr>
+      <td><strong>Per-team token / request rate limits</strong></td>
+      <td><span class="check">✅</span> Rate limits at global/key/user/team scope; first-match before routing. <em>proxy/architecture; proxy/users</em></td>
+      <td><span class="check">✅</span> <code>ai-rate-limiting-advanced</code> with multi-window <code>limit[]</code> + <code>window_size[]</code> per Consumer Group per provider. <em>ai-rate-limiting-advanced example</em></td>
+      <td><span class="check">✅</span> <code>rate_limits</code> with RPM ceiling per workspace via Admin SDK. <em>enforce-workspace-budget</em></td>
+      <td><span class="check">✅</span> <code>rate_limit_applies_per: ['metadata.project_id']</code> explicitly documented. Dynamically scoped. <em>ratelimiting</em></td>
+    </tr>
+    <tr>
+      <td><strong>Per-team model endpoint ACL</strong></td>
+      <td><span class="check">✅</span> <code>models[]</code> allowlist per virtual key; enforced before routing. <em>proxy/virtual_keys</em></td>
+      <td><span class="check">✅</span> <code>acl</code> plugin scopes Routes to Consumer Groups. <em>plugin catalog</em></td>
+      <td><span class="check">✅</span> Config targets restrict provider/model slugs per key. <em>ai-gateway/configs</em></td>
+      <td><span class="check">✅</span> Workspace + gateway access control scope model endpoint access. <em>gateway-access-control; key-concepts</em></td>
+    </tr>
+    <tr>
+      <td><strong>Workload-class tag / metadata budget routing</strong></td>
+      <td><span class="check">✅</span> <code>tag_budget_config</code> — per-tag daily ceilings compose with provider and model budgets. Router excludes exhausted targets. <em>provider_budget_routing</em></td>
+      <td><span class="cross">❌</span> No documented metadata-key budget segmentation in AI plugins. Consumer Group is the finest granularity.</td>
+      <td><span class="partial">⚠</span> Enterprise policy engine supports group-by dimensions (user, provider, config, wildcard); explicit <code>metadata.project_id</code>-style key segmentation not documented in reviewed materials. Plan-dependent. <em>budget-policies</em></td>
+      <td><span class="check">✅</span> <code>rate_limit_applies_per: ['metadata.project_id']</code> and <code>budget_applies_per: ['metadata.project_id']</code> explicitly documented. <em>ratelimiting; budgetlimiting</em></td>
+    </tr>
+    <tr>
+      <td><strong>Physical compute isolation</strong></td>
+      <td><span class="cross">❌</span> Logical only. All teams share the same proxy process, Redis, and DB. Compute isolation is operator-dependent (separate deployments).</td>
+      <td><span class="cross">❌</span> Logical only. Consumer Groups are a routing/policy primitive; the data plane process is shared.</td>
+      <td><span class="partial">⚠</span> Hybrid VPC data plane option moves the PEP into your VPC pods (Enterprise). Management/control plane remains vendor-operated SaaS. Not per-workspace compute isolation.</td>
+      <td><span class="check">✅</span> K8s-native; workspace isolation documented as mapping to K8s namespace boundaries. Physical compute boundaries are structural, not manually configured. <em>key-concepts; gateway-plane-architecture</em></td>
+    </tr>
+    <tr>
+      <td><strong>Provider credential isolation per tenant</strong></td>
+      <td><span class="partial">⚠</span> Operator-dependent (<code>os.environ/VAR</code> pattern). No native Vault integration documented; requires external sidecar or K8s secret injection. <em>proxy/config_settings</em></td>
+      <td><span class="check">✅</span> <code>{vault://...}</code> references in plugin config (HashiCorp Vault, AWS SM, GCP SM). Enterprise. <em>ai-proxy-advanced</em></td>
+      <td><span class="check">✅</span> Model Catalog slugs (standard); Secret References from customer Vault at runtime (Enterprise, 5-min cache). <em>secret-references; model-catalog/integrations</em></td>
+      <td><span class="check">✅</span> Secret groups with FQNs; raw keys never in application manifests. REST API for management. <em>manage-secrets</em></td>
+    </tr>
+    <tr>
+      <td><strong>Subject-scoped guardrail policies per team</strong></td>
+      <td><span class="cross">❌</span> Guardrail phases are gateway-global (pre_call, during_call, post_call). Not natively identity-scoped per team. Possible via custom auth hook + bespoke logic.</td>
+      <td><span class="partial">⚠</span> Consumer Group-scoped plugin config (e.g., <code>ai-prompt-guard</code> per group). Plugin-level, not first-match rule semantics. <em>ai-prompt-guard</em></td>
+      <td><span class="cross">❌</span> Guardrail hooks are config-attached (before/after request); not identity-scoped per team natively in documented API. BYO webhook can implement this with custom logic.</td>
+      <td><span class="check">✅</span> <code>subjects.conditions.in[]</code> in guardrail rules with union semantics across all matching rules. One YAML can express baseline and team-specific guardrails together. <em>guardrails-configuration; guardrails-overview</em></td>
+    </tr>
+    <tr>
+      <td><strong>Audit attribution per tenant</strong></td>
+      <td><span class="check">✅</span> <code>x-litellm-call-id</code> as correlation key; team/key attribution in log callbacks. <em>proxy/logging</em></td>
+      <td><span class="check">✅</span> <code>consumer</code> label on AI metrics from v3.11+; structured AI audit logs. <em>ai-audit-log-reference; monitor-ai-llm-metrics</em></td>
+      <td><span class="check">✅</span> Logs with workspace attribution and gateway-state per request; OTel-compliant traces. <em>observability/logs; observability/traces</em></td>
+      <td><span class="check">✅</span> <code>x-tfy-applied-configurations</code> + <code>x-tfy-resolved-model</code> headers; Server-Timing per-phase breakdown; async attribution logs. <em>headers</em></td>
+    </tr>
+    <tr>
+      <td><strong>Per-team router / routing policy</strong></td>
+      <td><span class="check">✅</span> Router behavior configurable per key or team. <em>proxy/keys_teams_router_settings</em></td>
+      <td><span class="partial">⚠</span> Route-level routing strategy; Consumer Group does not independently configure load-balancing algorithm.</td>
+      <td><span class="partial">⚠</span> Config object routing strategy can differ per key; conditional routing on metadata. <em>conditional-routing; configs</em></td>
+      <td><span class="partial">⚠</span> Weight/latency/priority routing documented; per-team router overrides not explicitly documented in reviewed materials. <em>load-balancing-overview</em></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<hr>
+
+<!-- §7 VERDICT -->
+<h2>§7 — Editorial Verdict</h2>
+<p>The following assessments represent editorial judgment based on documented capabilities. "Well-suited for" is the authors' characterization, not a vendor claim.</p>
+
+<div class="verdict-grid">
+  <div class="verdict-card litellm">
+    <div class="verdict-label">LiteLLM</div>
+    <div class="verdict-name">The K8s-Native Workload Identity Specialist</div>
+    <div class="verdict-text">LiteLLM's strongest differentiator for multi-tenancy is the <code>team_alias_jwt_field</code> mechanism — mapping K8s ServiceAccount namespace claims directly to team policy contexts. For organizations running AI workloads in Kubernetes, this eliminates a whole class of "AI key management" toil. Team budgets with <code>max_budget</code> and <code>budget_duration</code> solve the noisy-neighbor problem for dollar-denominated spend. Tag budget routing adds workload-class granularity beyond organizational teams. Gaps: logical isolation only; no SCIM provisioning; provider credential management is operator-dependent.</div>
+    <div class="verdict-use"><strong>Well-suited for:</strong> K8s-native platform teams needing fast multi-team isolation with OIDC/workload-identity integration and budget-aware enforcement without additional infrastructure investment.</div>
+  </div>
+  <div class="verdict-card kong">
+    <div class="verdict-label">Kong AI Gateway</div>
+    <div class="verdict-name">The Plugin-Composed Enterprise Stack</div>
+    <div class="verdict-text">Consumer Groups inherit Kong's full API governance maturity — mTLS consumer auth (for identifying callers), OIDC, Vault-backed credential references, and the complete AI plugin catalog all compose at the group level. For organizations already running Kong, extending to AI multi-tenancy is additive rather than a new architectural commitment. Consumer identity on AI metrics from v3.11 provides attribution without custom log parsing. Gaps: no SCIM provisioning for Consumer Groups; no metadata-key segmentation in AI plugins. While Kong's <code>ai-rate-limiting-advanced</code> supports cost-aware rate limiting per Consumer Group, it does not expose the same cumulative-budget-ceiling object model (with periodic reset and alert thresholds) that the other three vendors document natively.</div>
+    <div class="verdict-use"><strong>Well-suited for:</strong> Enterprises with existing Kong infrastructure needing AI multi-tenancy with the same operational model as their current API governance stack — Consumer Groups, declarative config, and Vault-backed secret references.</div>
+  </div>
+  <div class="verdict-card portkey">
+    <div class="verdict-label">Portkey</div>
+    <div class="verdict-name">The Enterprise IdP Integration Leader</div>
+    <div class="verdict-text">Portkey's strongest differentiator in this review is its explicit public documentation for workspace-centric enterprise identity integration: SCIM auto-provisioning from Okta and Azure Entra, workspace mapping controls, JWT gateway authentication, and OIDC/SAML SSO for dashboard access. Workspaces as a documented workspace-scoping boundary with SDK-enforced budget ceilings provide a clean organizational model. Gaps: no K8s ServiceAccount JWT → team-alias mapping documented in reviewed materials; SCIM and JWT gateway auth require Enterprise plan; physical compute isolation is limited to the hybrid VPC data plane while management remains vendor-operated.</div>
+    <div class="verdict-use"><strong>Well-suited for:</strong> Enterprise product organizations prioritizing IdP-driven workspace provisioning, spend governance, and compliance boundaries with minimal platform team operational overhead.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">TrueFoundry</div>
+    <div class="verdict-name">The Physical Isolation Platform</div>
+    <div class="verdict-text">In this four-vendor review, TrueFoundry is the only product where tenant isolation is physically backed by Kubernetes namespace boundaries rather than being purely logical. The combination of workspace-scoped deployments, Secret group FQNs, two-layer RBAC, subject-scoped guardrail rules that union across matches, and dynamically instantiated per-project rate limits and budgets from a single static config creates the most comprehensive multi-tenancy surface reviewed. The metadata-scoped limits (<code>rate_limit_applies_per: ['metadata.project_id']</code>) scale gracefully from 5 teams to 500 without proportional configuration growth. Gaps: self-hosting operational burden is higher than SaaS alternatives.</div>
+    <div class="verdict-use"><strong>Well-suited for:</strong> Regulated industries (financial services, healthcare, government), K8s-native platform teams serving many internal product teams, and organizations where logical isolation is legally insufficient.</div>
+  </div>
+</div>
+
+<h3>Positioning Map — Enterprise IdP Integration vs. Tenant Isolation Architecture Depth</h3>
+<div class="svg-wrap">
+<svg viewBox="0 0 900 400" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans,system-ui,sans-serif">
+  <rect width="900" height="400" fill="#121826"/>
+  <text x="14" y="194" text-anchor="middle" fill="#7a8899" font-size="11" font-family="IBM Plex Mono,monospace" transform="rotate(-90,14,194)">Enterprise IdP Integration Depth</text>
+  <line x1="62" y1="20" x2="62" y2="330" stroke="#1e2d45" stroke-width="1.2"/>
+  <line x1="62" y1="330" x2="868" y2="330" stroke="#1e2d45" stroke-width="1.2"/>
+  <line x1="62" y1="175" x2="868" y2="175" stroke="#1e2d45" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="465" y1="20" x2="465" y2="330" stroke="#1e2d45" stroke-width="1" stroke-dasharray="5,5"/>
+  <text x="465" y="360" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono,monospace">Tenant Isolation Architecture (Logical → Physical K8s-Backed) →</text>
+
+  <text x="263" y="38" text-anchor="middle" fill="#222e42" font-size="9" font-family="IBM Plex Mono,monospace">LOWER ISOLATION / HIGH IdP DEPTH</text>
+  <text x="666" y="38" text-anchor="middle" fill="#222e42" font-size="9" font-family="IBM Plex Mono,monospace">PHYSICAL ISOLATION / HIGH IdP DEPTH</text>
+  <text x="263" y="324" text-anchor="middle" fill="#222e42" font-size="9" font-family="IBM Plex Mono,monospace">LOWER ISOLATION / LOWER IdP DEPTH</text>
+  <text x="666" y="324" text-anchor="middle" fill="#222e42" font-size="9" font-family="IBM Plex Mono,monospace">PHYSICAL ISOLATION / LOWER IdP DEPTH</text>
+
+  <!-- LiteLLM: moderate isolation (logical + K8s workload auth), moderate-high IdP (OIDC/JWT, no SCIM) -->
+  <circle cx="330" cy="135" r="52" fill="#00c2cb" fill-opacity=".14" stroke="#00c2cb" stroke-width="1.8"/>
+  <text x="330" y="127" text-anchor="middle" fill="#00c2cb" font-size="14" font-weight="700">LiteLLM</text>
+  <text x="330" y="144" text-anchor="middle" fill="#00c2cb" font-size="9.5" font-family="IBM Plex Mono,monospace">K8s workload identity</text>
+  <text x="330" y="158" text-anchor="middle" fill="#00c2cb" font-size="9.5" font-family="IBM Plex Mono,monospace">Tag budget routing</text>
+
+  <!-- Kong: logical isolation (Consumer Groups), moderate IdP (OIDC enterprise, no SCIM) -->
+  <circle cx="255" cy="200" r="52" fill="#00d27b" fill-opacity=".14" stroke="#00d27b" stroke-width="1.8"/>
+  <text x="255" y="192" text-anchor="middle" fill="#00d27b" font-size="14" font-weight="700">Kong</text>
+  <text x="255" y="209" text-anchor="middle" fill="#00d27b" font-size="9.5" font-family="IBM Plex Mono,monospace">Consumer Groups</text>
+  <text x="255" y="223" text-anchor="middle" fill="#00d27b" font-size="9.5" font-family="IBM Plex Mono,monospace">Vault creds (Ent)</text>
+
+  <!-- Portkey: logical isolation (Workspace, hybrid VPC option), highest IdP (SCIM, OIDC, JWT) -->
+  <circle cx="540" cy="80" r="56" fill="#5a67ff" fill-opacity=".14" stroke="#5a67ff" stroke-width="1.8"/>
+  <text x="540" y="68" text-anchor="middle" fill="#5a67ff" font-size="14" font-weight="700">Portkey</text>
+  <text x="540" y="85" text-anchor="middle" fill="#5a67ff" font-size="9.5" font-family="IBM Plex Mono,monospace">SCIM (Okta + Azure Entra)</text>
+  <text x="540" y="99" text-anchor="middle" fill="#5a67ff" font-size="9.5" font-family="IBM Plex Mono,monospace">Workspace isolation</text>
+
+  <!-- TrueFoundry: physical K8s isolation, strong IdP (SSO + SCIM) -->
+  <circle cx="750" cy="118" r="56" fill="#ff5533" fill-opacity=".14" stroke="#ff5533" stroke-width="1.8"/>
+  <text x="750" y="106" text-anchor="middle" fill="#ff5533" font-size="14" font-weight="700">TrueFoundry</text>
+  <text x="750" y="123" text-anchor="middle" fill="#ff5533" font-size="9.5" font-family="IBM Plex Mono,monospace">K8s namespace–backed</text>
+  <text x="750" y="137" text-anchor="middle" fill="#ff5533" font-size="9.5" font-family="IBM Plex Mono,monospace">SSO + SCIM</text>
+</svg>
+</div>
+<p style="font-size:.78rem;color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace;margin-top:-.4rem;">Editorial assessment based on four vendors' public docs reviewed for this article. Portkey is especially strong on workspace-centric enterprise identity integration. TrueFoundry combines SSO + SCIM with the strongest physical isolation architecture in this set. LiteLLM uniquely documents automatic ServiceAccount JWT namespace-claim → team-alias mapping; Kong leads on plugin-composed group governance. Bubble positions reflect the authors' judgment — March 2026.</p>
+
+<hr>
+
+<!-- §8 REFERENCES -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">LiteLLM — Budgets &amp; Rate Limits (team_id, max_budget, budget_duration)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">LiteLLM — Virtual Keys (models allowlist, team assignment)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/token_auth" target="_blank">LiteLLM — OIDC / JWT Auth (team_alias_jwt_field, K8s ServiceAccount, multi-provider JWKs)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">LiteLLM — Provider &amp; Tag Budget Routing (provider budgets + tag_budget_config)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/team_budgets" target="_blank">LiteLLM — Team Budgets (team_alias, max_budget, budget_duration)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/tag_budgets" target="_blank">LiteLLM — Tag Budgets (max_budget, budget_duration)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings" target="_blank">LiteLLM — Router Settings for Keys and Teams</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture (Life of a Request; auth + budget before routing)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/oauth2" target="_blank">LiteLLM — OAuth 2.0 Auth (Enterprise)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/custom_auth" target="_blank">LiteLLM — Custom Auth Hook (UserAPIKeyAuth fields)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">LiteLLM — Logging (x-litellm-call-id)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">Kong — AI Rate Limiting Advanced Example (llm_providers, limit[], window_size[])</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-prompt-guard/" target="_blank">Kong — AI Prompt Guard (deny_patterns; Consumer Group attachment)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">Kong — AI Proxy Advanced ({vault://...} credential references)</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/ai-audit-log-reference/" target="_blank">Kong — AI Audit Log Reference (consumer label on AI metrics v3.11+)</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM Metrics (consumer label; request_mode label)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">Kong — Plugin Compatibility Reference</a></li>
+  <li><a href="https://portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits" target="_blank">Portkey — Enforce Workspace Budget &amp; Rate Limits (SDK field names)</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/budget-policies" target="_blank">Portkey — Usage &amp; Rate Limit Policies (Enterprise; group-by dimensions)</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/org-management/sso" target="_blank">Portkey — SSO (OIDC + SAML 2.0 for control-plane)</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/org-management/jwt" target="_blank">Portkey — JWT Gateway Authentication (JWKS configuration; Admin Settings → Organisation → Authentication; JWKS URL vs. static JSON; Enterprise add-on)</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/org-management/workspaces" target="_blank">Portkey — Workspaces (workspace-scoped keys; completion API scoping)</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/org-management/scim/okta" target="_blank">Portkey — SCIM: Okta Integration</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/org-management/scim/azure-ad" target="_blank">Portkey — SCIM: Azure Entra Integration</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/org-management/scim/group-management" target="_blank">Portkey — SCIM Group Management (pattern-based + flexible workspace mapping)</a></li>
+  <li><a href="https://portkey.ai/docs/api-reference/inference-api/authentication" target="_blank">Portkey — JWT Gateway Authentication (JWKS-validated; Enterprise add-on)</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/secret-references" target="_blank">Portkey — Secret References (runtime fetch from customer Vault; 5-min cache)</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Configs (workspace-scoped keys; default config on API key)</a></li>
+  <li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Hybrid VPC Deployment</a></li>
+  <li><a href="https://portkey.ai/docs/product/observability/logs" target="_blank">Portkey — Logs (workspace attribution; gateway-state per request)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/key-concepts" target="_blank">TrueFoundry — Key Concepts (workspace = Kubernetes namespace; workspace-scoped isolation)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/manage-user-roles-and-permissions" target="_blank">TrueFoundry — Manage User Roles & Permissions (tenant and resource permissions)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/gateway-access-control" target="_blank">TrueFoundry — AI Gateway Access Control (gateway-level model endpoint scoping)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/sso" target="_blank">TrueFoundry — SSO Overview (OIDC/SAML; SCIM provisioning for SAML setups)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/api-reference/scim-v2/list-users" target="_blank">TrueFoundry — SCIM v2 API (Users/Groups resources)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/setup-ai-gateway-in-org" target="_blank">TrueFoundry — Setup AI Gateway in Your Organization (SSO, teams, virtual accounts)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting (rate_limit_applies_per: ['metadata.project_id']; first-match)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">TrueFoundry — Budget Limiting (budget_applies_per: ['metadata.project_id'])</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">TrueFoundry — Guardrails Configuration (subjects.conditions.in[]; union semantics across matches)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview (four-hook model; LLM + MCP hooks)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/request-headers" target="_blank">TrueFoundry — Headers (x-tfy-metadata; x-tfy-applied-configurations; Server-Timing)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/manage-secrets" target="_blank">TrueFoundry — Secret Management (secret groups; FQNs; no raw key in manifests)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture (stateless in-cluster; local PDP; no hot-path ext. deps)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/architecture" target="_blank">TrueFoundry — Platform Architecture (split-plane; globally hosted services identified)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/request-headers" target="_blank">TrueFoundry — Request &amp; Response Headers (x-tfy-resolved-model; Server-Timing phases)</a></li>
+</ol>
+
+<hr>
+<p style="font-size:.74rem;color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace;line-height:1.8;">
+  AI Gateway Series · Blog 2 of 15 &nbsp;·&nbsp; March 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
+  Configuration field names sourced from published vendor documentation; validate against your deployed version before use.<br>
+  Editorial verdicts represent the authors' judgment and are not vendor endorsements or guarantees.
+</p>
+
+<script>
+(function(){
+  function flashCopied(btn){btn.textContent='✓ copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='copy';btn.classList.remove('copied');},1800);}
+  function fallbackCopy(text){const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:-9999px;left:-9999px';document.body.appendChild(ta);ta.focus();ta.select();let ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(ta);return ok;}
+  async function copyText(text){if(window.isSecureContext&&navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(text);return true;}catch(e){}}return fallbackCopy(text);}
+  function attach(btn,pre){if(btn.dataset.copyBound==='1')return;btn.dataset.copyBound='1';btn.type='button';btn.addEventListener('click',async()=>{const ok=await copyText(pre.innerText);if(ok)flashCopied(btn);else{btn.textContent='copy failed';setTimeout(()=>{btn.textContent='copy';},1800);}});}
+  document.querySelectorAll('pre').forEach(pre=>{
+    let wrap=pre.parentElement&&pre.parentElement.classList.contains('code-wrap')?pre.parentElement:null;
+    if(!wrap){wrap=document.createElement('div');wrap.className='code-wrap';pre.parentNode.insertBefore(wrap,pre);wrap.appendChild(pre);}
+    let btn=wrap.querySelector('.copy-btn');
+    if(!btn){btn=document.createElement('button');btn.className='copy-btn';btn.textContent='copy';wrap.appendChild(btn);}
+    attach(btn,pre);
+  });
+})();
+</script>
+</body>
+</html>
