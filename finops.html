@@ -1,0 +1,1057 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
+<title>AI Gateway Series #5 — Cost Control &amp; FinOps</title>
+<style>
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB; --kong: #00D27B; --portkey: #5A67FF; --tf: #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+
+  .series-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .tag-pill {
+    display: inline-block; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace;
+    padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase;
+  }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer {
+    background: #1a1200; border: 1px solid #3d2c00; color: var(--warn);
+    font-size: .78rem; padding: .5rem 1rem; border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre {
+    background: #080c12; border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto;
+    font-size: .83rem; line-height: 1.6; margin: 0;
+  }
+  .copy-btn {
+    position: absolute; top: .55rem; right: .55rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    font-size: .68rem; padding: .22rem .55rem; border-radius: 5px;
+    cursor: pointer; transition: all .15s ease; user-select: none;
+    letter-spacing: .03em; line-height: 1.4;
+  }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+  .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note {
+    font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border);
+  }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger  { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn    { border-color: var(--warn);   background: #1a1200; }
+  .callout.info    { border-color: #60a5fa;        background: #0a1220; }
+  .callout.success { border-color: #50fa7b;        background: #0a1a10; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger  .callout-title { color: var(--danger); }
+  .callout.warn    .callout-title { color: var(--warn); }
+  .callout.info    .callout-title { color: #60a5fa; }
+  .callout.success .callout-title { color: #50fa7b; }
+
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name  { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc  { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong    { color: var(--kong);    border-top: 3px solid var(--kong);    }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf      { color: var(--tf);      border-top: 3px solid var(--tf);      }
+
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong);    }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf);      }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong    .vendor-badge { background: var(--kong);    color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf      .vendor-badge { background: var(--tf);      color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+
+  .matrix-wrap { overflow-x: visible; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  .comparison-matrix { table-layout: fixed; width: 100%; min-width: 0; }
+  .comparison-matrix col.feature-col { width: 24%; }
+  .comparison-matrix col.tf-col { width: 19%; }
+  .comparison-matrix col.portkey-col { width: 19%; }
+  .comparison-matrix col.litellm-col { width: 19%; }
+  .comparison-matrix col.kong-col { width: 19%; }
+  thead tr { background: var(--surface2); }
+  th { padding: .65rem .75rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; border-bottom: 2px solid var(--border); }
+  td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; word-break: normal; hyphens: auto; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before    { background: var(--kong);    }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before      { background: var(--tf);      }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong    .verdict-label { color: var(--kong);    }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf      .verdict-label { color: var(--tf);      }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use  { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0 1.5rem; }
+  @media(max-width:600px){ .info-grid { grid-template-columns: 1fr; } }
+  .info-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .9rem 1.1rem; }
+  .info-card h4 { font-size: .9rem; font-weight: 700; margin-bottom: .5rem; }
+  .info-card ul { padding-left: 1.1rem; }
+  .info-card li { font-size: .82rem; color: var(--muted); margin-bottom: .3rem; }
+</style>
+</head>
+<body>
+<!-- ══════ HEADER ══════ -->
+<div class="series-bar">
+<span class="tag-pill">AI Gateway Series</span>
+<div class="series-dots">
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot active" title="Blog 5 — Cost Control &amp; FinOps"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div>
+</div>
+<span class="tag-pill active">Blog 5 of 15</span>
+</div>
+<h1>LLM Budget Enforcement at the Gateway Layer:<br/>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+<div class="meta">
+<span class="meta-item">⏱ 22 min read</span>
+<span class="meta-item">🗓 March 2026</span>
+<span class="meta-item">👤 Platform Engineering · FinOps</span>
+<div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 2026. Feature claims are cross-referenced against official public documentation. Verify before production decisions.</div>
+</div>
+<!-- ══════ §0 TL;DR ══════ -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<div class="scenario">
+<div class="scenario-title">Incident Pattern: Policy Exists, but the Business Still Feels the Failure</div>
+<p>A platform engineering team rolled out an internal coding agent through a shared gateway, with team-scoped credentials, budget alerts, and a monthly governance review already in place.</p>
+<p>After a deployment change introduced an unintended retry loop, the agent began generating a large burst of long-context requests over an extended window. By the time on-call triaged the incident, spend had materially exceeded the intended cap. The gateway had logged usage accurately; it had not stopped the flood early enough.</p>
+<p>The post-incident finding was architectural rather than administrative: spend was reconciled <strong>after</strong> responses completed, so concurrent in-flight requests continued to launch against stale budget state. That distinction between <strong>synchronous pre-request blocking</strong> and <strong>post-response accounting</strong> is the core technical question in this comparison.</p></div>
+<div class="quickpick-grid">
+<div class="qp-card c-litellm">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">LiteLLM</div>
+<div class="qp-desc">Three-level virtual-key budget hierarchy with cache-first pre-routing checks. TPM/RPM limits are synchronous; spend / usage persistence is async after the response. On cache miss, key validation can hit DB. Custom pricing lives under <code>model_info</code>.</div>
+</div>
+<div class="qp-card c-kong">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Kong AI Gateway</div>
+<div class="qp-desc">The <code>ai-rate-limiting-advanced</code> plugin (Kong 3.7+, AI License) evaluates limits in the Access phase before the upstream call. Cost-based limiting can use <code>model.options.input_cost</code> / <code>output_cost</code>; the caveat is that cost reflection is documented on the next request.</div>
+</div>
+<div class="qp-card c-portkey">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Portkey</div>
+<div class="qp-desc">Workspace budgets plus Model Catalog–based provider/model controls. Usage-limit exhaustion returns HTTP 412; rate-limit exhaustion returns 429. Custom pricing, custom models, and private-model support are documented, with some controls enterprise-gated.</div>
+</div>
+<div class="qp-card c-tf">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">TrueFoundry</div>
+<div class="qp-desc">Synchronous data-plane enforcement plus the FinOps trio business teams usually need: <strong>Budget Limiting</strong> at user/team/workload scope, <strong>Cost Attribution</strong> by team/user/model/app via metrics and metadata, and <strong>Custom Pricing Models</strong> (<code>Public Cost</code> / <code>Private Cost</code>) for internal chargebacks.</div>
+</div>
+</div>
+<!-- ══════ §1 WHY SYNC ENFORCEMENT MATTERS ══════ -->
+<h2>§1 — Why Synchronous Enforcement Is a Different Problem</h2>
+<p>When a platform engineer thinks "budget limit," the mental model is a cap stored in a database. An LLM gateway breaks every assumption about how that cap gets checked:</p>
+<ul>
+<li><strong>Concurrent agentic requests overwhelm async counters.</strong> A single agent framework can dispatch 50 parallel completions. If your counter is updated post-response, all 50 are in flight before the first decrement fires. The cap is real; the enforcement is not.</li>
+<li><strong>Cost is only known after the response.</strong> Dollar cost requires knowing actual output token counts — available only when the LLM responds. This creates tension between precision and synchronicity. Token-per-minute limits, by contrast, can be checked pre-dispatch.</li>
+<li><strong>Pricing is not uniform across providers.</strong> GPT-4o, Claude Sonnet 4.6, and a self-hosted Llama 3.3 70B on your GPU cluster all have different effective per-token costs. A gateway that cannot express custom rates cannot produce meaningful chargebacks for internal infrastructure.</li>
+<li><strong>Rate limits and budget limits serve different functions.</strong> TPM/RPM limits protect against burst abuse and can be enforced pre-request. Dollar budgets enforce financial ceilings and require either a forward estimate or a reserve-and-reconcile pattern to be truly synchronous.</li>
+</ul>
+<!-- DIAGRAM 1 — Overarching: Sync vs Async -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 820 360" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="360" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="26">Async (Post-Response) vs. Synchronous (Pre-Request) Budget Enforcement</text>
+<defs>
+<marker id="d1a" markerheight="6" markerwidth="8" orient="auto" refx="8" refy="3"><polygon fill="#7a8899" points="0 0,8 3,0 6"></polygon></marker>
+<marker id="d1r" markerheight="6" markerwidth="8" orient="auto" refx="8" refy="3"><polygon fill="#ff4757" points="0 0,8 3,0 6"></polygon></marker>
+<marker id="d1g" markerheight="6" markerwidth="8" orient="auto" refx="8" refy="3"><polygon fill="#50fa7b" points="0 0,8 3,0 6"></polygon></marker>
+</defs>
+<!-- LEFT panel — Async -->
+<rect fill="#0a0e16" height="300" rx="8" stroke="#1e2d45" width="385" x="20" y="44"></rect>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="212" y="66">ASYNC — POST-RESPONSE</text>
+<rect fill="#1a2233" height="32" rx="5" stroke="#4a5568" width="80" x="36" y="84"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="76" y="104">Agent ×50</text>
+<line marker-end="url(#d1a)" stroke="#7a8899" stroke-width="1.5" x1="116" x2="144" y1="100" y2="100"></line>
+<rect fill="#1a2233" height="36" rx="5" stroke="#4a5568" width="100" x="146" y="82"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="196" y="98">Gateway</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="196" y="112">(no pre-check)</text>
+<line marker-end="url(#d1a)" stroke="#7a8899" stroke-width="1.5" x1="246" x2="274" y1="100" y2="100"></line>
+<rect fill="#1a2233" height="32" rx="5" stroke="#4a5568" width="80" x="276" y="84"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="316" y="104">LLM API</text>
+<path d="M 316 116 Q 316 148 196 148" fill="none" marker-end="url(#d1a)" stroke="#7a8899" stroke-dasharray="4,3" stroke-width="1.2"></path>
+<rect fill="#1a2233" height="32" rx="4" stroke="#ffa726" stroke-opacity=".5" width="112" x="140" y="152"></rect>
+<text fill="#ffa726" font-size="9" text-anchor="middle" x="196" y="171">budget counter++</text>
+<text fill="#6272a4" font-size="8" text-anchor="middle" x="196" y="194">(post-response · spend store)</text>
+<rect fill="#1a0a0a" height="60" rx="6" stroke="#ff475744" stroke-dasharray="4,3" width="354" x="36" y="212"></rect>
+<text fill="#ff4757" font-size="10" font-weight="600" text-anchor="middle" x="213" y="234">Concurrency window: all 50 requests in-flight</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="213" y="251">Counter not updated until AFTER each response.</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="213" y="266">Every concurrent request sees a stale budget state.</text>
+<rect fill="#1a0a0a" height="28" rx="5" stroke="#ff4757" stroke-opacity=".5" width="110" x="36" y="286"></rect>
+<text fill="#ff4757" font-size="9" text-anchor="middle" x="91" y="304">More requests still launch</text>
+<line marker-end="url(#d1r)" stroke="#ff4757" stroke-dasharray="3,2" stroke-width="1.2" x1="146" x2="188" y1="300" y2="300"></line>
+<text fill="#6272a4" font-size="8" text-anchor="start" x="198" y="304">Spend overrun appears after the fact</text>
+<!-- RIGHT panel — Sync -->
+<rect fill="#0d1420" height="300" rx="8" stroke="#50fa7b" stroke-opacity=".4" stroke-width="1" width="390" x="415" y="44"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="610" y="66">SYNC — PRE-REQUEST (ATOMIC)</text>
+<rect fill="#1a2233" height="32" rx="5" stroke="#4a5568" width="80" x="430" y="84"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="470" y="104">Agent ×50</text>
+<line marker-end="url(#d1g)" stroke="#50fa7b" stroke-width="1.5" x1="510" x2="534" y1="100" y2="100"></line>
+<rect fill="#0a1a14" height="44" rx="5" stroke="#50fa7b" stroke-width="1.5" width="110" x="536" y="78"></rect>
+<text fill="#50fa7b" font-size="10" font-weight="700" text-anchor="middle" x="591" y="97">Gateway</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="591" y="111">pre-check budget</text>
+<line stroke="#50fa7b" stroke-width="1.2" x1="591" x2="591" y1="122" y2="148"></line>
+<rect fill="rgba(80,250,123,.08)" height="34" rx="5" stroke="#50fa7b" width="110" x="536" y="150"></rect>
+<text fill="#50fa7b" font-size="10" font-weight="600" text-anchor="middle" x="591" y="166">In-memory check</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="591" y="179">atomic · no external call</text>
+<line stroke="#50fa7b" stroke-width="1.2" x1="591" x2="591" y1="184" y2="206"></line>
+<polygon fill="#1a2233" points="591,206 617,222 591,238 565,222" stroke="#4a5568" stroke-width="1.2"></polygon>
+<text fill="#e2e8f0" font-size="9" text-anchor="middle" x="591" y="219">OK?</text>
+<text fill="#e2e8f0" font-size="8" text-anchor="middle" x="591" y="231">budget</text>
+<line marker-end="url(#d1r)" stroke="#ff4757" stroke-width="1.5" x1="565" x2="510" y1="222" y2="222"></line>
+<text fill="#ff4757" font-size="8" text-anchor="middle" x="537" y="216">No</text>
+<rect fill="#1a0a0a" height="28" rx="5" stroke="#ff4757" width="80" x="430" y="208"></rect>
+<text fill="#ff4757" font-size="9" text-anchor="middle" x="470" y="226">Budget blocked</text>
+<line marker-end="url(#d1g)" stroke="#50fa7b" stroke-width="1.5" x1="617" x2="680" y1="222" y2="222"></line>
+<text fill="#50fa7b" font-size="8" text-anchor="middle" x="648" y="216">Yes</text>
+<rect fill="#1a2233" height="28" rx="5" stroke="#4a5568" width="95" x="682" y="208"></rect>
+<text fill="#e2e8f0" font-size="9" text-anchor="middle" x="729" y="226">LLM / GPU API</text>
+<rect fill="rgba(80,250,123,.05)" height="60" rx="6" stroke="#50fa7b" stroke-dasharray="4,3" stroke-opacity=".3" width="354" x="430" y="258"></rect>
+<text fill="#50fa7b" font-size="10" font-weight="600" text-anchor="middle" x="607" y="280">Check serialised at counter level</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="607" y="297">At most one request crosses the threshold.</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="607" y="312">All burst requests see updated state.</text>
+</svg>
+</div>
+<div class="img-caption">Async enforcement exposes a concurrency window where multiple expensive requests can launch against stale budget state. In practice, that means finance sees an overrun only after engineering and business users have already experienced failures, retries, or degraded service. Synchronous in-memory checking narrows that window to the request that actually crosses the threshold.</div>
+<div class="callout info">
+<div class="callout-title">📌 Cost Prediction vs. Cost Accounting</div>
+<p>Most gateways know actual dollar cost only <em>after</em> the LLM responds (the usage object in the response). True synchronous dollar-budget blocking therefore requires either <strong>(a)</strong> blocking on a worst-case input-token estimate pre-dispatch, or <strong>(b)</strong> using token-rate limits (TPM) as the synchronous hard ceiling and treating dollar budgets as secondary thresholds updated post-response. Both are valid; understanding which your gateway implements tells you exactly where your exposure window is.</p>
+</div>
+<hr/>
+<!-- ══════ §2 LITELLM ══════ -->
+<div class="vendor-header litellm">
+<span class="vendor-badge">LiteLLM</span>
+<span class="vendor-title">§2 — Three-Level Budget Hierarchy with Redis TPM Enforcement</span>
+</div>
+<p>LiteLLM Proxy structures budget enforcement around three concentric levels: a <strong>proxy-global budget</strong> (<code>litellm_settings.max_budget</code>), <strong>team budgets</strong>, and <strong>virtual-key budgets</strong> (<code>max_budget</code> + <code>budget_duration</code> per key). The current request-flow docs say the bearer token is checked up front to ensure it is valid and under budget, first in Redis or in-memory cache and, on cache miss, in the database.</p>
+<p>Rate limits at the token-per-minute (<code>tpm_limit</code>) and request-per-minute (<code>rpm_limit</code>) level are enforced pre-routing. After the response is returned, LiteLLM performs asynchronous post-request work, including updating spend / usage in the database. Budget routing (<code>provider_budget_config</code>) is also supported, and current docs place custom pricing under <code>model_info</code>, with support that goes beyond simple per-token overrides.</p>
+<!-- DIAGRAM 2 — LiteLLM hierarchy -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 720 270" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="270" width="720"></rect>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="360" y="24">LITELLM — BUDGET ENFORCEMENT HIERARCHY</text>
+<defs>
+<marker id="la" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00C2CB" points="0 0, 7 2.5, 0 5"></polygon></marker>
+</defs>
+<!-- Level 1: Global -->
+<rect fill="#001d1e" height="38" rx="6" stroke="#00C2CB" stroke-width="1.5" width="170" x="275" y="36"></rect>
+<text fill="#00C2CB" font-size="11" font-weight="700" text-anchor="middle" x="360" y="53">Proxy Global Budget</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="360" y="68">max_budget: 5000 USD · 30d</text>
+<!-- Level 2: Teams -->
+<line marker-end="url(#la)" stroke="#00C2CB" stroke-width="1.2" x1="360" x2="160" y1="74" y2="108"></line>
+<line marker-end="url(#la)" stroke="#00C2CB" stroke-width="1.2" x1="360" x2="360" y1="74" y2="108"></line>
+<line marker-end="url(#la)" stroke="#00C2CB" stroke-width="1.2" x1="360" x2="560" y1="74" y2="108"></line>
+<rect fill="#1a2233" height="36" rx="6" stroke="#1e2d45" width="160" x="80" y="108"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="160" y="124">Team: ML Research</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="160" y="137">max_budget: 1000 / 30d</text>
+<rect fill="#1a2233" height="36" rx="6" stroke="#1e2d45" width="160" x="280" y="108"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="360" y="124">Team: Product Eng</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="360" y="137">max_budget: 2000 / 30d</text>
+<rect fill="#1a2233" height="36" rx="6" stroke="#1e2d45" width="160" x="480" y="108"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="560" y="124">Team: Data Science</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="560" y="137">max_budget: 2000 / 30d</text>
+<!-- Level 3: Virtual keys under ML Research -->
+<line marker-end="url(#la)" stroke="#7a8899" stroke-dasharray="3,2" stroke-width="1" x1="160" x2="100" y1="144" y2="172"></line>
+<line marker-end="url(#la)" stroke="#7a8899" stroke-dasharray="3,2" stroke-width="1" x1="160" x2="220" y1="144" y2="172"></line>
+<rect fill="#1a2233" height="46" rx="5" stroke="#00C2CB" stroke-opacity=".4" width="120" x="38" y="172"></rect>
+<text fill="#00C2CB" font-size="9" font-weight="600" text-anchor="middle" x="98" y="188">sk-dev-agent-1</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="98" y="201">max: $50 / 1d</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="98" y="213">tpm: 100k · rpm: 60</text>
+<rect fill="#1a2233" height="46" rx="5" stroke="#00C2CB" stroke-opacity=".4" width="120" x="172" y="172"></rect>
+<text fill="#00C2CB" font-size="9" font-weight="600" text-anchor="middle" x="232" y="188">sk-research-agent</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="232" y="201">max: $200 / 7d</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="232" y="213">tpm: 500k · rpm: 200</text>
+<!-- Storage labels -->
+<rect fill="rgba(80,250,123,.05)" height="28" rx="4" stroke="#50fa7b" stroke-opacity=".3" width="154" x="38" y="232"></rect>
+<text fill="#50fa7b" font-size="9" text-anchor="middle" x="115" y="249">Cache-first checks (sync)</text>
+<rect fill="rgba(255,167,38,.05)" height="28" rx="4" stroke="#ffa726" stroke-opacity=".3" width="176" x="210" y="232"></rect>
+<text fill="#ffa726" font-size="9" text-anchor="middle" x="298" y="249">Postgres — spend / usage (async)</text>
+<!-- Custom pricing box -->
+<rect fill="rgba(0,194,203,.05)" height="88" rx="6" stroke="#00C2CB" stroke-opacity=".3" width="274" x="412" y="172"></rect>
+<text fill="#00C2CB" font-size="10" font-weight="600" text-anchor="middle" x="549" y="190">Custom Pricing (model_info)</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8.5" x="422" y="208">input_cost_per_token:  0.0000004</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8.5" x="422" y="222">output_cost_per_token: 0.0000012</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="8.5" x="422" y="236">input_cost_per_second: optional</text>
+<text fill="#6272a4" font-family="IBM Plex Mono, monospace" font-size="8" x="422" y="252">margins / zero-cost / overrides</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM checks virtual-key validity and budget before routing using cache first, with DB lookup on cache miss; spend / usage writes occur asynchronously after the response. Any concurrency overshoot for dollar budgets is an architectural inference from this flow, not a vendor-stated defect. Custom pricing lives in <code>model_info</code>. Based on LiteLLM request-flow and config docs.</div>
+<div class="code-wrap"><pre># proxy_config.yaml — three-level budgets + custom pricing for a self-hosted model
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: llama-3.3-70b-gpu
+    litellm_params:
+      model: openai/llama-3.3-70b
+      api_base: http://vllm-cluster:8000/v1
+      api_key: not-needed
+    model_info:
+      input_cost_per_token: 0.0000004
+      output_cost_per_token: 0.0000012
+      # Optional in current docs: input_cost_per_second, output_cost_per_second
+
+litellm_settings:
+  max_budget: 5000.0
+  budget_duration: "30d"
+  success_callback: ["langfuse"]
+  callbacks: ["otel"]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+
+router_settings:
+  provider_budget_config:
+    openai:
+      budget_limit: 200.0
+      time_period: 1d
+
+redis_host: redis
+redis_port: 6379
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">docs.litellm.ai — All Settings Reference</a> · <a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">Provider Budget Routing</a> · <a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">Virtual Keys</a></div>
+<div class="code-wrap"><pre># bash — virtual key with daily dollar budget + synchronous TPM/RPM limits
+curl -X POST "http://localhost:4000/key/generate"   --header "Authorization: Bearer ${LITELLM_MASTER_KEY}"   --header "Content-Type: application/json"   --data-raw '{
+    "key_alias": "team-ml-research-agent",
+    "team_id": "ml-research",
+    "max_budget": 200.0,
+    "budget_duration": "7d",
+    "tpm_limit": 500000,
+    "rpm_limit": 200,
+    "models": ["gpt-4o", "llama-3.3-70b-gpu"]
+  }'
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">docs.litellm.ai — Virtual Keys &amp; Team Management</a> · <a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">Budgets &amp; Rate Limits</a></div>
+<div class="callout warn">
+<div class="callout-title">⚠ Limitation — Dollar Budget Concurrency Window</div>
+<p>The <code>tpm_limit</code> and <code>rpm_limit</code> checks are clearly pre-routing in the current request-flow docs. Spend / usage persistence is asynchronous after the response. Because eligibility is checked before routing and spend is written after the response, concurrent traffic can plausibly overshoot a dollar budget between updates; that is an architectural inference from the documented flow, not an explicit LiteLLM bug statement. Use TPM/RPM as the hard synchronous ceiling and treat <code>max_budget</code> as the financial guardrail.</p>
+</div>
+<hr/>
+<!-- ══════ §3 KONG ══════ -->
+<div class="vendor-header kong">
+<span class="vendor-badge">Kong</span>
+<span class="vendor-title">§3 — Plugin-Chain Token Throttling at the Data Plane</span>
+</div>
+<p>Kong Gateway enforces AI cost controls through the <strong><code>ai-rate-limiting-advanced</code></strong> plugin (minimum Kong 3.7, AI License). This plugin operates in Kong's <em>Access</em> phase — before any upstream call is dispatched. It supports sliding-window and fixed-window strategies backed by Redis or in-memory store and can limit by <strong>prompt tokens</strong>, <strong>completion tokens</strong>, <strong>total tokens</strong>, or <strong>cost</strong> (USD). Limits can be scoped by identifier such as consumer, credential, IP, service, header, path, or consumer-group, depending on plugin placement and configuration.</p>
+<p>Limit evaluation happens in the Access phase, and a breach returns a 429 before the upstream call is made. For cost-based limiting, current Kong docs explicitly say the plugin uses <code>input_cost</code> and <code>output_cost</code> defined in AI Proxy or AI Proxy Advanced <code>model.options</code>, in whatever unit you choose. The caveat is equally explicit: Kong documents that cost is only reflected on the <em>next request</em>, so cost-based blocking is not fully synchronous for the request that crosses the threshold.</p>
+<!-- DIAGRAM 3 — Kong plugin chain (fixed: no malformed lines, no overlapping boxes) -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 760 275" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="275" width="760"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="380" y="22">KONG — SYNCHRONOUS PLUGIN EXECUTION CHAIN (ACCESS PHASE)</text>
+<defs>
+<marker id="ka" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00D27B" points="0 0, 7 2.5, 0 5"></polygon></marker>
+<marker id="kar" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ff4757" points="0 0, 7 2.5, 0 5"></polygon></marker>
+</defs>
+<!-- Client -->
+<rect fill="#1a2233" height="36" rx="5" stroke="#4a5568" width="68" x="20" y="58"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="54" y="80">Client</text>
+<line marker-end="url(#ka)" stroke="#00D27B" stroke-width="1.5" x1="88" x2="110" y1="76" y2="76"></line>
+<!-- Plugin 1: auth / identity -->
+<rect fill="#001e13" height="56" rx="6" stroke="#00D27B" stroke-opacity=".6" width="110" x="112" y="48"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="167" y="70">① auth / identity</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="167" y="84">maps request identity</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="167" y="97">mTLS · OIDC · API key</text>
+<line marker-end="url(#ka)" stroke="#00D27B" stroke-width="1.5" x1="222" x2="244" y1="76" y2="76"></line>
+<!-- Plugin 2: ai-rate-limiting-advanced (highlighted) -->
+<rect fill="#001e13" height="72" rx="6" stroke="#00D27B" stroke-width="1.8" width="140" x="246" y="40"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="316" y="60">② ai-rate-limiting-advanced</text>
+<text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="316" y="74">SYNC check ← Redis (atomic)</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="316" y="87">tokens · cost · rpm by identifier</text>
+<text fill="#6272a4" font-size="7.5" text-anchor="middle" x="316" y="100">sliding / fixed window · Kong 3.7+</text>
+<!-- Redis box — directly below rate-limiting, no overlap with 429 box -->
+<line stroke="#00D27B" stroke-dasharray="3,2" stroke-width="1" x1="316" x2="316" y1="112" y2="132"></line>
+<rect fill="rgba(0,210,123,.07)" height="30" rx="5" stroke="#00D27B" stroke-opacity=".5" width="120" x="256" y="132"></rect>
+<text fill="#00D27B" font-size="9" text-anchor="middle" x="316" y="148">Redis counter store</text>
+<text fill="#7a8899" font-size="7.5" text-anchor="middle" x="316" y="159">tokens · cost · rpm</text>
+<!-- 429 path — exits bottom-left of rate-limiting, routes LEFT then DOWN, clear of redis box -->
+<line stroke="#ff4757" stroke-dasharray="4,2" stroke-width="1.2" x1="250" x2="250" y1="112" y2="128"></line>
+<line stroke="#ff4757" stroke-dasharray="4,2" stroke-width="1.2" x1="250" x2="155" y1="128" y2="128"></line>
+<line marker-end="url(#kar)" stroke="#ff4757" stroke-dasharray="4,2" stroke-width="1.2" x1="155" x2="155" y1="128" y2="146"></line>
+<!-- 429 box — positioned at y=148, well left of redis box (x=256+) -->
+<rect fill="#1a0a0a" height="28" rx="5" stroke="#ff4757" width="110" x="100" y="148"></rect>
+<text fill="#ff4757" font-size="9" text-anchor="middle" x="155" y="166">429 — Rate Limited</text>
+<!-- Arrow continue to ai-proxy -->
+<line marker-end="url(#ka)" stroke="#00D27B" stroke-width="1.5" x1="386" x2="410" y1="76" y2="76"></line>
+<!-- Plugin 3: ai-proxy(-advanced) -->
+<rect fill="#001e13" height="44" rx="6" stroke="#00D27B" stroke-opacity=".6" width="115" x="412" y="54"></rect>
+<text fill="#00D27B" font-size="9" font-weight="700" text-anchor="middle" x="469" y="72">③ ai-proxy(-advanced)</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="469" y="87">model routing + format norm</text>
+<line marker-end="url(#ka)" stroke="#00D27B" stroke-width="1.5" x1="527" x2="552" y1="76" y2="76"></line>
+<!-- LLM Targets — text only, no separate line elements that could render diagonally -->
+<rect fill="#1a2233" height="72" rx="6" stroke="#4a5568" width="186" x="554" y="40"></rect>
+<text fill="#10a37f" font-size="9" font-weight="600" x="570" y="61">▸ OpenAI (gpt-4o)</text>
+<text fill="#e8843a" font-size="9" font-weight="600" x="570" y="79">▸ Anthropic (Claude Sonnet)</text>
+<text fill="#6ba3f5" font-size="9" font-weight="600" x="570" y="97">▸ Self-hosted vLLM endpoint</text>
+<!-- Bottom legend — starts at y=192, clear of all boxes above (max y=176) -->
+<rect fill="#0a0e16" height="58" rx="5" stroke="#1e2d45" width="200" x="20" y="192"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="120" y="209">Limit Scopes</text>
+<text fill="#7a8899" font-size="8" x="28" y="225">Consumer · Credential · IP</text>
+<text fill="#7a8899" font-size="8" x="28" y="239">Service · Path · Header</text>
+<rect fill="#0a0e16" height="58" rx="5" stroke="#1e2d45" width="220" x="240" y="192"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="350" y="209">Limit Dimensions</text>
+<text fill="#7a8899" font-size="8" x="248" y="225">prompt_tokens · completion_tokens</text>
+<text fill="#7a8899" font-size="8" x="248" y="239">total_tokens · cost (from model.options)</text>
+<rect fill="#0a0e16" height="58" rx="5" stroke="#1e2d45" width="260" x="480" y="192"></rect>
+<text fill="#ffa726" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="610" y="209">Cost-based caveat</text>
+<text fill="#7a8899" font-size="8" x="488" y="225">Set model.options.input_cost /</text>
+<text fill="#7a8899" font-size="8" x="488" y="239">output_cost; block reflects next request.</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="380" y="264">Source: developer.konghq.com/plugins/ai-rate-limiting-advanced/ · Min. Kong 3.7 · AI License required</text>
+</svg>
+</div>
+<div class="img-caption">Kong's <code>ai-rate-limiting-advanced</code> plugin fires in the Access phase — before any upstream call. Token and request limits can be enforced synchronously, and cost-based limiting can use <code>model.options.input_cost</code> / <code>output_cost</code>. Kong's documented caveat is that cost is reflected on the next request. Based on Kong AI Rate Limiting Advanced and AI Proxy docs.</div>
+<div class="code-wrap"><pre># kong.yaml (deck) — cost-based limiting with custom model costs
+# Cost units below are arbitrary but must match the ai-rate-limiting threshold unit.
+_format_version: "3.0"
+
+plugins:
+  - name: ai-proxy
+    config:
+      route_type: llm/v1/chat
+      model:
+        provider: llama2
+        name: llama2
+        options:
+          llama2_format: ollama
+          upstream_url: http://llama2-server.local:11434/api/chat
+          input_cost: 0.40
+          output_cost: 1.20
+
+  - name: ai-rate-limiting-advanced
+    config:
+      identifier: consumer
+      strategy: redis
+      sync_rate: 0
+      tokens_count_strategy: cost
+      llm_providers:
+        - name: llama2
+          limit:
+            - 50
+          window_size:
+            - 3600
+
+# Kong docs caveat: cost is reflected on the next request, so the request that crosses
+# the threshold may still complete before the following request is blocked.
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/" target="_blank">Kong — AI Rate Limiting Advanced</a> · <a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM metrics</a> · <a href="https://developer.konghq.com/plugins/ai-proxy/examples/llama2-chat-route/" target="_blank">Kong — AI Proxy Llama2 route example</a></div>
+<div class="callout info">
+<div class="callout-title">📌 Kong Custom Pricing Note</div>
+<p>Kong's current docs explicitly support cost-based limiting from <code>model.options.input_cost</code> and <code>model.options.output_cost</code> on AI Proxy / AI Proxy Advanced. That makes custom pricing possible for self-hosted targets as well. The real limitation is timing rather than expressiveness: Kong documents that cost is only reflected on the next request, so cost-based enforcement lags the request that actually crosses the threshold.</p>
+</div>
+<hr/>
+<!-- ══════ §4 PORTKEY ══════ -->
+<div class="vendor-header portkey">
+<span class="vendor-badge">Portkey</span>
+<span class="vendor-title">§4 — Workspace Budgets, Model Catalog Limits, and Alert Thresholds</span>
+</div>
+<p>Portkey's current governance surface is centered on the <strong>Model Catalog</strong>, which replaces the older Virtual Keys terminology with managed Providers and Models. Workspace-level usage limits and rate limits are documented via the admin SDK, while credential-level controls are now expressed through integrations, providers, and models rather than the legacy Virtual Key UX.</p>
+<p>Rate limits and usage limits are both documented, but they behave differently. Current usage-limit policy docs say budget exhaustion returns <strong>HTTP 412 Precondition Failed</strong>, while rate-limit exhaustion returns <strong>429 Too Many Requests</strong>. Current docs also document private models, custom models, and pricing overrides in Model Catalog. The caveat is operational rather than categorical: unsupported models can still show <code>$0.00</code> until pricing support or an explicit pricing configuration is in place, and some custom-pricing controls are enterprise-specific.</p>
+<!-- DIAGRAM 4 — Portkey workspace hierarchy -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 720 275" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="275" width="720"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="360" y="24">PORTKEY — MODEL CATALOG, WORKSPACE POLICIES, AND ALERTS</text>
+<defs>
+<marker id="pa" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#5A67FF" points="0 0, 7 2.5, 0 5"></polygon></marker>
+</defs>
+<!-- Org -->
+<rect fill="#0a0c24" height="38" rx="6" stroke="#5A67FF" stroke-width="1.5" width="160" x="280" y="38"></rect>
+<text fill="#5A67FF" font-size="11" font-weight="700" text-anchor="middle" x="360" y="54">Organisation</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="360" y="68">Billing root</text>
+<!-- Workspaces -->
+<line marker-end="url(#pa)" stroke="#5A67FF" stroke-width="1.2" x1="360" x2="160" y1="76" y2="108"></line>
+<line marker-end="url(#pa)" stroke="#5A67FF" stroke-width="1.2" x1="360" x2="360" y1="76" y2="108"></line>
+<line marker-end="url(#pa)" stroke="#5A67FF" stroke-width="1.2" x1="360" x2="560" y1="76" y2="108"></line>
+<rect fill="#1a2233" height="38" rx="6" stroke="#1e2d45" width="160" x="80" y="108"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="160" y="124">Workspace: AI-Prod</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="160" y="137">credit_limit: $3,000 / month</text>
+<rect fill="#1a2233" height="38" rx="6" stroke="#1e2d45" width="160" x="280" y="108"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="360" y="124">Workspace: AI-Dev</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="360" y="137">credit_limit: $500 / month</text>
+<rect fill="#1a2233" height="38" rx="6" stroke="#1e2d45" width="160" x="480" y="108"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="560" y="124">Workspace: Staging</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="560" y="137">credit_limit: $200 / month</text>
+<!-- Virtual keys under AI-Prod -->
+<line marker-end="url(#pa)" stroke="#7a8899" stroke-dasharray="3,2" stroke-width="1" x1="160" x2="100" y1="146" y2="176"></line>
+<line marker-end="url(#pa)" stroke="#7a8899" stroke-dasharray="3,2" stroke-width="1" x1="160" x2="220" y1="146" y2="176"></line>
+<rect fill="#1a2233" height="48" rx="5" stroke="#5A67FF" stroke-opacity=".4" width="124" x="38" y="176"></rect>
+<text fill="#5A67FF" font-size="9" font-weight="600" text-anchor="middle" x="100" y="192">@openai-prod</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="100" y="205">usage_limit: $1,500</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="100" y="217">rpm: 100 · tpm: 500k</text>
+<rect fill="#1a2233" height="48" rx="5" stroke="#5A67FF" stroke-opacity=".4" width="124" x="174" y="176"></rect>
+<text fill="#5A67FF" font-size="9" font-weight="600" text-anchor="middle" x="236" y="192">@anthropic-prod</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="236" y="205">usage_limit: $1,500</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="236" y="217">rpm: 60 · tpm: 200k</text>
+<!-- Alert tiers -->
+<rect fill="rgba(90,103,255,.04)" height="100" rx="6" stroke="#5A67FF" stroke-opacity=".3" width="322" x="358" y="162"></rect>
+<text fill="#5A67FF" font-size="10" font-weight="600" text-anchor="middle" x="519" y="180">Alert Threshold Tiers</text>
+<text fill="#e2e8f0" font-size="9" x="368" y="200">alert_threshold reached -> notifications</text>
+<text fill="#ffa726" font-size="9" x="368" y="218">periodic_reset resets spend window</text>
+<text fill="#ff4757" font-size="9" x="368" y="236">usage_limit hit -> matching requests blocked</text>
+<text fill="#6272a4" font-size="8" x="368" y="252">Usage-limit block -> HTTP 412 · rate-limit block -> 429</text>
+</svg>
+</div>
+<div class="img-caption">Portkey's current governance model centers on workspaces plus Model Catalog providers/models. Workspace-level <code>credit_limit</code> and <code>alert_threshold</code> are set via the admin SDK or dashboard. Usage-limit exhaustion is documented as HTTP 412, while rate-limit exhaustion is 429. Based on Portkey administration, usage-policy, and Model Catalog docs.</div>
+<div class="code-wrap"><pre># Python SDK — workspace-level budget + rate limit (admin surface)
+# Source: portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits
+from portkey_ai import Portkey
+
+portkey = Portkey(api_key="PORTKEY_API_KEY")
+
+workspace = portkey.admin.workspaces.update(
+    workspace_id="WORKSPACE_ID",
+    usage_limits=[
+        {
+            "type": "cost",            # or "tokens"
+            "credit_limit": 500,        # dollars if type == "cost"
+            "alert_threshold": 400,
+            "periodic_reset": "monthly"
+        }
+    ],
+    rate_limits=[
+        {
+            "type": "requests",       # or "tokens"
+            "unit": "rpm",            # "rpm" | "rph" | "rpd"
+            "value": 120
+        }
+    ],
+)
+
+print(workspace)
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits" target="_blank">Portkey — Enforce Workspace Budget and Rate Limits</a> · <a href="https://docs.portkey.ai/docs/product/enterprise-offering/budget-policies" target="_blank">Portkey — Usage &amp; Rate Limit Policies</a> · <a href="https://docs.portkey.ai/docs/product/model-catalog" target="_blank">Portkey — Model Catalog</a></div>
+<div class="code-wrap"><pre># Python SDK — config-level retries + gateway features
+# Source: portkey.ai/docs/product/ai-gateway/configs
+from portkey_ai import Portkey
+
+client = Portkey(
+    api_key="PORTKEY_API_KEY",
+    config={
+        "retry": {
+            "attempts": 3,
+            "on_status_codes": [429, 500, 503]
+        },
+        "strategy": {"mode": "fallback"},
+        "targets": [
+            {
+                "provider": "@openai-prod",
+                "override_params": {"model": "gpt-4o"}
+            },
+            {
+                "provider": "@anthropic-prod",
+                "override_params": {"model": "claude-3-5-sonnet"}
+            }
+        ]
+    }
+)
+
+# If a usage-limit policy is exhausted, Portkey returns HTTP 412.
+# Rate-limit exhaustion remains HTTP 429.
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Gateway Configs</a> · <a href="https://docs.portkey.ai/docs/product/model-catalog/custom-models" target="_blank">Portkey — Adding Custom Models</a> · <a href="https://docs.portkey.ai/docs/product/model-catalog/model-overrides" target="_blank">Portkey — Overriding Model Details</a></div>
+<div class="callout warn">
+<div class="callout-title">⚠ Limitation — Self-Hosted Model Pricing &amp; Reactive Enforcement</div>
+<p>Portkey now documents private models, custom models, and pricing overrides in Model Catalog, so it is no longer accurate to say custom pricing is entirely unavailable. The practical caveat is that accurate budget enforcement depends on pricing support or an explicit pricing configuration. Unsupported models can still show <code>$0.00</code> until pricing is configured, and cost budgets remain reactive relative to already-completed spend.</p>
+</div>
+<hr/>
+<!-- ══════ §5 TRUEFOUNDRY ══════ -->
+<div class="vendor-header tf">
+<span class="vendor-badge">TrueFoundry</span>
+<span class="vendor-title">§5 — Synchronous Data-Plane Budget Blocking &amp; Cost-Per-Entity Controls</span>
+</div>
+<p>TrueFoundry's AI Gateway is documented as a <strong>low-latency, high-throughput proxy</strong> built on the Hono framework. The gateway plane architecture page explicitly states its core design principle: <em>no external calls in the hot path</em> — rate limits, load balancing, authentication, and authorization are all evaluated in-memory, with logs and metrics queued asynchronously. This is the architectural basis for synchronous enforcement: budget and rate-limit checks happen within the process before the upstream LLM call is dispatched.</p>
+<p>Budget policy is expressed as typed YAML of type <code>gateway-budget-config</code>. The documented unit is <code>cost_per_day</code> (USD), meaning TrueFoundry tracks token spend as a cost figure natively. Budgets can be applied per-user, per-model, per-virtual-account, or per metadata dimension (e.g., <code>metadata.project_id</code>) using the <code>budget_applies_per</code> field. Rate limiting uses the companion <code>gateway-rate-limiting-config</code> type with dimensions including <code>tokens_per_day</code> and <code>tokens_per_hour</code>. Both config types use first-match rule semantics — rule order is part of correctness.</p>
+<!-- DIAGRAM 5 — TrueFoundry synchronous data-plane -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 780 340" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="340" width="780"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="390" y="22">TRUEFOUNDRY — SYNCHRONOUS DATA-PLANE BUDGET ENFORCEMENT</text>
+<defs>
+<marker id="tfa" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#FF5533" points="0 0, 7 2.5, 0 5"></polygon></marker>
+<marker id="tfg" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0, 7 2.5, 0 5"></polygon></marker>
+<marker id="tfr" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ff4757" points="0 0, 7 2.5, 0 5"></polygon></marker>
+</defs>
+<!-- DATA PLANE boundary -->
+<rect fill="rgba(255,85,51,.03)" height="195" rx="8" stroke="#FF5533" stroke-dasharray="5,3" stroke-width="1.5" width="380" x="180" y="36"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600" x="220" y="50">DATA PLANE (Hono · stateless · K8s)</text>
+<!-- Client -->
+<rect fill="#1a2233" height="36" rx="6" stroke="#4a5568" width="90" x="20" y="105"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="65" y="127">Client / Agent</text>
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="110" x2="188" y1="123" y2="123"></line>
+<!-- Gateway block -->
+<rect fill="#1e0d08" height="40" rx="6" stroke="#FF5533" stroke-width="1.5" width="120" x="190" y="103"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="250" y="120">Gateway Plane</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="250" y="134">request received</text>
+<!-- Arrow to budget check -->
+<line marker-end="url(#tfa)" stroke="#FF5533" stroke-width="1.5" x1="250" x2="250" y1="143" y2="163"></line>
+<!-- Budget check -->
+<rect fill="rgba(255,85,51,.08)" height="50" rx="6" stroke="#FF5533" width="120" x="190" y="165"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="250" y="182">Budget Check</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="250" y="196">in-memory · no DB hop</text>
+<text fill="#50fa7b" font-size="8" text-anchor="middle" x="250" y="208">gateway-budget-config</text>
+<!-- In-memory store -->
+<line stroke="#FF5533" stroke-dasharray="3,2" stroke-width="1.2" x1="310" x2="346" y1="190" y2="190"></line>
+<rect fill="rgba(255,85,51,.06)" height="44" rx="6" stroke="#FF5533" stroke-opacity=".6" width="130" x="348" y="168"></rect>
+<text fill="#FF5533" font-size="10" font-weight="600" text-anchor="middle" x="413" y="185">In-Memory State</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="413" y="198">budget counters per</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="413" y="209">user / team / virtualaccount / metadata</text>
+<!-- Decision diamond -->
+<line stroke="#FF5533" stroke-width="1.2" x1="250" x2="250" y1="215" y2="237"></line>
+<polygon fill="#1a2233" points="250,237 274,253 250,269 226,253" stroke="#4a5568"></polygon>
+<text fill="#e2e8f0" font-size="9" text-anchor="middle" x="250" y="249">Budget</text>
+<text fill="#e2e8f0" font-size="8" text-anchor="middle" x="250" y="262">OK?</text>
+<!-- No — block -->
+<line marker-end="url(#tfr)" stroke="#ff4757" stroke-width="1.5" x1="226" x2="155" y1="253" y2="253"></line>
+<text fill="#ff4757" font-size="8" text-anchor="middle" x="190" y="247">No</text>
+<rect fill="#1a0a0a" height="28" rx="5" stroke="#ff4757" width="90" x="65" y="239"></rect>
+<text fill="#ff4757" font-size="9" text-anchor="middle" x="110" y="257">Budget blocked</text>
+<!-- Yes — LLM -->
+<line marker-end="url(#tfg)" stroke="#50fa7b" stroke-width="1.5" x1="274" x2="370" y1="253" y2="253"></line>
+<text fill="#50fa7b" font-size="8" text-anchor="middle" x="320" y="247">Yes</text>
+<rect fill="#1a2233" height="28" rx="5" stroke="#4a5568" width="130" x="372" y="239"></rect>
+<text fill="#e2e8f0" font-size="9" text-anchor="middle" x="437" y="257">LLM / GPU endpoint</text>
+<!-- Async logs -->
+<path d="M 437 267 Q 437 295 550 295 Q 630 295 630 240" fill="none" stroke="#7a8899" stroke-dasharray="3,2" stroke-width="1"></path>
+<text fill="#7a8899" font-size="8" font-style="italic" text-anchor="middle" x="500" y="308">async logs + metrics (queue -> control plane)</text>
+<!-- Cost attribution panel (right side) -->
+<rect fill="rgba(255,85,51,.04)" height="208" rx="8" stroke="#FF5533" stroke-opacity=".3" width="212" x="554" y="36"></rect>
+<text fill="#FF5533" font-size="10" font-weight="600" text-anchor="middle" x="660" y="56">FinOps Controls</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8.1" x="566" y="76">budget_applies_per: ['user']</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8.1" x="566" y="93">subjects: ['team:engineering']</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8.1" x="566" y="110">budget_applies_per: ['virtualaccount']</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8.1" x="566" y="127">attribution: team / user / model / app</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono, monospace" font-size="8.1" x="566" y="144">pricing: Public Cost / Private Cost</text>
+<text fill="#ffa726" font-size="8.5" font-weight="600" text-anchor="middle" x="660" y="176">First-match rule semantics</text>
+<text fill="#6272a4" font-size="8" text-anchor="middle" x="660" y="190">Rule order = policy correctness</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="390" y="328">Source: truefoundry.com/docs/platform/gateway-plane-architecture · /docs/ai-gateway/budgetlimiting</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's gateway plane performs in-memory budget and rate-limit checks before dispatching the upstream LLM call — no external DB hop on the hot path. Business-facing controls sit on top of that fast path: user/team budgets, workload-level attribution by model or app metadata, and <code>Public Cost</code> / <code>Private Cost</code> pricing for internal chargebacks across both managed APIs and self-hosted GPU endpoints.</div>
+<div class="code-wrap"><pre># gateway-rate-limiting-config — token velocity controls
+# Source: truefoundry.com/docs/ai-gateway/ratelimiting
+name: platform-rate-limits
+type: gateway-rate-limiting-config
+
+rules:
+  # First-match wins — order is part of correctness
+  - id: "model-hourly-tokens"
+    when: {}
+    limit_to: 1000000
+    unit: tokens_per_hour
+    rate_limit_applies_per: ["model"]
+
+  - id: "project-daily-tokens"
+    when:
+      metadata:
+        environment: "production"
+    limit_to: 5000000
+    unit: tokens_per_day
+    rate_limit_applies_per: ["metadata.project_id"]
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">truefoundry.com — Rate Limiting</a> · first-match semantics confirmed in handbook.</div>
+<div class="code-wrap"><pre># gateway-budget-config — cumulative cost controls (USD)
+# Source: truefoundry.com/docs/ai-gateway/budgetlimiting
+name: platform-budgets
+type: gateway-budget-config
+
+rules:
+  # Per-user daily budget
+  - id: "user-daily-budget"
+    when: {}
+    limit_to: 50
+    unit: cost_per_day
+    budget_applies_per: ["user"]
+
+  # Team monthly budget
+  - id: "team-monthly-budget"
+    when:
+      subjects: ["team:engineering"]
+    limit_to: 2000
+    unit: cost_per_month
+
+  # Per-virtual-account weekly budget
+  - id: "va-weekly-budget"
+    when: {}
+    limit_to: 1000
+    unit: cost_per_week
+    budget_applies_per: ["virtualaccount"]
+
+  # Per-project daily budget
+  - id: "project-daily-budget"
+    when:
+      metadata:
+        environment: "production"
+    limit_to: 500
+    unit: cost_per_day
+    budget_applies_per: ["metadata.project_id"]
+</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">truefoundry.com — Budget Limiting</a> · <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">truefoundry.com — Gateway Plane Architecture</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/cost-tracking" target="_blank">truefoundry.com — Cost Tracking</a></div>
+<div class="callout success"><div class="callout-title">✓ TrueFoundry — Budget Limits, Cost Attribution, and Custom Pricing Fit Together</div>
+<p>TrueFoundry exposes <code>budget_applies_per</code> for per-user, per-model, per-virtual-account, and metadata-scoped budgets, and it also documents team-scoped budgets through <code>subjects: ['team:…']</code>. On the observability side, its metrics UI and APIs can group cost and usage by team, user, model, virtual account, and metadata — which is the practical basis for per-application or per-customer chargeback. On pricing, <code>Public Cost</code> and <code>Private Cost</code> let operators align tracked spend with provider list prices, negotiated contracts, or self-hosted GPU economics without changing the request path.</p></div>
+<hr/>
+<!-- ══════ §6 CUSTOM PRICING CROSS-PLATFORM ══════ -->
+<h2>§6 — Custom Pricing for Self-Hosted GPU Models: Cross-Platform Summary</h2>
+<p>One of the most underappreciated FinOps challenges is accurately costing self-hosted workloads. When you run Llama 3.3 70B or Qwen2.5 72B on an internal H100 cluster, there is no provider invoice. The real cost is amortised hardware, electricity, networking, and engineering overhead — and it varies by team. Without custom pricing at the gateway level, none of this cost can be tracked, budgeted, or charged back accurately.</p>
+<div class="info-grid">
+<div class="info-card">
+<h4 style="color:var(--litellm)">LiteLLM</h4>
+<ul>
+<li>Per-model pricing via <code>model_info.input_cost_per_token</code> / <code>output_cost_per_token</code> in <code>proxy_config.yaml</code> — confirmed in current config docs</li>
+<li>Also supports broader custom pricing options including cost-per-second and zero-cost models</li>
+<li>Pricing is still model-scoped rather than per-team or per-application on the same model</li>
+<li>Custom rates flow into virtual-key spend tracking and dashboard analytics</li>
+</ul>
+</div>
+<div class="info-card">
+<h4 style="color:var(--kong)">Kong AI Gateway</h4>
+<ul>
+<li><code>ai-rate-limiting-advanced</code> supports cost-based limiting from <code>model.options.input_cost</code> / <code>output_cost</code></li>
+<li>This applies to self-hosted targets too, provided the model costs are defined in AI Proxy / AI Proxy Advanced</li>
+<li>The caveat is timing: Kong documents that cost is reflected on the <em>next request</em></li>
+<li>Good for metering and guardrails, but not a perfectly synchronous hard dollar stop</li>
+</ul>
+</div>
+<div class="info-card">
+<h4 style="color:var(--portkey)">Portkey</h4>
+<ul>
+<li>Tracks spend for supported providers/models and documents Model Catalog pricing management</li>
+<li>Custom models, private providers, and pricing overrides are now documented in current Portkey docs</li>
+<li>Unsupported models can still show <code>$0.00</code> until pricing is configured</li>
+<li>Some custom-pricing and enterprise governance controls are plan-dependent</li>
+</ul>
+</div>
+<div class="info-card">
+<h4 style="color:var(--tf)">TrueFoundry</h4>
+<ul><li>Budget Limiting is documented for users, teams, virtual accounts, models, and metadata-scoped workloads.</li><li>Cost Attribution is documented through dashboard/API grouping by team, user, model, virtual account, and custom metadata such as application or customer.</li><li>Custom Pricing Models are handled through Public Cost and Private Cost, which is useful for negotiated contracts and internal chargebacks on self-hosted models.</li><li>The same cost tracking surface applies to both managed API providers and self-hosted GPU endpoints in the fleet.</li></ul>
+</div>
+</div>
+<hr/>
+<!-- ══════ §7 FEATURE MATRIX ══════ -->
+<h2>§7 — Feature Matrix</h2>
+<p>Cross-referenced against vendor public documentation as of March 2026. ✅ = native / confirmed, ⚠ = possible with caveats, ❌ = not natively documented on the cited pages.</p>
+<div class="matrix-wrap">
+<table class="comparison-matrix">
+<colgroup>
+<col class="feature-col"/>
+<col class="tf-col"/>
+<col class="portkey-col"/>
+<col class="litellm-col"/>
+<col class="kong-col"/>
+</colgroup>
+<thead>
+<tr>
+<th>Feature</th>
+<th style="color:var(--tf)">TrueFoundry</th>
+<th style="color:var(--portkey)">Portkey</th>
+<th style="color:var(--litellm)">LiteLLM</th>
+<th style="color:var(--kong)">Kong</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Synchronous pre-request enforcement</strong></td>
+<td><span class="check">✅</span> In-memory hot path; no external DB call before upstream dispatch</td>
+<td><span class="cross">❌</span> Reactive for usage spend; 412 on usage-limit exhaustion</td>
+<td><span class="partial">⚠</span> Key eligibility checked pre-routing; spend / usage updates async after response</td>
+<td><span class="partial">⚠</span> Token limits sync in Access phase; cost thresholds reflect on the next request</td>
+</tr>
+<tr>
+<td><strong>Synchronous TPM / RPM rate limiting</strong></td>
+<td><span class="check">✅</span> In-memory, <code>tokens_per_hour</code> / <code>tokens_per_day</code></td>
+<td><span class="check">✅</span> Requests/tokens rate limits documented</td>
+<td><span class="check">✅</span> Redis-backed, pre-request</td>
+<td><span class="check">✅</span> Access-phase plugin, Redis or local</td>
+</tr>
+<tr>
+<td><strong>Per-credential budget surface</strong></td>
+<td><span class="check">✅</span> <code>budget_applies_per: ['virtualaccount']</code></td>
+<td><span class="check">✅</span> Integration/provider limits documented in Model Catalog; API-key budget controls are also documented</td>
+<td><span class="check">✅</span> <code>max_budget</code> + <code>budget_duration</code></td>
+<td><span class="partial">⚠</span> Per-consumer token limit; no native USD key budget</td>
+</tr>
+<tr>
+<td><strong>Scoped non-global budget (team / workspace / project)</strong></td>
+<td><span class="check">✅</span> Team budgets via <code>subjects</code>; project/app scoping via <code>metadata.project_id</code></td>
+<td><span class="check">✅</span> Workspace <code>credit_limit</code> via admin SDK</td>
+<td><span class="check">✅</span> Team budget entity in Postgres</td>
+<td><span class="partial">⚠</span> Consumer group rate limits; no native USD team budget</td>
+</tr>
+<tr>
+<td><strong>Proxy-wide global budget cap</strong></td>
+<td><span class="check">✅</span> Global rule with empty <code>when: {}</code> block</td>
+<td><span class="partial">⚠</span> Organisation billing limit (manual review)</td>
+<td><span class="check">✅</span> <code>litellm_settings.max_budget</code></td>
+<td><span class="cross">❌</span> No native global USD cap</td>
+</tr>
+<tr>
+<td><strong>Budget reset periods</strong></td>
+<td><span class="check">✅</span> <code>cost_per_day / cost_per_week / cost_per_month</code> examples documented</td>
+<td><span class="check">✅</span> <code>periodic_reset: weekly / monthly</code> + custom reset days</td>
+<td><span class="check">✅</span> <code>1d / 7d / 30d / custom</code></td>
+<td><span class="check">✅</span> Configurable window size in seconds</td>
+</tr>
+<tr>
+<td><strong>Budget exhaustion status code</strong></td>
+<td><span class="partial">⚠</span> Not explicitly documented on the cited pages used here</td>
+<td><span class="check">✅</span> <code>412</code> for usage-limit exhaustion; <code>429</code> for rate limits</td>
+<td><span class="partial">⚠</span> Not distinctly documented on the cited pages</td>
+<td><span class="check">✅</span> <code>429</code> when the plugin limit is reached</td>
+</tr>
+<tr>
+<td><strong>Budget / spend alert notifications</strong></td>
+<td><span class="check">✅</span> <code>alerts.thresholds</code> + <code>notification_target</code> in current docs</td>
+<td><span class="check">✅</span> <code>alert_threshold</code> + configured notifications / admin alerts</td>
+<td><span class="check">✅</span> Spend tracked via callbacks; alerts documented</td>
+<td><span class="partial">⚠</span> Via custom logging plugin / external pipeline</td>
+</tr>
+<tr>
+<td><strong>Custom per-token cost for self-hosted models</strong></td>
+<td><span class="check">✅</span> <code>Public Cost</code> / <code>Private Cost</code> support custom model pricing for chargebacks</td>
+<td><span class="partial">⚠</span> Model Catalog custom pricing / private models documented; unsupported models show <code>$0.00</code> until configured</td>
+<td><span class="check">✅</span> <code>input/output_cost_per_token</code> per model slug in YAML</td>
+<td><span class="partial">⚠</span> <code>model.options.input_cost/output_cost</code>; cost reflected on next request</td>
+</tr>
+<tr>
+<td><strong>Per-application pricing overrides</strong></td>
+<td><span class="cross">❌</span> Pricing is model-level; app-level control comes from metadata-based attribution and budget rules</td>
+<td><span class="cross">❌</span> Not documented</td>
+<td><span class="cross">❌</span> Pricing overrides are model-scoped</td>
+<td><span class="cross">❌</span> Not documented</td>
+</tr>
+<tr>
+<td><strong>Cost-based budget dimension</strong></td>
+<td><span class="check">✅</span> <code>unit: cost_per_day</code> confirmed in docs</td>
+<td><span class="check">✅</span> <code>credit_limit</code> type: cost</td>
+<td><span class="check">✅</span> <code>max_budget</code> in USD</td>
+<td><span class="partial">⚠</span> Cost-based limiting supported when <code>model.options</code> costs are set</td>
+</tr>
+<tr>
+<td><strong>Provider budget routing (exclude exhausted provider)</strong></td>
+<td><span class="partial">⚠</span> Priority routing + fallback can approximate this</td>
+<td><span class="cross">❌</span> Not a documented routing signal</td>
+<td><span class="check">✅</span> <code>provider_budget_config</code> in router_settings</td>
+<td><span class="cross">❌</span> Not a documented routing signal</td>
+</tr>
+<tr>
+<td><strong>Observability / spend reporting</strong></td>
+<td><span class="check">✅</span> Metrics dashboard/API group by model, user, team, virtual account, and metadata</td>
+<td><span class="check">✅</span> Dashboard analytics, OTel-compliant traces</td>
+<td><span class="check">✅</span> OTel, Langfuse, Prometheus callbacks; <code>/spend</code> API</td>
+<td><span class="check">✅</span> Prometheus AI metrics, OTel attributes, audit logs</td>
+</tr>
+<tr>
+<td><strong>Deployment model</strong></td>
+<td>Self-hosted K8s (Helm + Terraform) or TrueFoundry-managed</td>
+<td>SaaS-first; hybrid VPC data plane option (Helm)</td>
+<td>Self-hosted OSS or managed</td>
+<td>Self-hosted or Kong Konnect SaaS</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p style="font-size:.72rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-top:.3rem;">⚠ Partial = feature exists with the caveat stated. All claims cross-referenced against vendor public docs and the vendor handbooks as of March 2026.</p>
+<hr/>
+<!-- ══════ §8 VERDICT ══════ -->
+<h2>§8 — Editorial Verdict</h2>
+<div class="verdict-grid">
+<div class="verdict-card litellm">
+<div class="verdict-label">LiteLLM</div>
+<div class="verdict-name">Best OSS Flexibility, With a Concurrency Asterisk</div>
+<div class="verdict-text">LiteLLM remains a strong OSS option for teams that want virtual keys, provider budget routing, and flexible pricing controls. The current docs support pre-routing key checks with cache first and async spend writes after the response. Treat TPM/RPM as the hard synchronous ceiling, and describe any dollar-budget concurrency window as an architectural inference rather than a documented LiteLLM flaw.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Cost-aware OSS deployments needing fast setup with multi-provider budget governance and provider-level spend routing.</div>
+</div>
+<div class="verdict-card kong">
+<div class="verdict-label">Kong AI Gateway</div>
+<div class="verdict-name">Infrastructure-Grade Token Throttling</div>
+<div class="verdict-text">Kong's <code>ai-rate-limiting-advanced</code> plugin provides very strong synchronous token/request enforcement in the Access phase. The docs also support custom cost units through <code>model.options.input_cost</code> / <code>output_cost</code>, including self-hosted targets. The caveat is that Kong documents cost reflection on the next request, so cost-based blocking is slightly lagged even when token limits are precise.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams already operating Kong infrastructure who need rock-solid token throughput controls and can handle USD analytics externally.</div>
+</div>
+<div class="verdict-card portkey">
+<div class="verdict-label">Portkey</div>
+<div class="verdict-name">Developer-Friendly Budgets, Managed-Provider Focus</div>
+<div class="verdict-text">Portkey delivers a polished governance surface for teams that want workspace controls and Model Catalog-based model management with minimal operational overhead. Current docs now cover custom models, private providers, and pricing overrides. The limitation is enforcement shape rather than pure feature absence: usage budgets are still reactive relative to already-observed spend, and unsupported models need explicit pricing configuration to avoid <code>$0.00</code> tracking.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams using managed providers exclusively who want low-ops budget governance without running gateway infrastructure.</div>
+</div>
+<div class="verdict-card tf">
+<div class="verdict-label">TrueFoundry</div>
+<div class="verdict-name">Strictest Hot-Path Enforcement + Cost-Per-Entity Granularity</div>
+<div class="verdict-text">TrueFoundry is the clearest fit when you need strict hot-path enforcement and business-readable FinOps controls in the same platform. The docs now support a stronger story than simple budget blocking: user/team budget limiting, cost attribution by team/user/model/app, and <code>Public Cost</code> / <code>Private Cost</code> pricing for internal chargebacks across both hosted and self-hosted model fleets.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> K8s-native platform teams, regulated environments, and enterprises that need one gateway surface for policy enforcement, chargeback-ready attribution, and custom pricing.</div>
+</div>
+</div>
+<h3>Positioning Map — Enforcement Strictness vs. FinOps Completeness</h3>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewbox="0 0 620 410" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="410" width="620"></rect>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="65" y1="20" y2="340"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="575" y1="340" y2="340"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="65" x2="575" y1="180" y2="180"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="320" x2="320" y1="20" y2="340"></line>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" x="320" y="376">← Low Sync Enforcement Strictness — High →</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" transform="rotate(-90,14,180)" x="14" y="180">FinOps Completeness</text>
+<!-- Portkey — lower-left (reactive, managed providers) -->
+<circle cx="155" cy="242" fill="#5A67FF" fill-opacity=".1" r="44" stroke="#5A67FF" stroke-width="1.5"></circle>
+<text fill="#5A67FF" font-size="13" font-weight="700" text-anchor="middle" x="155" y="238">Portkey</text>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="155" y="255">Model Catalog · reactive</text>
+<!-- Kong — right-mid (strong sync token, limited USD / custom) -->
+<circle cx="435" cy="258" fill="#00D27B" fill-opacity=".1" r="42" stroke="#00D27B" stroke-width="1.5"></circle>
+<text fill="#00D27B" font-size="13" font-weight="700" text-anchor="middle" x="435" y="254">Kong</text>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="435" y="271">Token-sync · next-request cost</text>
+<!-- LiteLLM — mid (good FinOps, TPM sync, dollar lag) -->
+<circle cx="295" cy="145" fill="#00C2CB" fill-opacity=".1" r="44" stroke="#00C2CB" stroke-width="1.5"></circle>
+<text fill="#00C2CB" font-size="13" font-weight="700" text-anchor="middle" x="295" y="141">LiteLLM</text>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="295" y="158">OSS · cache-first · async spend</text>
+<!-- TrueFoundry — top-right (in-memory hot path + cost dims) -->
+<circle cx="498" cy="78" fill="#FF5533" fill-opacity=".1" r="52" stroke="#FF5533" stroke-width="1.8"></circle>
+<text fill="#FF5533" font-size="13" font-weight="700" text-anchor="middle" x="498" y="72">TrueFoundry</text>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="498" y="89">In-mem hot path</text>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="498" y="104">budgets · attribution · pricing</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="190" y="338">LOW SYNC / LOW FINOPS</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="455" y="338">HIGH SYNC / LOW FINOPS</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="190" y="38">LOW SYNC / HIGH FINOPS</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="455" y="38">HIGH SYNC / HIGH FINOPS</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">X = synchronous enforcement strictness (pre-request blocking under concurrency). Y = FinOps completeness (cost visibility, custom pricing, segmentation). Editorial assessment as of March 2026.</p>
+<hr/>
+<!-- ══════ §9 REFERENCES ══════ -->
+<h2>§9 — References</h2>
+<ol class="ref-list">
+<li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture (Life of a Request)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Settings Reference</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/custom_pricing" target="_blank">LiteLLM — Custom LLM Pricing</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/provider_budget_routing" target="_blank">LiteLLM — Provider Budget Routing</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">LiteLLM — Virtual Keys &amp; Team Management</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/" target="_blank">Kong — AI Rate Limiting Advanced</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM metrics</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-proxy/" target="_blank">Kong — AI Proxy</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-proxy/examples/llama2-chat-route/" target="_blank">Kong — AI Proxy: Chat route with Llama 2</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/model-catalog" target="_blank">Portkey — Model Catalog</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/model-catalog/custom-models" target="_blank">Portkey — Adding Custom Models</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/model-catalog/model-overrides" target="_blank">Portkey — Overriding Model Details</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/observability/cost-management" target="_blank">Portkey — Model Pricing and Cost Management</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits" target="_blank">Portkey — Enforce Workspace Budget and Rate Limits</a></li>
+<li><a href="https://docs.portkey.ai/docs/product/enterprise-offering/budget-policies" target="_blank">Portkey — Usage &amp; Rate Limit Policies</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">TrueFoundry — Budget Limiting</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">TrueFoundry — Installation and Deployment Overview</a></li>
+</ol>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 5 of 15  ·  March 2026  ·  All vendor names are trademarks of their respective owners.<br/>
+  Feature claims cross-referenced against official public documentation and vendor handbooks. Verify specific configuration field names against vendor changelogs before production use.
+</p>
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function () { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function (pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function () {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function () { btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+</body>
+</html>
+
