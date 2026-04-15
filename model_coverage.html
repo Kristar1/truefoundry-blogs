@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway Series #1 — Model Coverage &amp; API Unification</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+:root {
+  --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+  --litellm: #00C2CB;
+  --kong:    #00D27B;
+  --portkey: #5A67FF;
+  --tf:      #FF5533;
+  --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 16px; line-height: 1.75;
+  max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+}
+code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+p { margin-bottom: 1rem; }
+a { color: #60a5fa; text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+li { margin-bottom: .3rem; }
+
+/* ── Series bar ── */
+.series-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+.tag-pill {
+  display: inline-block; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace;
+  padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase;
+}
+.tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+.series-dots { display: flex; gap: .3rem; align-items: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+.dot.active { background: #60a5fa; }
+.meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+.meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+.disclaimer {
+  background: #1a1200; border: 1px solid #3d2c00; color: var(--warn);
+  font-size: .78rem; padding: .5rem 1rem; border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── Code ── */
+.code-wrap { position: relative; margin: 1rem 0 .4rem; }
+.code-wrap pre {
+  background: #080c12; border: 1px solid var(--border); border-radius: 8px;
+  padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto;
+  font-size: .83rem; line-height: 1.6; margin: 0;
+}
+.copy-btn {
+  position: absolute; top: .55rem; right: .55rem;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+  font-size: .68rem; padding: .22rem .55rem; border-radius: 5px;
+  cursor: pointer; transition: all .15s ease; user-select: none;
+  letter-spacing: .03em; line-height: 1.4;
+}
+.copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+.copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+.kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+.key { color: #50fa7b; } .num { color: #bd93f9; } .hd { color: #8be9fd; }
+.source-note {
+  font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+  margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border);
+}
+.source-note a { color: #7a8899; }
+.source-note a:hover { color: #60a5fa; }
+
+/* ── Callouts ── */
+.callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+.callout.danger { border-color: var(--danger); background: #1a0a0a; }
+.callout.warn { border-color: var(--warn); background: #1a1200; }
+.callout.info { border-color: #60a5fa; background: #0a1220; }
+.callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+.callout.danger .callout-title { color: var(--danger); }
+.callout.warn .callout-title { color: var(--warn); }
+.callout.info .callout-title { color: #60a5fa; }
+
+/* ── Quick-picks ── */
+.quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+.qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+.qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+.qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+.c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+.c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+.c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+.c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+
+/* ── Vendor headers ── */
+.vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+.vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+.vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+.vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+.vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+.vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+.vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+.vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+.vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+.vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+.vendor-title { font-size: 1.2rem; font-weight: 700; }
+
+/* ── Feature Matrix ── */
+.matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+thead tr { background: var(--surface2); }
+th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); white-space: nowrap; }
+td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.45; }
+tr:hover td { background: var(--surface); }
+.check { color: #50fa7b; font-weight: 700; } .cross { color: var(--danger); font-weight: 700; } .partial { color: var(--warn); font-weight: 700; }
+td code { font-size: .78rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
+td:first-child { font-weight: 600; color: var(--text); }
+
+/* ── Verdicts ── */
+.verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+.verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+.verdict-card.litellm::before { background: var(--litellm); }
+.verdict-card.kong::before    { background: var(--kong); }
+.verdict-card.portkey::before { background: var(--portkey); }
+.verdict-card.tf::before      { background: var(--tf); }
+.verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+.verdict-card.litellm .verdict-label { color: var(--litellm); }
+.verdict-card.kong    .verdict-label { color: var(--kong); }
+.verdict-card.portkey .verdict-label { color: var(--portkey); }
+.verdict-card.tf      .verdict-label { color: var(--tf); }
+.verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+.verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+.verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+.verdict-use strong { color: #a5f3fc; }
+
+/* ── Scenario box ── */
+.scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+.scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+
+/* ── Model pills ── */
+.model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+.mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+.mpill.openai     { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+.mpill.anthropic  { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+.mpill.google     { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+.mpill.self-host  { border-color: #9a5cf555; color: #c084fc; background: #130a1a; }
+
+/* ── SVG wrap ── */
+.svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+.svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+.img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+.ref-list { font-size: .83rem; }
+.ref-list li { margin-bottom: .4rem; color: var(--muted); }
+.ref-list a { color: #60a5fa; }
+</style>
+</head>
+<body>
+
+<!-- ══ SERIES BAR ══ -->
+<div class="series-bar">
+  <span class="tag-pill">AI Gateway Series</span>
+  <div class="series-dots">
+    <div class="dot active" title="Blog 1 — Model Coverage &amp; API Unification"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div>
+  </div>
+  <span class="tag-pill active">Blog 1 of 15</span>
+</div>
+
+<h1>Model Coverage &amp; API Unification:<br>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 18 min read</span>
+  <span class="meta-item">🗓 March 2026</span>
+  <span class="meta-item">👤 Platform Engineering</span>
+  <div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions based on official vendor public documentation as of March 2026. All code snippets are illustrative reconstructions grounded in official docs. Verify against current vendor documentation before making architectural decisions.</div>
+</div>
+
+<p style="font-size:.82rem; color: var(--muted);">Illustrative model strings referenced in code examples throughout this draft (re-verify exact vendor IDs before production use):</p>
+<div class="model-pills">
+  <span class="mpill openai">openai/gpt-4o</span>
+  <span class="mpill anthropic">anthropic/claude-opus-4-6</span>
+  <span class="mpill anthropic">anthropic/claude-sonnet-4-6</span>
+  <span class="mpill google">google/gemini-2.0-flash</span>
+  <span class="mpill self-host">meta-llama/Llama-3.3-70B-Instruct</span>
+</div>
+
+<!-- ══ §0 TL;DR ══ -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">🚨 Real-World Scenario: The 3 AM Vendor Lock-In Crisis</div>
+  <p>It's 3:17 AM. Your on-call engineer is paged: your enterprise OpenAI account has been throttled to 20% of normal rate limits due to a billing dispute. Your document-intelligence pipeline—processing 40,000 requests per hour—is returning <code>429</code>s.</p>
+  <p>For non-engineers, a <code>429 Too Many Requests</code> response means the upstream model provider is refusing to serve more traffic right now. In business terms, that means user workflows stall, queued jobs back up, customer-facing features become intermittent, support tickets spike, and every minute of delay pushes you closer to missed SLAs, contractual penalties, and executive escalation.</p>
+  <p>The engineering lead pulls up the codebase. The OpenAI base URL is hardcoded in 14 microservices across 3 languages. Every prompt has been tuned for GPT-4o's specific parameter behavior. A full migration would take a sprint—but you have 15 minutes before dashboards turn red, internal stakeholders start asking for ETAs, and customers notice their documents are no longer being processed on time.</p>
+  <p><strong>With an AI Gateway providing true API unification:</strong> the fix is a config edit. Your applications still call <code>production-chat</code> as a stable logical model name. The gateway silently re-routes that alias to <code>claude-opus-4-6</code> or a self-hosted <code>Llama-3.3-70B-Instruct</code> instance already running in your VPC. No application code changes. No redeployment. No emergency vendor-specific patching across 14 services. This is what API unification means in production: the business sees continuity while the platform team swaps the underlying provider behind the scenes.</p>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-litellm">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">LiteLLM</div>
+    <div class="qp-desc">Python container with a very broad, explicitly documented provider matrix. Point <code>api_base</code> at OpenAI-compatible endpoints. Same governance (virtual keys, budgets, guardrails) regardless of provider. Redis required at ≥1,000 RPS.</div>
+  </div>
+  <div class="qp-card c-kong">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Kong AI Gateway</div>
+    <div class="qp-desc">Plugin-chain normalization at the gateway layer. AI Proxy handles provider translation via <code>route_type</code>. Multi-target routing requires AI Proxy Advanced (enterprise, min. v3.8). Rich provider-aware gateway/plugin surface.</div>
+  </div>
+  <div class="qp-card c-portkey">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Portkey</div>
+    <div class="qp-desc">Config-first control plane. <code>@provider-slug/model-name</code> addressing decouples app code from credentials. Hybrid VPC Helm deployment keeps prompts in your network. Especially clean developer-facing unification model.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">Kubernetes-native split-plane architecture. In this comparison, it is the platform that most explicitly spans <em>both</em> self-hosted LLM deployment <em>and</em> governed gateway exposure. In-memory hot path; stateless Hono proxy. Operationally heavier when adopting the broader platform surface.</div>
+  </div>
+</div>
+
+<!-- ══ §1 WHY ══ -->
+<h2>§1 — Why API Unification Is the First Problem to Solve</h2>
+
+<p>Every major LLM provider has diverged on the operational details that matter: authentication header patterns, streaming event formats, function-calling schemas, error codes, and endpoint path conventions. OpenAI's <code>/v1/chat/completions</code>, Azure OpenAI's deployment-scoped paths like <code>/openai/deployments/{deployment_name}/chat/completions</code>, Anthropic's <code>x-api-key</code> header, and Google Vertex's OAuth2 token flow are all meaningfully different at the wire level.</p>
+
+<p>Without a unification layer, every application team becomes its own LLM control plane—implementing provider-specific retry logic, handling divergent error codes, managing credential rotation per vendor, and maintaining forks of inference code for each provider. The blast radius of any vendor incident is proportional to how deeply that provider's API shape has leaked into application code.</p>
+
+<p>There are three structural layers to solve:</p>
+<ul>
+  <li><strong>Layer 1 — Wire format normalization:</strong> Translating request/response schemas between an OpenAI-compatible client and non-OpenAI upstream endpoints without application changes.</li>
+  <li><strong>Layer 2 — Credential abstraction:</strong> Centralizing provider API keys, IAM roles, and tokens so that applications present a single gateway credential, not per-vendor secrets.</li>
+  <li><strong>Layer 3 — Model namespace stability:</strong> Exposing logical model names (e.g., <code>production-chat</code>) that decouple application intent from the physical provider and deployment decision.</li>
+</ul>
+
+<!-- SVG: Normalization overview -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="280" fill="#121826"/>
+  <text x="410" y="24" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">The API Unification Problem — Three Layers</text>
+
+  <!-- LEFT: provider chaos -->
+  <rect x="20" y="42" width="230" height="216" rx="8" fill="#0a0e16" stroke="#1e2d45"/>
+  <text x="135" y="64" text-anchor="middle" fill="#7a8899" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">WITHOUT GATEWAY</text>
+
+  <rect x="35" y="76" width="200" height="32" rx="5" fill="#1a0a0a" stroke="#ff475744"/>
+  <text x="135" y="90" text-anchor="middle" fill="#ff4757" font-size="9" font-weight="600">App A → POST /v1/chat/completions</text>
+  <text x="135" y="102" text-anchor="middle" fill="#7a8899" font-size="8">Authorization: Bearer $OPENAI_KEY</text>
+
+  <rect x="35" y="118" width="200" height="32" rx="5" fill="#1a0a0a" stroke="#ff475744"/>
+  <text x="135" y="132" text-anchor="middle" fill="#ff4757" font-size="9" font-weight="600">App B → /deployments/{name}/chat</text>
+  <text x="135" y="144" text-anchor="middle" fill="#7a8899" font-size="8">api-key: $AZURE_KEY (custom header)</text>
+
+  <rect x="35" y="160" width="200" height="32" rx="5" fill="#1a0a0a" stroke="#ff475744"/>
+  <text x="135" y="174" text-anchor="middle" fill="#ff4757" font-size="9" font-weight="600">App C → x-api-key (Anthropic format)</text>
+  <text x="135" y="186" text-anchor="middle" fill="#7a8899" font-size="8">Different stop_sequences, max_tokens</text>
+
+  <text x="135" y="222" text-anchor="middle" fill="#3a4a5a" font-size="9" font-style="italic">14 microservices × N providers =</text>
+  <text x="135" y="236" text-anchor="middle" fill="#ff4757" font-size="9" font-style="italic">vendor lock-in at every layer</text>
+  <text x="135" y="252" text-anchor="middle" fill="#3a4a5a" font-size="8" font-style="italic">credential rotation requires code deploys</text>
+
+  <!-- CENTER: gateway -->
+  <rect x="310" y="80" width="200" height="120" rx="8" fill="#0d1420" stroke="#00d4ff" stroke-width="1.5"/>
+  <text x="410" y="106" text-anchor="middle" fill="#00d4ff" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">AI GATEWAY</text>
+  <rect x="330" y="114" width="160" height="22" rx="4" fill="#0a1a28" stroke="#00d4ff" stroke-opacity=".4"/>
+  <text x="410" y="129" text-anchor="middle" fill="#a5f3fc" font-size="9">Layer 1: Wire format translation</text>
+  <rect x="330" y="140" width="160" height="22" rx="4" fill="#0a1a28" stroke="#00d4ff" stroke-opacity=".4"/>
+  <text x="410" y="155" text-anchor="middle" fill="#a5f3fc" font-size="9">Layer 2: Credential abstraction</text>
+  <rect x="330" y="166" width="160" height="22" rx="4" fill="#0a1a28" stroke="#00d4ff" stroke-opacity=".4"/>
+  <text x="410" y="181" text-anchor="middle" fill="#a5f3fc" font-size="9">Layer 3: Logical model namespace</text>
+
+  <!-- Arrows: app → gateway -->
+  <defs>
+    <marker id="arr1" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00d4ff" opacity=".6"/></marker>
+    <marker id="arr2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#50fa7b" opacity=".7"/></marker>
+  </defs>
+  <line x1="250" y1="110" x2="308" y2="120" stroke="#00d4ff" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#arr1)"/>
+  <line x1="250" y1="140" x2="308" y2="140" stroke="#00d4ff" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#arr1)"/>
+  <line x1="250" y1="170" x2="308" y2="160" stroke="#00d4ff" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#arr1)"/>
+
+  <!-- RIGHT: clean output -->
+  <rect x="572" y="42" width="230" height="216" rx="8" fill="#0a0e16" stroke="#1e2d45"/>
+  <text x="687" y="64" text-anchor="middle" fill="#7a8899" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">WITH GATEWAY</text>
+
+  <rect x="588" y="76" width="200" height="32" rx="5" fill="#0a1a10" stroke="#50fa7b44"/>
+  <text x="688" y="90" text-anchor="middle" fill="#50fa7b" font-size="9" font-weight="600">All apps → POST /v1/chat/completions</text>
+  <text x="688" y="102" text-anchor="middle" fill="#7a8899" font-size="8">Authorization: Bearer $GATEWAY_KEY (single)</text>
+
+  <rect x="588" y="118" width="200" height="32" rx="5" fill="#0a1a10" stroke="#50fa7b44"/>
+  <text x="688" y="132" text-anchor="middle" fill="#50fa7b" font-size="9" font-weight="600">model: "production-chat" (logical name)</text>
+  <text x="688" y="144" text-anchor="middle" fill="#7a8899" font-size="8">Gateway resolves to any physical target</text>
+
+  <rect x="588" y="160" width="200" height="32" rx="5" fill="#0a1a10" stroke="#50fa7b44"/>
+  <text x="688" y="174" text-anchor="middle" fill="#50fa7b" font-size="9" font-weight="600">Swap provider: zero app code changes</text>
+  <text x="688" y="186" text-anchor="middle" fill="#7a8899" font-size="8">Config edit → credential stays internal</text>
+
+  <text x="688" y="222" text-anchor="middle" fill="#3a4a5a" font-size="9" font-style="italic">Provider swap in 3 AM crisis:</text>
+  <text x="688" y="236" text-anchor="middle" fill="#50fa7b" font-size="9" font-style="italic">config edit → gateway reload</text>
+  <text x="688" y="252" text-anchor="middle" fill="#3a4a5a" font-size="8" font-style="italic">applications never know it happened</text>
+
+  <!-- gateway → providers arrows -->
+  <line x1="512" y1="120" x2="570" y2="110" stroke="#50fa7b" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#arr2)"/>
+  <line x1="512" y1="140" x2="570" y2="140" stroke="#50fa7b" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#arr2)"/>
+  <line x1="512" y1="160" x2="570" y2="170" stroke="#50fa7b" stroke-width="1.5" stroke-opacity=".5" marker-end="url(#arr2)"/>
+</svg>
+</div>
+<div class="img-caption">API unification solves three stacked problems. All four gateways address Layer 1 and 2; the depth of Layer 3 (logical namespace stability) is where they diverge. Editorial illustration.</div>
+
+<hr>
+
+<!-- ══ §2 LITELLM ══ -->
+<div class="vendor-header litellm">
+  <span class="vendor-badge">LiteLLM</span>
+  <span class="vendor-title">§2 — Python-Native Universal Adapter</span>
+</div>
+
+<h3>Architecture</h3>
+<p>LiteLLM's unification model is built around the <code>model_list</code> in <code>config.yaml</code>. Each entry exposes a <code>model_name</code>—the logical alias your application calls—mapped to a <code>litellm_params</code> block containing the actual upstream model identifier, <code>api_key</code>, and <code>api_base</code>. The docs are explicit: <em>"model_name is the name received by the proxy, while litellm_params.model is the identifier actually routed on the backend."</em></p>
+
+<p>Critically, multiple entries can share the same <code>model_name</code>. The proxy treats these as an implicit load-balanced group under the active routing strategy (<code>usage-based-routing</code>, <code>latency-based-routing</code>, <code>simple-shuffle</code>, <code>least-busy</code>). This means multi-provider fallback is a zero-application-code-change operation. The request pipeline places virtual-key validation and budget checks <em>before</em> the router, documented at <a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">docs.litellm.ai/docs/proxy/architecture</a>—so routing decisions are informed by identity and spend state before provider health is evaluated.</p>
+
+<div class="code-wrap"><pre><span class="cm"># config.yaml — multi-provider model_list with self-hosted endpoint</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/configs · docs.litellm.ai/docs/proxy/reliability</span>
+
+<span class="key">model_list</span>:
+
+  <span class="cm"># Logical name "production-chat" → OpenAI GPT-4o (primary)</span>
+  - <span class="key">model_name</span>: <span class="str">production-chat</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>:     <span class="str">openai/gpt-4o</span>
+      <span class="key">api_key</span>:  <span class="str">os.environ/OPENAI_API_KEY</span>
+      <span class="key">tpm</span>: <span class="num">200000</span>
+      <span class="key">rpm</span>: <span class="num">500</span>
+
+  <span class="cm"># Same logical name → Anthropic Claude (load-balanced with above)</span>
+  - <span class="key">model_name</span>: <span class="str">production-chat</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>:     <span class="str">anthropic/claude-sonnet-4-6</span>
+      <span class="key">api_key</span>:  <span class="str">os.environ/ANTHROPIC_API_KEY</span>
+      <span class="key">tpm</span>: <span class="num">150000</span>
+      <span class="key">rpm</span>: <span class="num">400</span>
+
+  <span class="cm"># Self-hosted vLLM — same interface, private cluster endpoint</span>
+  <span class="cm"># api_base points at any OpenAI-compatible server</span>
+  - <span class="key">model_name</span>: <span class="str">private-llm</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>:     <span class="str">openai/meta-llama/Llama-3.3-70B-Instruct</span>
+      <span class="key">api_key</span>:  <span class="str">os.environ/INTERNAL_VLLM_KEY</span>
+      <span class="key">api_base</span>: <span class="str">http://vllm-svc.ml-infra.svc.cluster.local:8000/v1</span>
+
+<span class="key">router_settings</span>:
+  <span class="key">routing_strategy</span>: <span class="str">usage-based-routing</span>
+  <span class="key">num_retries</span>: <span class="num">2</span>
+  <span class="key">fallbacks</span>:
+    - <span class="str">production-chat</span>: [<span class="str">private-llm</span>]
+
+<span class="key">general_settings</span>:
+  <span class="key">master_key</span>: <span class="str">os.environ/LITELLM_MASTER_KEY</span>
+
+<span class="key">litellm_settings</span>:
+  <span class="key">callbacks</span>: [<span class="str">"otel"</span>]
+  <span class="key">success_callback</span>: [<span class="str">"langfuse"</span>]
+  <span class="key">service_callbacks</span>: [<span class="str">"prometheus"</span>]
+  <span class="key">turn_off_message_logging</span>: <span class="kw">false</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/configs" target="_blank">docs.litellm.ai/docs/proxy/configs</a> · <a href="https://docs.litellm.ai/docs/proxy/reliability" target="_blank">docs.litellm.ai/docs/proxy/reliability</a> · <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">config_settings</a></div>
+
+<h3>Self-Hosted &amp; Custom Provider Support</h3>
+<p>The <code>api_base</code> override is LiteLLM's most powerful self-hosted primitive. Any OpenAI-compatible endpoint—a vLLM server, a TGI deployment, an Ollama instance, or any custom inference API—is treated identically to a cloud provider once its <code>api_base</code> is set. The full governance stack applies: virtual keys, budget tracking, rate limits, and callback logging. Per the official docs, LiteLLM also supports <strong>pass-through endpoints</strong> for routing arbitrary external API traffic (rerankers, OCR, image APIs) through the same master key, spend tracking, and budget system.</p>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Scale Constraint — Redis Required at Production Traffic</div>
+  <p>The official deployment guide states explicitly: <strong>Redis is required at 1,000+ requests per second</strong> to prevent database connection exhaustion and deadlocks. At this scale, Redis underpins rate-limit state, auth lookup cache, and load-balancing coordination simultaneously—not only response caching. This is an architectural planning dependency, not an optional optimization.</p>
+</div>
+
+<hr>
+
+<!-- ══ §3 KONG ══ -->
+<div class="vendor-header kong">
+  <span class="vendor-badge">Kong</span>
+  <span class="vendor-title">§3 — Plugin-Chain Normalization on a Mature Gateway Substrate</span>
+</div>
+
+<h3>Architecture</h3>
+<p>Kong AI Gateway is documented as an AI feature layer on top of Kong Gateway—not a separate broker process. The core architecture remains Service, Route, Upstream, Consumer, and plugin chains. AI behavior is composed via plugins attached to that substrate. The key distinction from the other three platforms is that LLM traffic inherits the same operational grammar as the rest of your API estate: the same decK declarative config, the same Konnect control plane, the same Consumer identity model.</p>
+
+<p>The <strong>AI Proxy plugin</strong> (min. Kong 3.6) is the normalization engine. The official docs describe it as: <em>"transforming and proxying requests to AI providers and models, accepting standardized OpenAI formats and translating them to the configured target format."</em> The configuration surface is <code>route_type</code>—which maps capability intent to provider-specific upstream paths. <strong>AI Proxy Advanced</strong> (min. Kong 3.8, enterprise) extends this to multi-provider, multi-target routing with algorithm choice (round-robin, lowest-latency, lowest-usage, priority, semantic routing).</p>
+
+<p>Kong's provider reference pages document the upstream-path translation explicitly per provider—making the normalization contract auditable rather than a black box:</p>
+
+<div class="callout info">
+  <div class="callout-title">Illustrative route_type to upstream-path mapping (not runnable config)</div>
+  <p>This mapping is documented in Kong's provider references, but it should be presented as an explanatory table rather than as copyable code.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Provider</th>
+        <th>route_type</th>
+        <th>Upstream path</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>OpenAI</td>
+        <td><code>llm/v1/chat</code></td>
+        <td><code>/v1/chat/completions</code></td>
+      </tr>
+      <tr>
+        <td>OpenAI</td>
+        <td><code>llm/v1/completions</code></td>
+        <td><code>/v1/completions</code></td>
+      </tr>
+      <tr>
+        <td>OpenAI</td>
+        <td><code>llm/v1/embeddings</code></td>
+        <td><code>/v1/embeddings</code></td>
+      </tr>
+      <tr>
+        <td>Azure OpenAI</td>
+        <td><code>llm/v1/chat</code></td>
+        <td><code>/openai/deployments/{deployment_name}/chat/completions</code></td>
+      </tr>
+      <tr>
+        <td>Azure OpenAI</td>
+        <td><code>llm/v1/embeddings</code></td>
+        <td><code>/openai/deployments/{deployment_name}/embeddings</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>Clients still send a normalized request to the Kong Route; AI Proxy resolves the configured provider plus <code>route_type</code> to the correct upstream path.</p>
+</div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/ai-gateway/ai-providers/openai/" target="_blank">Kong OpenAI provider reference</a> · <a href="https://developer.konghq.com/ai-gateway/ai-providers/azure/" target="_blank">Kong Azure OpenAI provider reference</a></div>
+
+<div class="code-wrap"><pre><span class="cm"># Kong — AI Proxy plugin config (decK YAML format)</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-proxy/</span>
+<span class="cm">#         developer.konghq.com/ai-gateway/get-started/</span>
+
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">services</span>:
+  - <span class="key">name</span>: <span class="str">llm-chat-service</span>
+    <span class="key">url</span>: <span class="str">https://api.openai.com</span>   <span class="cm"># illustrative upstream service URL; exact host/path behavior depends on AI Proxy provider config</span>
+    <span class="key">routes</span>:
+      - <span class="key">name</span>: <span class="str">chat-route</span>
+        <span class="key">paths</span>: [<span class="str">"/llm/v1/chat"</span>]
+
+<span class="key">plugins</span>:
+  - <span class="key">name</span>: <span class="str">ai-proxy</span>
+    <span class="key">service</span>: <span class="str">llm-chat-service</span>
+    <span class="key">config</span>:
+      <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>         <span class="cm"># capability → upstream path mapping</span>
+      <span class="key">auth</span>:
+        <span class="key">header_name</span>:  <span class="str">Authorization</span>
+        <span class="key">header_value</span>: <span class="str">"Bearer ${{ env \"DECK_OPENAI_API_KEY\" }}"</span>
+      <span class="key">model</span>:
+        <span class="key">provider</span>: <span class="str">openai</span>
+        <span class="key">name</span>:     <span class="str">gpt-4o</span>
+
+<span class="cm"># For multi-target routing, use AI Proxy Advanced (enterprise, min. Kong 3.8)</span>
+<span class="cm"># and move targets to the Upstream entity with balancer configuration</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-proxy/" target="_blank">developer.konghq.com/plugins/ai-proxy/</a> · <a href="https://developer.konghq.com/ai-gateway/get-started/" target="_blank">AI Gateway Get Started</a></div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Enterprise Licensing Gates Key Unification Features</div>
+  <p>The most critical API unification features require explicit licensing. <strong>AI Proxy Advanced</strong> (multi-provider, multi-target routing, min. 3.8) is enterprise-only. <strong>AI Semantic Cache</strong> (min. 3.8) is enterprise-only. <strong>AI RAG Injector</strong> (min. 3.10) is enterprise-only. <strong>AI Rate Limiting Advanced</strong> (min. 3.7) requires an AI license. Always consult the <a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">plugin compatibility matrix</a> for your specific version and license tier before planning architecture.</p>
+</div>
+
+<hr>
+
+<!-- ══ §4 PORTKEY ══ -->
+<div class="vendor-header portkey">
+  <span class="vendor-badge">Portkey</span>
+  <span class="vendor-title">§4 — Config-First, Provider-Slug Addressing</span>
+</div>
+
+<h3>Architecture</h3>
+<p>Portkey's unification design is built on two interlocking abstractions. The <strong>Model Catalog</strong> lets you define provider aliases as <code>@provider-slug</code> names—logical identifiers that hold the actual credentials and endpoint config. The <strong>Config object</strong> is a JSON policy carrier attached to API keys or individual requests to specify routing, fallback, retry, and caching behavior.</p>
+
+<p>The result is an addressing pattern like <code>@openai-prod/gpt-4o</code> where <code>@openai-prod</code> is a stable logical name remappable to any credential, region, or provider without touching application code. Configs can be attached via SDK, via <code>x-portkey-config</code> header (making them compatible with any OpenAI-compatible client), or set as the default on an API key for organization-wide policy.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Portkey - provider-slug addressing via Python SDK</span>
+<span class="cm"># Source: portkey.ai/docs/guides/getting-started/getting-started-with-ai-gateway</span>
+<span class="cm">#         portkey.ai/docs/product/ai-gateway/configs</span>
+
+from portkey_ai import Portkey
+
+<span class="cm"># The @provider-slug decouples application code from credentials entirely</span>
+portkey = Portkey(api_key=<span class="str">"PORTKEY_API_KEY"</span>)
+
+response = portkey.chat.completions.create(
+    model=<span class="str">"@openai-prod/gpt-4o"</span>,        <span class="cm"># provider-slug + model reference</span>
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Summarise Q4 results"</span>}]
+)
+
+<span class="cm"># Swap to Anthropic without changing application code:</span>
+<span class="cm"># Remap @openai-prod in the Model Catalog, OR pass a config at request time</span>
+response = portkey.with_options(
+    config={
+        <span class="str">"strategy"</span>: {<span class="str">"mode"</span>: <span class="str">"fallback"</span>},
+        <span class="str">"targets"</span>: [
+            {<span class="str">"override_params"</span>: {<span class="str">"model"</span>: <span class="str">"@openai-prod/gpt-4o"</span>}},
+            {<span class="str">"override_params"</span>: {<span class="str">"model"</span>: <span class="str">"@anthropic-prod/claude-opus-4-6"</span>}}
+        ]
+    }
+).chat.completions.create(
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Summarise Q4 results"</span>}]
+)</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">portkey.ai/docs/product/ai-gateway/configs</a> · <a href="https://portkey.ai/docs/guides/getting-started/getting-started-with-ai-gateway" target="_blank">Getting Started with AI Gateway</a></div>
+
+<div class="code-wrap"><pre><span class="cm"># Portkey — attach Config via HTTP header (any OpenAI-compatible client)</span>
+<span class="cm"># Source: portkey.ai/docs/product/ai-gateway/configs</span>
+
+curl https://api.portkey.ai/v1/chat/completions \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -H <span class="str">"Authorization: Bearer $OPENAI_API_KEY"</span> \
+  -H <span class="str">"x-portkey-api-key: $PORTKEY_API_KEY"</span> \
+  -H <span class="str">"x-portkey-provider: openai"</span> \
+  -H <span class="str">"x-portkey-config: $CONFIG_ID"</span> \
+  -d <span class="str">'{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'</span>
+
+<span class="cm"># Retry config example (from 101 on Gateway Configs guide):</span>
+<span class="cm"># { "retry": {"attempts": 3, "on_status_codes": [429]} }</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">portkey.ai — Configs</a> · <a href="https://portkey.ai/docs/guides/getting-started/101-on-portkey-s-gateway-configs" target="_blank">101 on Gateway Configs</a></div>
+
+<h3>Hybrid VPC Deployment</h3>
+<p>For environments where prompts and responses cannot leave the customer network, Portkey provides a Helm-based data-plane deployment inside your VPC. The official deployment guide states explicitly: <em>"deployment of the data plane inside your VPC, prompts and responses stay inside the network, and only metrics leave."</em> The control plane and observability dashboards remain in Portkey's SaaS environment.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Portkey — Helm-based VPC data-plane deployment</span>
+<span class="cm"># Source: portkey.ai/docs/enterprise/hybrid2</span>
+
+helm repo add portkey https://portkey-ai.github.io/helm
+helm repo update
+helm upgrade --install portkey-gateway portkey/gateway \
+  -n portkey \
+  -f values.yaml          <span class="cm"># your org-specific values override</span>
+
+<span class="cm"># Health check the locally running data plane</span>
+kubectl -n portkey port-forward svc/portkey-gateway <span class="num">8787</span>:<span class="num">8787</span>
+curl http://localhost:<span class="num">8787</span>/v1/health
+<span class="cm"># → {"status":"healthy"}</span>
+
+<span class="cm"># First call through private gateway — prompts never leave your VPC</span>
+curl https://gateway.internal.mycompany.com/v1/chat/completions \
+  -H <span class="str">"x-portkey-api-key: &lt;your-portkey-api-key&gt;"</span> \
+  -H <span class="str">"x-portkey-provider: @openai-prod"</span> \
+  -d <span class="str">'{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}'</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">portkey.ai/docs/enterprise/hybrid2</a> — Deploy Portkey in Your Infrastructure</div>
+
+<div class="callout info">
+  <div class="callout-title">ℹ Budget &amp; Rate Limit Policy Availability</div>
+  <p>Portkey's admin-level budget and rate-limit policy surfaces (<code>Usage &amp; Rate Limit Policies</code>, workspace credit ceilings, per-dimension group-by rules) are explicitly documented as Enterprise-only or Select-Pro features. The OSS <code>npx @portkey-ai/gateway</code> runtime and the hosted SaaS tier have a subset of these controls. The distinction matters when evaluating Portkey as an internal platform versus a single-team SDK convenience layer.</p>
+</div>
+
+<hr>
+
+<!-- ══ §5 TRUEFOUNDRY ══ -->
+<div class="vendor-header tf">
+  <span class="vendor-badge">TrueFoundry</span>
+  <span class="vendor-title">§5 — Kubernetes-Native Split-Plane Architecture</span>
+</div>
+
+<h3>Architecture</h3>
+<p>TrueFoundry's API unification story is inseparable from its split-plane Kubernetes architecture: a control plane for orchestration and policy, a stateless gateway plane for request handling, a compute plane for model workloads, and a data plane for artifacts. The gateway plane is documented as built on the <strong>Hono framework</strong>, with an explicit hot-path design principle: <em>"no external calls in the hot path unless cache is involved; in-memory checks for rate limits, load balancing, authentication, and authorization; async queueing for logs and metrics."</em></p>
+
+<p>The gateway plane is <strong>stateless</strong>, subscribing to configuration updates via a queue with HTTP fallback—enabling cross-region multi-gateway deployments while configuration is managed centrally. This means gateway scaling is CPU-bound proxy scaling, not stateful coordinator scaling.</p>
+
+<h3>Provider Accounts as the Unification Primitive</h3>
+<p>TrueFoundry uses <strong>Provider Accounts</strong> as first-class objects: one per upstream credential domain, each exposing multiple models. The docs explicitly call out the multi-account pattern: multiple accounts from the same provider <em>"for environment separation, quota isolation, or customer segmentation."</em> This enables <code>openai-prod</code>, <code>openai-dev</code>, and <code>openai-customer-A</code> as distinct Provider Accounts with independent rate limits and budgets—without any application code changes.</p>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — gateway request headers</span>
+<span class="cm"># Source: truefoundry.com/docs/ai-gateway/headers</span>
+
+<span class="cm"># Applications present a single gateway credential</span>
+<span class="hd">Authorization</span>: Bearer your-api-key
+
+<span class="cm"># x-tfy-metadata: stringified JSON; string keys AND string values only</span>
+<span class="cm"># Used as segmentation primitive for rate limits and budget rules</span>
+<span class="hd">x-tfy-metadata</span>: <span class="str">{"project_id":"order-intelligence","environment":"prod","team":"ml-ops"}</span>
+
+<span class="cm"># Optional per-request retry policy</span>
+<span class="hd">x-tfy-retry-config</span>: <span class="str">{"attempts": 3, "onStatusCodes": [429, 500, 503]}</span>
+
+<span class="cm"># Response headers returned by the gateway (documented in official headers page):</span>
+<span class="cm"># x-tfy-resolved-model     → physical model/provider that handled the request</span>
+<span class="cm"># x-tfy-applied-configurations → which configs, rate limits, guardrails fired</span>
+<span class="cm"># server-timing            → per-stage latency breakdown</span>
+<span class="cm">#   Example: Auth 0.9ms | Input guardrails 0.7ms | Model 1350ms | Logging 1.1ms</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">truefoundry.com/docs/ai-gateway/headers</a> — Request and Response Headers</div>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — rate limiting config (typed YAML, first-match-wins)</span>
+<span class="cm"># Source: truefoundry.com/docs/ai-gateway/ratelimiting</span>
+
+<span class="key">name</span>: <span class="str">ratelimiting-config</span>
+<span class="key">type</span>: <span class="str">gateway-rate-limiting-config</span>
+<span class="key">rules</span>:
+  <span class="cm"># First matching rule applies — rule ORDER is part of correctness</span>
+  - <span class="key">id</span>: <span class="str">"model-daily-limit"</span>
+    <span class="key">when</span>: {}          <span class="cm"># matches all requests</span>
+    <span class="key">limit_to</span>: <span class="num">1000000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_day</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'model'</span>]
+
+  - <span class="key">id</span>: <span class="str">"project-hourly-limit"</span>
+    <span class="key">when</span>: {}
+    <span class="key">limit_to</span>: <span class="num">50000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_hour</span>
+    <span class="cm"># metadata.project_id from x-tfy-metadata header — must be string value</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'metadata.project_id'</span>]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">truefoundry.com/docs/ai-gateway/ratelimiting</a></div>
+
+<h3>Self-Hosted LLM Deployment → OpenAI-Compatible Endpoint</h3>
+<p>TrueFoundry's most distinctive capability is managing both the <em>deployment</em> of self-hosted LLMs and their exposure through the governed gateway endpoint. Models deployed via the platform's LLM catalogue and registered in the Model Registry—with metadata including <code>pipeline_tag</code>, <code>library_name</code>, and base-model information—become deployable onto Kubernetes and are exposed as OpenAI-compatible endpoints. Gated Hugging Face model access is mediated through the platform's Secret Management system, not hardcoded into manifests. The public docs also show OpenAI-client usage with an HTTP Basic Authorization header; because the uploaded handbook excerpt appears to contain an extraction artifact in the credential-construction line, the code block below is presented as <strong>illustrative pseudocode</strong> rather than a verbatim doc transplant.</p>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — illustrative pseudocode for OpenAI SDK + Basic Auth</span>
+<span class="cm"># Source concept: truefoundry.com/docs/deploying-an-llm-model-from-the-model-catalogue</span>
+
+from openai import OpenAI
+
+<span class="cm"># Verify the exact credential-string construction against the current TrueFoundry docs.</span>
+<span class="cm"># The important interoperability point is that the OpenAI SDK can attach a Basic Authorization header.</span>
+encoded_creds = <span class="str">"&lt;base64-encoded-basic-auth-credentials&gt;"</span>
+
+client = OpenAI(
+    base_url=<span class="str">"&lt;YOUR_TRUEFOUNDRY_ENDPOINT&gt;/v1"</span>,
+    api_key=<span class="str">"TEST"</span>,
+    default_headers={<span class="str">"Authorization"</span>: f<span class="str">"Basic {encoded_creds}"</span>}
+)
+
+response = client.chat.completions.create(
+    model=<span class="str">"meta-llama/Llama-3.3-70B-Instruct"</span>,
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Explain MACD in one paragraph"</span>}]
+)</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/deploying-an-llm-model-from-the-model-catalogue" target="_blank">truefoundry.com/docs/deploying-an-llm-model-from-the-model-catalogue</a> — Deploying LLMs</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Operational Prerequisite — Kubernetes Cluster + Control Plane</div>
+  <p>The <a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">deploy-gateway-plane</a> guide requires a running Kubernetes cluster, domain, TLS certificate, image-pull credentials, and a control-plane API key (stored as a <code>truefoundry-creds</code> Kubernetes Secret) before any request is handled. Teams without a dedicated K8s platform engineering function face meaningful adoption overhead compared to the other three platforms.</p>
+</div>
+
+<hr>
+
+<!-- ══ §6 SELF-HOSTED ══ -->
+<h2>§6 — Self-Hosted Model Integration: Paths Compared</h2>
+
+<p>The ability to integrate privately-deployed models behind the same unified API surface as cloud providers is the true depth test of API unification. The four platforms take structurally different approaches:</p>
+
+<!-- Self-hosted SVG comparison -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="340" fill="#121826"/>
+  <text x="410" y="24" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Self-Hosted LLM Integration: Four Paths</text>
+
+  <!-- LiteLLM -->
+  <rect x="20" y="44" width="185" height="260" rx="8" fill="#0a0e16" stroke="#00C2CB" stroke-opacity=".5"/>
+  <text x="112" y="66" text-anchor="middle" fill="#00C2CB" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">LITELLM</text>
+  <rect x="35" y="80" width="155" height="30" rx="5" fill="#001d1e" stroke="#00C2CB" stroke-opacity=".4"/>
+  <text x="112" y="99" text-anchor="middle" fill="#00C2CB" font-size="9.5" font-weight="600">api_base override</text>
+  <text x="112" y="126" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">model: openai/...</text>
+  <text x="112" y="142" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">api_base: http://</text>
+  <text x="112" y="158" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">  vllm-svc:8000/v1</text>
+  <line x1="112" y1="170" x2="112" y2="200" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="112" y="220" text-anchor="middle" fill="#7a8899" font-size="8.5">Any OAI-compatible</text>
+  <text x="112" y="234" text-anchor="middle" fill="#7a8899" font-size="8.5">endpoint works</text>
+  <text x="112" y="256" text-anchor="middle" fill="#00C2CB" font-size="8" font-family="IBM Plex Mono, monospace">✓ vLLM · TGI · Ollama</text>
+  <text x="112" y="272" text-anchor="middle" fill="#7a8899" font-size="8">Full governance stack:</text>
+  <text x="112" y="286" text-anchor="middle" fill="#7a8899" font-size="8">keys · budgets · guardrails</text>
+  <text x="112" y="296" text-anchor="middle" fill="#3a4a5a" font-size="7.5" font-style="italic">Routing only</text>
+
+  <!-- Kong -->
+  <rect x="215" y="44" width="185" height="260" rx="8" fill="#0a0e16" stroke="#00D27B" stroke-opacity=".5"/>
+  <text x="307" y="66" text-anchor="middle" fill="#00D27B" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">KONG</text>
+  <rect x="230" y="80" width="155" height="30" rx="5" fill="#001e13" stroke="#00D27B" stroke-opacity=".4"/>
+  <text x="307" y="99" text-anchor="middle" fill="#00D27B" font-size="9.5" font-weight="600">Upstream entity + AI Proxy</text>
+  <text x="307" y="126" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">Service → Route →</text>
+  <text x="307" y="142" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">AI Proxy plugin</text>
+  <text x="307" y="158" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">+ Upstream Targets</text>
+  <line x1="307" y1="170" x2="307" y2="200" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="307" y="220" text-anchor="middle" fill="#7a8899" font-size="8.5">Multi-target via AI</text>
+  <text x="307" y="234" text-anchor="middle" fill="#7a8899" font-size="8.5">Proxy Advanced (ent.)</text>
+  <text x="307" y="256" text-anchor="middle" fill="#00D27B" font-size="8" font-family="IBM Plex Mono, monospace">✓ vLLM via Upstream</text>
+  <text x="307" y="272" text-anchor="middle" fill="#7a8899" font-size="8">All Kong plugins apply</text>
+  <text x="307" y="286" text-anchor="middle" fill="#7a8899" font-size="8">Consumer identity model</text>
+  <text x="307" y="296" text-anchor="middle" fill="#3a4a5a" font-size="7.5" font-style="italic">Routing only</text>
+
+  <!-- Portkey -->
+  <rect x="410" y="44" width="185" height="260" rx="8" fill="#0a0e16" stroke="#5A67FF" stroke-opacity=".5"/>
+  <text x="502" y="66" text-anchor="middle" fill="#5A67FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">PORTKEY</text>
+  <rect x="425" y="80" width="155" height="30" rx="5" fill="#0a0c24" stroke="#5A67FF" stroke-opacity=".4"/>
+  <text x="502" y="99" text-anchor="middle" fill="#5A67FF" font-size="9.5" font-weight="600">Model Catalog + Hybrid VPC</text>
+  <text x="502" y="126" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">@custom-provider slug</text>
+  <text x="502" y="142" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">Data plane runs in VPC</text>
+  <text x="502" y="158" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">via Helm chart deploy</text>
+  <line x1="502" y1="170" x2="502" y2="200" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="502" y="220" text-anchor="middle" fill="#7a8899" font-size="8.5">Prompts stay in VPC;</text>
+  <text x="502" y="234" text-anchor="middle" fill="#7a8899" font-size="8.5">only metrics leave</text>
+  <text x="502" y="256" text-anchor="middle" fill="#5A67FF" font-size="8" font-family="IBM Plex Mono, monospace">✓ VPC traffic residency</text>
+  <text x="502" y="272" text-anchor="middle" fill="#7a8899" font-size="8">Control plane stays SaaS</text>
+  <text x="502" y="286" text-anchor="middle" fill="#7a8899" font-size="8">Config objects apply</text>
+  <text x="502" y="296" text-anchor="middle" fill="#3a4a5a" font-size="7.5" font-style="italic">Routing only</text>
+
+  <!-- TrueFoundry -->
+  <rect x="605" y="44" width="195" height="260" rx="8" fill="#0a0e16" stroke="#FF5533" stroke-opacity=".6"/>
+  <text x="702" y="66" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">TRUEFOUNDRY</text>
+  <rect x="620" y="80" width="165" height="30" rx="5" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="702" y="99" text-anchor="middle" fill="#FF5533" font-size="9.5" font-weight="600">K8s Deploy → Registry → GW</text>
+  <text x="702" y="126" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">LLM Catalogue → deploy</text>
+  <text x="702" y="142" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">Model Registry (metadata)</text>
+  <text x="702" y="158" text-anchor="middle" fill="#7a8899" font-size="8.5" font-family="IBM Plex Mono, monospace">→ OAI-compat endpoint</text>
+  <line x1="702" y1="170" x2="702" y2="200" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="702" y="220" text-anchor="middle" fill="#7a8899" font-size="8.5">Gated HF models via</text>
+  <text x="702" y="234" text-anchor="middle" fill="#7a8899" font-size="8.5">platform Secret Mgmt</text>
+  <text x="702" y="256" text-anchor="middle" fill="#FF5533" font-size="8" font-family="IBM Plex Mono, monospace">✓ Manages deployment too</text>
+  <text x="702" y="272" text-anchor="middle" fill="#7a8899" font-size="8">Full platform governance</text>
+  <text x="702" y="286" text-anchor="middle" fill="#7a8899" font-size="8">Basic Auth for endpoint</text>
+  <text x="702" y="296" text-anchor="middle" fill="#FF5533" font-size="7.5" font-style="italic">Routing + Deployment</text>
+
+  <text x="410" y="328" text-anchor="middle" fill="#3a4a5a" font-size="8">Editorial comparison grounded in official vendor docs. All platforms support routing to external self-hosted OAI-compatible endpoints. TrueFoundry additionally manages deployment.</text>
+</svg>
+</div>
+<div class="img-caption">The key distinction: LiteLLM, Kong, and Portkey primarily unify and govern access to existing model endpoints. TrueFoundry additionally extends into the LLM deployment lifecycle itself. Editorial illustration.</div>
+
+<hr>
+
+<!-- ══ §7 MATRIX ══ -->
+<h2>§7 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's official public documentation as of March 2026. <span class="check">✓</span> = natively supported and documented, <span class="partial">⚠</span> = possible with caveats or workarounds, <span class="cross">✗</span> = not documented as a supported feature.</p>
+
+<div class="matrix-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Feature / Capability</th>
+      <th style="color:var(--litellm)">LiteLLM</th>
+      <th style="color:var(--kong)">Kong AI GW</th>
+      <th style="color:var(--portkey)">Portkey</th>
+      <th style="color:var(--tf)">TrueFoundry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>OpenAI-compatible client interface</td>
+      <td><span class="check">✓</span> Native</td>
+      <td><span class="check">✓</span> Native via AI Proxy</td>
+      <td><span class="check">✓</span> Native</td>
+      <td><span class="check">✓</span> Native</td>
+    </tr>
+    <tr>
+      <td>Logical model name / alias layer</td>
+      <td><span class="check">✓</span> <code>model_name</code> in <code>model_list</code></td>
+      <td><span class="partial">⚠</span> Service / Route names; <code>route_type</code> is the normalization point — no standalone model alias object</td>
+      <td><span class="check">✓</span> <code>@provider-slug/model-name</code> via Model Catalog</td>
+      <td><span class="check">✓</span> Provider Accounts + logical model name in routing config</td>
+    </tr>
+    <tr>
+      <td>Multi-provider under single logical name</td>
+      <td><span class="check">✓</span> Multiple <code>model_list</code> entries sharing one <code>model_name</code></td>
+      <td><span class="partial">⚠</span> AI Proxy Advanced (enterprise, min. 3.8) — multi-target Upstream</td>
+      <td><span class="check">✓</span> <code>loadbalance</code> / <code>fallback</code> strategy targets</td>
+      <td><span class="check">✓</span> Weight / latency / priority routing configs</td>
+    </tr>
+    <tr>
+      <td>Self-hosted vLLM / TGI integration</td>
+      <td><span class="check">✓</span> <code>api_base</code> override; any OAI-compatible endpoint</td>
+      <td><span class="check">✓</span> Upstream entity; AI Proxy <code>route_type</code>-aware</td>
+      <td><span class="check">✓</span> Custom <code>@provider-slug</code> in Model Catalog</td>
+      <td><span class="check">✓</span> K8s LLM catalogue deploy → OAI-compatible endpoint + Basic Auth</td>
+    </tr>
+    <tr>
+      <td>Manages model deployment (not just routing)</td>
+      <td><span class="cross">✗</span> Route-only</td>
+      <td><span class="cross">✗</span> Route-only</td>
+      <td><span class="cross">✗</span> Route-only</td>
+      <td><span class="check">✓</span> K8s LLM catalogue, Model Registry, pipeline_tag metadata</td>
+    </tr>
+    <tr>
+      <td>Central credential management</td>
+      <td><span class="check">✓</span> <code>config.yaml</code> env vars + Virtual Keys</td>
+      <td><span class="check">✓</span> AI Proxy mediates provider authentication on behalf of the Kong API consumer</td>
+      <td><span class="check">✓</span> Model Catalog holds credentials; attached to API keys</td>
+      <td><span class="check">✓</span> Provider Accounts + platform Secret Management</td>
+    </tr>
+    <tr>
+      <td>Multiple accounts per provider (quota isolation)</td>
+      <td><span class="check">✓</span> Separate <code>model_list</code> entries with different <code>api_key</code> values</td>
+      <td><span class="partial">⚠</span> Multiple Services per provider — not a first-class concept</td>
+      <td><span class="check">✓</span> Multiple <code>@provider-slug</code> entries in Model Catalog</td>
+      <td><span class="check">✓</span> Provider Accounts are first-class objects designed for this</td>
+    </tr>
+    <tr>
+      <td>Prompt override per routing target</td>
+      <td><span class="cross">✗</span> Not documented as a routing target feature</td>
+      <td><span class="partial">⚠</span> Prompt shaping via AI Prompt Decorator plugin is documented; per-target prompt override is not clearly documented in the supplied sources</td>
+      <td><span class="partial">⚠</span> <code>override_params</code> per target (model params, not full prompt override)</td>
+      <td><span class="check">✓</span> Routing docs explicitly describe prompt overrides per target</td>
+    </tr>
+    <tr>
+      <td>Streaming (SSE) support</td>
+      <td><span class="check">✓</span> Supported</td>
+      <td><span class="check">✓</span> <code>response_streaming</code> modes documented</td>
+      <td><span class="check">✓</span> Supported</td>
+      <td><span class="check">✓</span> Supported</td>
+    </tr>
+    <tr>
+      <td>Embeddings / non-chat endpoints</td>
+      <td><span class="check">✓</span> Supported via <code>litellm_params.model</code></td>
+      <td><span class="check">✓</span> <code>route_type: llm/v1/embeddings</code> explicitly documented per provider</td>
+      <td><span class="check">✓</span> Supported via provider slug</td>
+      <td><span class="partial">⚠</span> Primarily chat-completion focused in public docs; other endpoints not explicitly detailed</td>
+    </tr>
+    <tr>
+      <td>Gated Hugging Face model access</td>
+      <td><span class="check">✓</span> HF token as <code>api_key</code> for HF endpoints</td>
+      <td><span class="partial">⚠</span> Requires custom header-injection plugin configuration</td>
+      <td><span class="partial">⚠</span> Via Model Catalog credentials; HF-gated flow not explicitly documented</td>
+      <td><span class="check">✓</span> Platform Secret Management explicitly documented for HF access tokens</td>
+    </tr>
+    <tr>
+      <td>Per-request resolved model in response headers</td>
+      <td><span class="partial">⚠</span> <code>x-litellm-call-id</code> for trace correlation; resolved model via logging, not a dedicated response header</td>
+      <td><span class="partial">⚠</span> Consumer / <code>request_mode</code> labels in Prometheus metrics and audit logs; not a per-request response header</td>
+      <td><span class="partial">⚠</span> Fallback / loadbalance state visible in logs; not a dedicated per-request response header</td>
+      <td><span class="check">✓</span> <code>x-tfy-resolved-model</code> response header explicitly documented</td>
+    </tr>
+    <tr>
+      <td>Config-as-code / GitOps compatible</td>
+      <td><span class="check">✓</span> <code>config.yaml</code> Git-tracked</td>
+      <td><span class="check">✓</span> decK YAML Git-tracked; Konnect API</td>
+      <td><span class="check">✓</span> Config JSON via API/SDK; API-key defaults</td>
+      <td><span class="check">✓</span> YAML manifests + <code>tfy apply</code> with <code>--dry-run</code> and <code>--show-diff</code></td>
+    </tr>
+    <tr>
+      <td>Hot-path: no blocking external calls</td>
+      <td><span class="partial">⚠</span> Redis lookup in hot path; DB fallback if no Redis</td>
+      <td><span class="partial">⚠</span> In-process plugin chain, but the supplied sources do not explicitly document a no-external-calls hot path guarantee</td>
+      <td><span class="partial">⚠</span> SaaS edge traversal; VPC mode reduces but does not eliminate this</td>
+      <td><span class="check">✓</span> Explicitly documented: "no external calls in the hot path unless cache is involved; in-memory checks"</td>
+    </tr>
+    <tr>
+      <td>Data residency (fully self-hostable)</td>
+      <td><span class="check">✓</span> Fully self-hosted container; no SaaS dependency</td>
+      <td><span class="check">✓</span> Self-managed or Konnect (control plane in cloud)</td>
+      <td><span class="partial">⚠</span> Data plane VPC via Helm; control plane remains SaaS</td>
+      <td><span class="check">✓</span> Gateway plane in-cluster; control plane self-hostable on enterprise</td>
+    </tr>
+    <tr>
+      <td>Scale-dependent operational requirements</td>
+      <td>Redis required at ≥1,000 RPS (per official docs)</td>
+      <td>Enterprise license for multi-target AI routing (AI Proxy Advanced)</td>
+      <td>Pro/Enterprise for hybrid VPC; budget/rate policies</td>
+      <td>Kubernetes cluster + control plane relationship required</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p style="font-size:.72rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-top:.3rem;">All data sourced exclusively from official vendor public documentation. Feature claims represent documentation state as of March 2026. Always verify against current docs before architectural decisions.</p>
+
+<hr>
+
+<!-- ══ §8 VERDICTS ══ -->
+<h2>§8 — Editorial Verdicts</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card litellm">
+    <div class="verdict-label">LiteLLM</div>
+    <div class="verdict-name">The Broadest-Coverage Pragmatist</div>
+    <div class="verdict-text">The <code>model_list</code> + <code>api_base</code> pattern is one of the simplest paths from zero to a governed, multi-provider endpoint. Python's native provider matrix is among the broadest explicitly documented in this comparison. Adding an OpenAI-compatible self-hosted endpoint is a very small YAML change. The Redis dependency at scale and Python runtime constraints are real operational costs.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Fast-moving teams that need maximum provider coverage, GitOps config management, and don't want to manage a gateway cluster.</div>
+  </div>
+  <div class="verdict-card kong">
+    <div class="verdict-label">Kong AI Gateway</div>
+    <div class="verdict-name">The Most Auditable Normalization Contract</div>
+    <div class="verdict-text">The explicit <code>route_type → upstream path</code> documentation per provider makes Kong's normalization contract especially transparent and auditable. AI traffic inherits the full Kong governance model. The enterprise licensing gate for multi-target routing is a real adoption barrier for teams not already on Kong.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Existing Kong Enterprise users and teams needing AI traffic inside an established API governance posture.</div>
+  </div>
+  <div class="verdict-card portkey">
+    <div class="verdict-label">Portkey</div>
+    <div class="verdict-name">The Cleanest Config-Object Design</div>
+    <div class="verdict-text">The <code>@provider-slug</code> addressing and Config-as-policy model is a notably developer-friendly unification design. Attaching routing, fallback, retry, and caching to a single Config ID referenced in one header is genuinely elegant. The split control/data plane in hybrid VPC mode is a real trade-off to understand before committing.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Product teams optimizing for developer experience, fast iteration, and minimal infrastructure ownership.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">TrueFoundry</div>
+    <div class="verdict-name">The Deepest Self-Hosted Integration</div>
+    <div class="verdict-text">In this comparison, TrueFoundry is the platform that most explicitly combines self-hosted LLM deployment and governed routing in one system. The in-memory hot path, stateless Hono proxy, and <code>x-tfy-resolved-model</code> header for per-request auditability are operationally principled. Kubernetes as a hard prerequisite is the clearest adoption filter.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> ML platform teams managing the full lifecycle from K8s LLM deployment to governed inference endpoint in their own VPC.</div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══ §9 POSITIONING CHART ══ -->
+<h2>§9 — Positioning: Operational Complexity vs. Self-Hosted Integration Depth</h2>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 620 420" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="620" height="420" fill="#121826"/>
+  <defs>
+    <radialGradient id="gLite" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#00C2CB" stop-opacity="0.35"/><stop offset="100%" stop-color="#00C2CB" stop-opacity="0.05"/></radialGradient>
+    <radialGradient id="gKong" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#00D27B" stop-opacity="0.35"/><stop offset="100%" stop-color="#00D27B" stop-opacity="0.05"/></radialGradient>
+    <radialGradient id="gPort" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#5A67FF" stop-opacity="0.35"/><stop offset="100%" stop-color="#5A67FF" stop-opacity="0.05"/></radialGradient>
+    <radialGradient id="gTrue" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FF5533" stop-opacity="0.35"/><stop offset="100%" stop-color="#FF5533" stop-opacity="0.05"/></radialGradient>
+  </defs>
+
+  <!-- Axes -->
+  <line x1="65" y1="20" x2="65" y2="350" stroke="#1e2d45" stroke-width="1.5"/>
+  <line x1="65" y1="350" x2="575" y2="350" stroke="#1e2d45" stroke-width="1.5"/>
+  <!-- Grid dashes -->
+  <line x1="65" y1="185" x2="575" y2="185" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="320" y1="20" x2="320" y2="350" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- Axis labels -->
+  <text x="320" y="382" text-anchor="middle" fill="#7a8899" font-size="11" font-family="IBM Plex Mono, monospace">← Lower Ops Complexity · Higher Ops Complexity →</text>
+  <text x="18" y="185" text-anchor="middle" fill="#7a8899" font-size="11" font-family="IBM Plex Mono, monospace" transform="rotate(-90,18,185)">Self-Hosted Integration Depth</text>
+  <text x="30" y="30" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">Deep ↑</text>
+  <text x="30" y="345" text-anchor="middle" fill="#7a8899" font-size="10" font-family="IBM Plex Mono, monospace">↓ Shallow</text>
+
+  <!-- Quadrant labels -->
+  <text x="185" y="52" text-anchor="middle" fill="#2d3f5a" font-size="10">Low Ops / Deep</text>
+  <text x="450" y="52" text-anchor="middle" fill="#2d3f5a" font-size="10">High Ops / Deep ★</text>
+  <text x="185" y="344" text-anchor="middle" fill="#2d3f5a" font-size="10">Low Ops / Shallow</text>
+  <text x="450" y="344" text-anchor="middle" fill="#2d3f5a" font-size="10">High Ops / Shallow</text>
+
+  <!-- NOTE: All four platforms support broad provider coverage through normalized or OpenAI-compatible interfaces.
+       X-axis = operational complexity to deploy/operate the gateway, NOT provider breadth.
+       LiteLLM has the broadest explicitly-documented SDK provider matrix in the supplied docs.
+       Kong, Portkey, and TrueFoundry also support broad endpoint integration, but provider compatibility and feature depth vary by configuration and vendor. -->
+
+  <!-- LiteLLM: x=155 (low ops — Docker container, YAML), y=140 (mid-deep), r=50 -->
+  <circle cx="155" cy="140" r="50" fill="url(#gLite)" stroke="#00C2CB" stroke-width="1.8"/>
+  <text x="155" y="132" text-anchor="middle" fill="#00C2CB" font-size="13" font-weight="700">LiteLLM</text>
+  <text x="155" y="148" text-anchor="middle" fill="#00C2CB" font-size="9" font-family="IBM Plex Mono, monospace">Docker + config.yaml</text>
+  <text x="155" y="162" text-anchor="middle" fill="#7a8899" font-size="8.5">Widest SDK provider list</text>
+
+  <!-- Portkey: x=155 (low ops — SaaS hosted), y=230 (shallow self-hosted depth), r=40 -->
+  <circle cx="160" cy="248" r="42" fill="url(#gPort)" stroke="#5A67FF" stroke-width="1.8"/>
+  <text x="160" y="240" text-anchor="middle" fill="#5A67FF" font-size="13" font-weight="700">Portkey</text>
+  <text x="160" y="256" text-anchor="middle" fill="#5A67FF" font-size="9" font-family="IBM Plex Mono, monospace">SaaS + Hybrid VPC</text>
+  <text x="160" y="270" text-anchor="middle" fill="#7a8899" font-size="8.5">@slug + Config objects</text>
+
+  <!-- Kong: x=380 (high ops — plugin chain, licensing), y=220 (moderate depth), r=56 -->
+  <circle cx="385" cy="225" r="56" fill="url(#gKong)" stroke="#00D27B" stroke-width="1.8"/>
+  <text x="385" y="217" text-anchor="middle" fill="#00D27B" font-size="13" font-weight="700">Kong</text>
+  <text x="385" y="233" text-anchor="middle" fill="#00D27B" font-size="9" font-family="IBM Plex Mono, monospace">Plugin chain / Enterprise</text>
+  <text x="385" y="248" text-anchor="middle" fill="#7a8899" font-size="8.5">route_type normalization</text>
+
+  <!-- TrueFoundry: x=460 (highest ops — K8s cluster required), y=85 (deepest — manages deployment) r=54 -->
+  <circle cx="462" cy="88" r="54" fill="url(#gTrue)" stroke="#FF5533" stroke-width="1.8"/>
+  <text x="462" y="76" text-anchor="middle" fill="#FF5533" font-size="12" font-weight="700">TrueFoundry</text>
+  <text x="462" y="93" text-anchor="middle" fill="#FF5533" font-size="9" font-family="IBM Plex Mono, monospace">K8s cluster required</text>
+  <text x="462" y="108" text-anchor="middle" fill="#7a8899" font-size="8.5">Deploy + route LLMs</text>
+
+  <!-- Provider coverage note -->
+  <rect x="65" y="360" width="510" height="28" rx="5" fill="#0a1220" stroke="#1e2d45"/>
+  <text x="320" y="373" text-anchor="middle" fill="#60a5fa" font-size="8.5" font-family="IBM Plex Mono, monospace">All four platforms support broad provider coverage through normalized or OpenAI-compatible interfaces</text>
+  <text x="320" y="384" text-anchor="middle" fill="#3a4a5a" font-size="8" font-family="IBM Plex Mono, monospace">LiteLLM has the broadest explicitly-documented SDK matrix in these sources; others support broad endpoint integration with provider-specific compatibility constraints.</text>
+
+  <!-- Legend -->
+  <text x="320" y="412" text-anchor="middle" fill="#3a4a5a" font-size="9" font-family="IBM Plex Mono, monospace">Bubble size = relative operational complexity. Axes = editorial assessment as of March 2026.</text>
+</svg>
+</div>
+<p style="font-size:.76rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">X-axis = operational complexity to deploy and operate the gateway (not provider count). Y-axis = depth of self-hosted LLM integration. All four platforms offer broad provider coverage, but compatibility and feature depth vary by provider and configuration. Editorial positioning, not vendor-endorsed.</p>
+
+<div class="callout info">
+  <div class="callout-title">ℹ Bottom Line</div>
+  <p>If you're optimizing for <strong>provider breadth with minimum friction</strong>, LiteLLM is one of the strongest fits in this comparison. If you need AI traffic inside an <strong>existing Kong Enterprise gateway estate</strong>, Kong is the natural extension. If <strong>developer experience and config elegance</strong> matter most and you want a SaaS control plane, Portkey is especially compelling. If you need to manage the <strong>entire lifecycle from K8s LLM deployment to governed endpoint</strong> inside your own cluster, TrueFoundry is the platform in this comparison that most explicitly spans both sides.</p>
+</div>
+
+<p><strong>Up next — Blog 2 of 15:</strong> Rate Limiting, Budgets &amp; Token Economics. How each platform enforces spend governance, per-tenant quotas, and the critical distinction between velocity limits and cumulative budget caps.</p>
+
+<hr>
+
+<h2>§10 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://docs.litellm.ai/docs/proxy/configs" target="_blank">LiteLLM — Config Overview</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Settings Reference</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture (Life of a Request)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/reliability" target="_blank">LiteLLM — Fallbacks / Reliability</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/deploy" target="_blank">LiteLLM — Deployment Guide (Redis requirement at 1000+ RPS)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">LiteLLM — Virtual Keys</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/pass_through" target="_blank">LiteLLM — Pass-Through Endpoints</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/" target="_blank">Kong — AI Gateway Landing Page</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-proxy/" target="_blank">Kong — AI Proxy Plugin (min. 3.6)</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">Kong — AI Proxy Advanced Plugin (min. 3.8, enterprise)</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/ai-providers/openai/" target="_blank">Kong — OpenAI Provider Reference (upstream path mapping)</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/ai-providers/azure/" target="_blank">Kong — Azure OpenAI Provider Reference</a></li>
+  <li><a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">Kong — Plugin Compatibility Matrix</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/get-started/" target="_blank">Kong — Get Started with AI Gateway</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway" target="_blank">Portkey — AI Gateway Root Page</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Configs</a></li>
+  <li><a href="https://portkey.ai/docs/guides/getting-started/getting-started-with-ai-gateway" target="_blank">Portkey — Getting Started with AI Gateway</a></li>
+  <li><a href="https://portkey.ai/docs/guides/getting-started/101-on-portkey-s-gateway-configs" target="_blank">Portkey — 101 on Gateway Configs</a></li>
+  <li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy in Your Infrastructure (Hybrid VPC)</a></li>
+  <li><a href="https://portkey.ai/docs/product/enterprise-offering/budget-policies" target="_blank">Portkey — Usage &amp; Rate Limit Policies (Enterprise)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/architecture" target="_blank">TrueFoundry — Platform Architecture</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/intro-to-llm-gateway" target="_blank">TrueFoundry — AI Gateway Overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/quick-start" target="_blank">TrueFoundry — AI Gateway Quick Start</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">TrueFoundry — Request and Response Headers</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">TrueFoundry — Load Balancing Overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+  <li><a href="https://www.truefoundry.com/docs/deploying-an-llm-model-from-the-model-catalogue" target="_blank">TrueFoundry — Deploying LLMs (Basic Auth with OpenAI SDK)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/manage-secrets" target="_blank">TrueFoundry — Secret Management</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">TrueFoundry — Deployment Overview</a></li>
+</ol>
+
+<hr>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 1 of 15 &nbsp;·&nbsp; March 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
+  Feature claims cross-referenced against official public documentation. Model strings in examples are illustrative draft-time identifiers and should be re-verified against current vendor docs before production decisions.
+</p>
+
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('.code-wrap').forEach(function(wrap) {
+    var pre = wrap.querySelector('pre');
+    var btn = wrap.querySelector('.copy-btn');
+    if (!pre || !btn) return;
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText;
+      var ok = await copyText(text);
+      if (ok) { flashCopied(btn); }
+      else { btn.textContent = 'failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+</body>
+</html>
