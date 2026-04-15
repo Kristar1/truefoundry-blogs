@@ -1,0 +1,1046 @@
+
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway Series #12 — Data Residency &amp; Sovereignty</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB;
+    --kong:    #00D27B;
+    --portkey: #5A67FF;
+    --tf:      #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+
+  .series-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .tag-pill { display: inline-block; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace; padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase; }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer { background: #1a1200; border: 1px solid #3d2c00; color: var(--warn); font-size: .78rem; padding: .5rem 1rem; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; }
+
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre { background: #080c12; border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 0; }
+  .copy-btn { position: absolute; top: .55rem; right: .55rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: .68rem; padding: .22rem .55rem; border-radius: 5px; cursor: pointer; transition: all .15s ease; user-select: none; letter-spacing: .03em; line-height: 1.4; }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+  .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note { font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border); }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn { border-color: var(--warn); background: #1a1200; }
+  .callout.info { border-color: #60a5fa; background: #0a1220; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.info .callout-title { color: #60a5fa; }
+
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+</style>
+</head>
+<body>
+
+<!-- ══════ HEADER ══════ -->
+<div class="series-bar">
+  <span class="tag-pill">AI Gateway Series</span>
+  <div class="series-dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    <div class="dot"></div><div class="dot"></div>
+    <div class="dot active" title="Blog 12 — Data Residency &amp; Sovereignty"></div>
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+  </div>
+  <span class="tag-pill active">Blog 12 of 15</span>
+</div>
+
+<h1>Data Residency &amp; Sovereignty for LLM Gateways:<br>LiteLLM vs. Kong vs. Portkey vs. TrueFoundry</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 22 min read</span>
+  <span class="meta-item">🗓 March 2026</span>
+  <span class="meta-item">👤 Platform Engineering · Compliance</span>
+  <div class="disclaimer">⚠ EDITORIAL DISCLAIMER — Assessments reflect the authors' opinions as of March 25, 2026. Verify against current vendor docs before architectural decisions.</div>
+</div>
+
+<p style="font-size:.82rem; color: var(--muted);">Models referenced throughout this post reflect the production-current landscape as of this writing:</p>
+<div class="model-pills">
+  <span class="mpill openai">gpt-5.4</span>
+  <span class="mpill openai">gpt-5.4-pro</span>
+  <span class="mpill openai">gpt-5.4-mini</span>
+  <span class="mpill anthropic">claude-opus-4-6</span>
+  <span class="mpill anthropic">claude-sonnet-4-6</span>
+  <span class="mpill anthropic">claude-haiku-4-5</span>
+  <span class="mpill google">gemini-3.1-pro-preview</span>
+  <span class="mpill google">gemini-3-flash-preview</span>
+  <span class="mpill google">gemini-3.1-flash-lite-preview</span>
+</div>
+
+<!-- ══════ §0 TL;DR ══════ -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">⚠ Real-World Scenario: The GDPR Audit That Started with a Prompt Log</div>
+  <p>A German fintech running AI-assisted KYC document analysis — ingesting passport scans, IBANs, and tax identification numbers — receives a formal inquiry from the German DPA (Datenschutzbehörde) under GDPR Article 46. The investigation trigger: their AI gateway's default log-shipping configuration was silently synchronizing full prompt payloads, including the structured JSON containing customer PII, to a SaaS observability dashboard hosted in the United States. No standard contractual clauses were in place. No pseudonymisation. No consent.</p>
+  <p>The engineering team had understood "prompt logging" as a debug convenience, not a data-transfer mechanism. But from a regulatory standpoint, each request log was a cross-border transfer of personal data to a third-country sub-processor. The gateway's payload logging configuration had quietly created a compliance liability that cost months of remediation, mandatory DPA notification, and significant legal overhead.</p>
+  <p>This scenario is not hypothetical edge-case paranoia. As AI platforms grow, every gateway that logs prompt and response content becomes a de-facto data processing system — one that must satisfy the same residency, sub-processor, and retention obligations as any other enterprise data store. The choice of gateway architecture determines whether your compliance posture is strong by design, achievable through configuration, or fundamentally constrained by a SaaS control dependency you cannot fully govern.</p>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-litellm">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">LiteLLM</div>
+    <div class="qp-desc">Fully self-hostable Python proxy with callback-driven log routing. Payload logging is toggleable per deployment. Best for teams needing sovereignty without Kubernetes infrastructure.</div>
+  </div>
+  <div class="qp-card c-kong">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Kong AI Gateway</div>
+    <div class="qp-desc">C/Lua data plane with AI PII Sanitizer, Gen AI OTel attributes, and standard Kong logging plugin ecosystem. Strong residency posture when self-managed. Enterprise features required for full PII scrubbing.</div>
+  </div>
+  <div class="qp-card c-portkey">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Portkey</div>
+    <div class="qp-desc">SaaS-first with a hybrid VPC option: the data plane runs in your network, while the control plane remains Portkey-hosted in hybrid mode. LLM traffic stays in-VPC; control-plane sync and analytics remain vendor-managed.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">K8s-native stateless data plane with in-memory hot path, four-hook guardrails, built-in PII/PHI and secrets detection, configurable routing for request data with a default metric destination, and OTEL trace export to customer-controlled observability backends.</div>
+  </div>
+</div>
+
+<!-- ══════ §1 WHY DATA SOVEREIGNTY ══════ -->
+<h2>§1 — Why AI Gateway Data Sovereignty Is a Different Problem</h2>
+
+<p>Most data residency discussions in enterprise architecture focus on databases, blob storage, and message queues. AI gateways introduce a qualitatively different challenge: <strong>the request payload itself is the sensitive artifact</strong>. A prompt sent to <code>claude-sonnet-4-6</code> for legal contract analysis is not metadata — it is the contract. A chat message routed through <code>gpt-5.4</code> for customer support may contain medical history, financial details, or government identifiers. The gateway sees every word of it.</p>
+
+<p>This creates five distinct data surfaces that each AI gateway handles differently, and which compliance teams must independently evaluate:</p>
+
+<ul>
+  <li><strong>Prompt and response payload logging.</strong> The full request/response body. This surface is commonly logged unless teams explicitly disable, redact, or privacy-scope logging. It is the highest-risk surface for PII exposure.</li>
+  <li><strong>Request metadata and usage analytics.</strong> Model name, token counts, latency, cost, consumer identity. Lower sensitivity, but still subject to data minimization requirements when linked to users.</li>
+  <li><strong>Distributed traces.</strong> Span trees capturing the gateway's internal decision path — which routing rules fired, which fallback was used, which guardrails triggered. Often contains derived context from the payload.</li>
+  <li><strong>Audit logs.</strong> Security and compliance events: who called which model, with which key, at what time. Must satisfy retention and access-control obligations independent of payload logging.</li>
+  <li><strong>Control plane state.</strong> API key metadata, team membership, budget state, routing policy. Sensitive organizational data, even if not user PII.</li>
+</ul>
+
+<p>No two gateways in this comparison handle all five surfaces the same way. The architectural commitments each vendor has made — SaaS-first, self-hosted, K8s-native, plugin-composable — fundamentally determine what is possible without forking the product. Understanding those commitments is the right starting point for any residency evaluation.</p>
+
+<!-- Overarching diagram: 5 data surfaces -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 370" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="370" fill="#121826"/>
+  <text x="410" y="26" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Five AI Gateway Data Surfaces — Where PII Risk Accumulates</text>
+
+  <!-- Central gateway box -->
+  <rect x="330" y="120" width="160" height="130" rx="8" fill="#0d1420" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="410" y="145" text-anchor="middle" fill="#60a5fa" font-size="11" font-weight="700">AI GATEWAY</text>
+  <text x="410" y="163" text-anchor="middle" fill="#7a8899" font-size="9">Normalization</text>
+  <text x="410" y="177" text-anchor="middle" fill="#7a8899" font-size="9">Routing · Policy</text>
+  <text x="410" y="191" text-anchor="middle" fill="#7a8899" font-size="9">Auth · Observability</text>
+  <text x="410" y="209" text-anchor="middle" fill="#4a5568" font-size="8">Request → [Model Call] → Response</text>
+  <text x="410" y="240" text-anchor="middle" fill="#4a5568" font-size="8">Every prompt passes through here</text>
+
+  <!-- Surface 1: Prompt/Response Logs (top-left, highest risk) -->
+  <rect x="30" y="40" width="175" height="60" rx="6" fill="#1a0a0a" stroke="#ff4757" stroke-width="1.5"/>
+  <text x="117" y="63" text-anchor="middle" fill="#ff4757" font-size="10" font-weight="700">① Prompt &amp; Response Logs</text>
+  <text x="117" y="80" text-anchor="middle" fill="#7a8899" font-size="8">Full payload · Highest PII risk</text>
+  <text x="117" y="93" text-anchor="middle" fill="#4a5568" font-size="8">Common unless disabled/redacted</text>
+  <line x1="205" y1="70" x2="328" y2="155" stroke="#ff4757" stroke-width="1.5" stroke-dasharray="5,3"/>
+
+  <!-- Surface 2: Usage Analytics (top-right) -->
+  <rect x="615" y="40" width="175" height="60" rx="6" fill="#1a1200" stroke="#ffa726" stroke-width="1.5"/>
+  <text x="702" y="63" text-anchor="middle" fill="#ffa726" font-size="10" font-weight="700">② Usage Analytics</text>
+  <text x="702" y="80" text-anchor="middle" fill="#7a8899" font-size="8">Tokens · Cost · Model · Consumer</text>
+  <text x="702" y="93" text-anchor="middle" fill="#4a5568" font-size="8">Lower PII risk · Subject to minimisation</text>
+  <line x1="615" y1="70" x2="492" y2="155" stroke="#ffa726" stroke-width="1.5" stroke-dasharray="5,3"/>
+
+  <!-- Surface 3: Distributed Traces (left-mid) -->
+  <rect x="30" y="175" width="175" height="60" rx="6" fill="#0a1220" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="117" y="198" text-anchor="middle" fill="#60a5fa" font-size="10" font-weight="700">③ Distributed Traces</text>
+  <text x="117" y="215" text-anchor="middle" fill="#7a8899" font-size="8">Span trees · Routing decisions</text>
+  <text x="117" y="228" text-anchor="middle" fill="#4a5568" font-size="8">May contain derived context</text>
+  <line x1="205" y1="205" x2="328" y2="200" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="5,3"/>
+
+  <!-- Surface 4: Audit Logs (right-mid) -->
+  <rect x="615" y="175" width="175" height="60" rx="6" fill="#0a1414" stroke="#00D27B" stroke-width="1.5"/>
+  <text x="702" y="198" text-anchor="middle" fill="#00D27B" font-size="10" font-weight="700">④ Audit Logs</text>
+  <text x="702" y="215" text-anchor="middle" fill="#7a8899" font-size="8">Key · Model · Timestamp · Actor</text>
+  <text x="702" y="228" text-anchor="middle" fill="#4a5568" font-size="8">Retention &amp; access-control obligations</text>
+  <line x1="615" y1="205" x2="492" y2="210" stroke="#00D27B" stroke-width="1.5" stroke-dasharray="5,3"/>
+
+  <!-- Surface 5: Control Plane State (bottom-center) -->
+  <rect x="230" y="310" width="360" height="48" rx="6" fill="#1a0a14" stroke="#BD93F9" stroke-width="1.5"/>
+  <text x="410" y="332" text-anchor="middle" fill="#BD93F9" font-size="10" font-weight="700">⑤ Control Plane State</text>
+  <text x="410" y="349" text-anchor="middle" fill="#7a8899" font-size="8">API keys · Teams · Budget · Routing policy — Sensitive org data regardless of user PII</text>
+  <line x1="410" y1="310" x2="410" y2="252" stroke="#BD93F9" stroke-width="1.5" stroke-dasharray="5,3"/>
+
+  <!-- Risk labels -->
+  <rect x="30" y="248" width="100" height="20" rx="3" fill="#1a0a0a" stroke="#ff475733"/>
+  <text x="80" y="262" text-anchor="middle" fill="#ff4757" font-size="8" font-family="IBM Plex Mono, monospace">CRITICAL RISK</text>
+  <rect x="615" y="248" width="100" height="20" rx="3" fill="#1a1200" stroke="#ffa72633"/>
+  <text x="665" y="262" text-anchor="middle" fill="#ffa726" font-size="8" font-family="IBM Plex Mono, monospace">MEDIUM RISK</text>
+</svg>
+</div>
+<div class="img-caption">Five AI gateway data surfaces. Surface ① — full prompt/response payloads — is the primary GDPR/HIPAA/CCPA liability. Gateway architecture determines which surfaces are operator-controlled vs. vendor-managed.</div>
+
+<hr>
+
+<!-- ══════ §2 LITELLM ══════ -->
+<div class="vendor-header litellm">
+  <span class="vendor-badge">LiteLLM</span>
+  <span class="vendor-title">§2 — Callback-Driven Data Locality with Budget-Aware Identity</span>
+</div>
+
+<h3>Residency Architecture</h3>
+<p>LiteLLM's data residency story is built on a single foundational commitment: <strong>the proxy is fully self-hostable, and all data flows are operator-configured</strong>. There is no cloud control plane and no mandatory SaaS telemetry endpoint in a self-deployed proxy setup. The docs are clear that the proxy can run on Docker, Kubernetes, or ECS without any external dependency beyond the database you provide.</p>
+
+<p>Log destinations are expressed entirely through the callback system documented at <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">docs.litellm.ai/docs/proxy/config_settings</a>. The <code>callbacks</code>, <code>success_callback</code>, <code>failure_callback</code>, and <code>service_callbacks</code> fields each accept a list of named integrations. Every integration is an outbound call — and every outbound call is a potential data residency decision. Teams in regulated environments should treat each callback destination as a data sub-processor requiring an explicit data processing agreement.</p>
+
+<p>The most operationally important residency toggle is <code>turn_off_message_logging: true</code>. This single setting, documented in the full settings reference at <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">docs.litellm.ai/docs/proxy/config_settings</a>, disables logging of prompt and response content while retaining metadata (model, tokens, cost, latency). This is the correct default posture for any deployment touching user PII: retain operational metrics, suppress raw payload content.</p>
+
+<p>The <code>x-litellm-call-id</code> header, documented in the logging page at <a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">docs.litellm.ai/docs/proxy/logging</a>, provides the correlation handle for cross-component tracing without requiring payload transmission. Operators can use this ID to correlate gateway logs with application logs while keeping the prompt content entirely within the originating application tier. Separately, LiteLLM's current UI logs docs state that request and response content is not stored by default unless teams explicitly enable prompt storage.</p>
+
+<h3>Payload Masking Before Storage</h3>
+<p>For environments where logging cannot be disabled entirely — audited systems, model quality reviews, root-cause analysis pipelines — LiteLLM supports PII redaction via the Presidio guardrail integration. This approach executes PII entity detection as a <code>pre_call</code> hook, substituting entity values with mask tokens <em>before</em> the request proceeds to the router. The guardrail is configured in <code>config.yaml</code> under the documented <code>guardrails</code> key at <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank">docs.litellm.ai/docs/proxy/guardrails/quick_start</a>.</p>
+
+<div class="code-wrap"><pre><span class="cm"># LiteLLM — payload masking with Presidio + selective log suppression</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/config_settings · guardrails/quick_start</span>
+<span class="key">model_list</span>:
+  - <span class="key">model_name</span>: <span class="str">flagship-primary</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4-6</span>
+      <span class="key">api_key</span>: <span class="str">os.environ/ANTHROPIC_API_KEY</span>
+
+<span class="key">litellm_settings</span>:
+  <span class="key">turn_off_message_logging</span>: <span class="kw">true</span>      <span class="cm"># suppress raw prompt/response from logs</span>
+  <span class="key">callbacks</span>: [<span class="str">"otel"</span>]                  <span class="cm"># route traces to operator-controlled OTel backend</span>
+  <span class="key">success_callback</span>: [<span class="str">"langfuse"</span>]       <span class="cm"># application-level events — operator-hosted Langfuse</span>
+  <span class="key">failure_callback</span>: [<span class="str">"sentry"</span>]         <span class="cm"># error events — no payload in error metadata</span>
+  <span class="key">service_callbacks</span>: [<span class="str">"prometheus"</span>]    <span class="cm"># service callback for Redis/Postgres failures</span>
+
+<span class="key">guardrails</span>:
+  - <span class="key">guardrail_name</span>: <span class="str">presidio-pii-redaction</span>
+    <span class="key">litellm_params</span>:
+      <span class="key">guardrail</span>: <span class="str">presidio</span>
+      <span class="key">mode</span>: <span class="str">pre_call</span>               <span class="cm"># redact before model call AND before logging</span>
+      <span class="key">presidio_language</span>: <span class="str">en</span>
+      <span class="key">pii_entities_config</span>:
+        <span class="key">CREDIT_CARD</span>: <span class="str">MASK</span>
+        <span class="key">EMAIL_ADDRESS</span>: <span class="str">MASK</span>
+        <span class="key">PHONE_NUMBER</span>: <span class="str">MASK</span>
+        <span class="key">PERSON</span>: <span class="str">MASK</span>
+        <span class="key">IBAN_CODE</span>: <span class="str">MASK</span>
+      <span class="key">default_on</span>: <span class="kw">true</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">config_settings</a> · <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank">guardrails/quick_start</a> · <a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">logging</a></div>
+
+<!-- LiteLLM Data Pipeline Diagram -->
+<div class="svg-wrap">
+<svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="700" height="240" fill="#121826"/>
+  <text x="350" y="22" text-anchor="middle" fill="#00C2CB" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">LITELLM — CALLBACK-DRIVEN LOG ROUTING</text>
+  <defs><marker id="la" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00C2CB"/></marker>
+  <marker id="lared" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#ff4757"/></marker>
+  <marker id="layel" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#4a5568"/></marker></defs>
+
+  <!-- Client -->
+  <rect x="15" y="88" width="70" height="44" rx="5" fill="#1a2233" stroke="#4a5568"/>
+  <text x="50" y="106" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">Client</text>
+  <text x="50" y="121" text-anchor="middle" fill="#7a8899" font-size="8">+ bearer key</text>
+
+  <!-- Arrow 1 -->
+  <line x1="85" y1="110" x2="120" y2="110" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+
+  <!-- Proxy server -->
+  <rect x="122" y="60" width="130" height="100" rx="6" fill="#001d1e" stroke="#00C2CB" stroke-width="1.5"/>
+  <text x="187" y="82" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="700">Proxy Server</text>
+  <text x="187" y="98" text-anchor="middle" fill="#7a8899" font-size="8">turn_off_message_logging</text>
+  <text x="187" y="113" text-anchor="middle" fill="#7a8899" font-size="8">Virtual key auth</text>
+  <text x="187" y="128" text-anchor="middle" fill="#7a8899" font-size="8">Budget + rate limit</text>
+  <text x="187" y="143" text-anchor="middle" fill="#7a8899" font-size="8">Presidio PII hook</text>
+
+  <!-- Arrow: request path -->
+  <line x1="252" y1="100" x2="295" y2="100" stroke="#00C2CB" stroke-width="1.5" marker-end="url(#la)"/>
+
+  <!-- Router -->
+  <rect x="297" y="75" width="100" height="50" rx="5" fill="#001d1e" stroke="#00C2CB"/>
+  <text x="347" y="97" text-anchor="middle" fill="#00C2CB" font-size="10" font-weight="700">Router</text>
+  <text x="347" y="112" text-anchor="middle" fill="#7a8899" font-size="8">Model selection</text>
+
+  <!-- Arrow to provider -->
+  <line x1="397" y1="100" x2="440" y2="100" stroke="#e8843a" stroke-width="1.5" marker-end="url(#layel)"/>
+  <rect x="442" y="80" width="100" height="40" rx="4" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="492" y="103" text-anchor="middle" fill="#e8843a" font-size="9" font-weight="600">LLM Provider</text>
+
+  <!-- Callback path (dashed, goes down) -->
+  <text x="187" y="185" text-anchor="middle" fill="#ffa726" font-size="9" font-weight="600">Callbacks (operator-controlled destinations)</text>
+  <line x1="187" y1="160" x2="187" y2="192" stroke="#ffa726" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="187" y1="198" x2="350" y2="198" stroke="#ffa726" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <!-- Callback destinations -->
+  <rect x="352" y="188" width="60" height="22" rx="3" fill="#0a0e16" stroke="#ffa72655"/>
+  <text x="382" y="203" text-anchor="middle" fill="#ffa726" font-size="7.5" font-weight="600">OTel</text>
+  <rect x="418" y="188" width="60" height="22" rx="3" fill="#0a0e16" stroke="#ffa72655"/>
+  <text x="448" y="203" text-anchor="middle" fill="#ffa726" font-size="7.5" font-weight="600">Prometheus</text>
+  <rect x="484" y="188" width="60" height="22" rx="3" fill="#0a0e16" stroke="#ffa72655"/>
+  <text x="514" y="203" text-anchor="middle" fill="#ffa726" font-size="7.5" font-weight="600">Langfuse</text>
+  <rect x="550" y="188" width="60" height="22" rx="3" fill="#0a0e16" stroke="#ffa72655"/>
+  <text x="580" y="203" text-anchor="middle" fill="#ffa726" font-size="7.5" font-weight="600">Sentry</text>
+
+  <text x="350" y="228" text-anchor="middle" fill="#3a4a5a" font-size="8" font-style="italic">All callback destinations are operator-configured — no mandatory outbound to vendor cloud</text>
+  <text x="350" y="238" text-anchor="middle" fill="#3a4a5a" font-size="7.5">Source: docs.litellm.ai/docs/proxy/config_settings</text>
+</svg>
+</div>
+<div class="img-caption">LiteLLM routes logs and metrics exclusively via operator-configured callbacks. With <code>turn_off_message_logging: true</code>, no payload content reaches any backend. All callback destinations are under operator control — including self-hosted Langfuse, on-prem OTel collectors, and internal Prometheus. Current LiteLLM docs also note that UI request/response content storage is opt-in rather than default-on.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — PII Redaction Requires External Presidio Service</div>
+  <p>LiteLLM's PII masking is not a built-in in-process capability. It delegates to the Presidio guardrail service, documented at <a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank">docs.litellm.ai/docs/proxy/guardrails/quick_start</a>. This means PII redaction introduces an external service dependency on the hot path: if Presidio is unavailable, the guardrail fails. For regulated environments, this dependency must itself be scoped to the same data-residency zone. The approach is architecturally sound, but operationally it shifts one sub-processor concern to another.</p>
+</div>
+
+<hr>
+
+<!-- ══════ §3 KONG ══════ -->
+<div class="vendor-header kong">
+  <span class="vendor-badge">Kong</span>
+  <span class="vendor-title">§3 — Plugin-Stack Data Governance with Gateway-Native PII Sanitization</span>
+</div>
+
+<h3>Residency Architecture</h3>
+<p>Kong AI Gateway's data residency posture inherits from the broader Kong Gateway philosophy: every behavior is a plugin, and the plugin chain is composable, version-controlled, and deployable entirely on customer infrastructure. The AI audit log reference at <a href="https://developer.konghq.com/ai-gateway/ai-audit-log-reference/" target="_blank">developer.konghq.com/ai-gateway/ai-audit-log-reference</a> is explicit about the mechanism: AI Gateway emits structured analytics logs for AI plugins through the standard Kong Gateway logging infrastructure, and those logs can be shipped to external systems via standard logging plugins. There is no mandatory Konnect SaaS dependency in self-managed deployments.</p>
+
+<p>The observability data model in Kong is layered across three distinct mechanisms. First, structured AI audit logs flow through whatever Kong logging plugin you attach — <code>http-log</code>, <code>file-log</code>, <code>tcp-log</code>, or any other compatible plugin. Second, the Prometheus plugin, when <code>config.ai_metrics: true</code> is enabled, exposes AI-specific metrics including AI request counts, AI cost, AI token totals, provider latency, and cache fetch latency — all without payload content. Third, the Gen AI OpenTelemetry attributes reference at <a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank">developer.konghq.com/ai-gateway/llm-open-telemetry</a> documents a rich set of span attributes (<code>gen_ai.operation.name</code>, <code>gen_ai.provider.name</code>, <code>gen_ai.request.model</code>, etc.) emitted via OTLP over HTTP with protobuf encoding to any compatible backend. All three mechanisms stay within the Kong data plane. One nuance matters for residency reviews: Kong's Gen AI payload attributes and AI audit logs can include full request and response content when payload logging is enabled, so privacy posture depends on which logging and tracing paths you turn on.</p>
+
+<h3>AI PII Sanitizer — Gateway-Native Payload Scrubbing</h3>
+<p>Kong's distinctive data governance capability is the <strong>AI PII Sanitizer</strong> plugin, documented at <a href="https://developer.konghq.com/plugins/ai-sanitizer/" target="_blank">developer.konghq.com/plugins/ai-sanitizer</a>. Unlike LiteLLM's approach of delegating PII detection to an external guardrail service called before the model, Kong's PII Sanitizer can operate on both request bodies (before reaching the upstream LLM) and response bodies (before returning to the client). It uses an external AI PII Anonymizer Service, and critically, includes an optional restoration mode: the gateway can re-inject original values back into the response after the model call, so downstream consumers receive unredacted answers while the model itself never processes the raw PII.</p>
+
+<p>This bidirectional sanitization-and-restoration model is significant for regulated workloads where the user experience must not be degraded by anonymization: the patient-facing chatbot responds with the correct name, but the model called <code>gpt-5.4</code> or <code>claude-sonnet-4-6</code> only ever saw a placeholder token. Kong documents this as a sequence diagram on the AI PII Sanitizer page, showing the request path through the gateway, through the anonymization service, to the model, and back.</p>
+
+<div class="code-wrap"><pre><span class="cm"># Kong AI Gateway — AI audit log routing + Prometheus AI metrics</span>
+<span class="cm"># Source: developer.konghq.com/ai-gateway/ai-audit-log-reference</span>
+<span class="cm">#         developer.konghq.com/ai-gateway/monitor-ai-llm-metrics</span>
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">services</span>:
+  - <span class="key">name</span>: <span class="str">llm-service</span>
+    <span class="key">url</span>: <span class="str">http://localhost</span>
+    <span class="key">routes</span>:
+      - <span class="key">name</span>: <span class="str">llm-route</span>
+        <span class="key">paths</span>: [<span class="str">/v1/chat/completions</span>]
+
+<span class="key">plugins</span>:
+  <span class="cm"># Route AI audit logs to an internal SIEM — no payload forwarded to vendor cloud</span>
+  - <span class="key">name</span>: <span class="str">http-log</span>
+    <span class="key">service</span>: <span class="str">llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">http_endpoint</span>: <span class="str">http://siem.internal.corp:9200/ai-audit-logs</span>
+      <span class="key">method</span>: <span class="str">POST</span>
+      <span class="key">content_type</span>: <span class="str">application/json</span>
+
+  <span class="cm"># Expose AI-specific Prometheus metrics (no payload content)</span>
+  - <span class="key">name</span>: <span class="str">prometheus</span>
+    <span class="key">config</span>:
+      <span class="key">ai_metrics</span>: <span class="kw">true</span>           <span class="cm"># enables AI request, token, cost, latency metrics</span>
+
+  <span class="cm"># AI Proxy Advanced: multi-target lowest-latency routing across gpt-5.4 + claude-sonnet-4-6</span>
+  - <span class="key">name</span>: <span class="str">ai-proxy-advanced</span>
+    <span class="key">service</span>: <span class="str">llm-service</span>
+    <span class="key">config</span>:
+      <span class="key">balancer</span>:
+        <span class="key">algorithm</span>: <span class="str">lowest-latency</span>
+        <span class="key">latency_strategy</span>: <span class="str">e2e</span>
+        <span class="key">max_fails</span>: <span class="num">3</span>
+        <span class="key">fail_timeout</span>: <span class="num">10</span>
+      <span class="key">targets</span>:
+        - <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">Authorization</span>
+            <span class="key">header_value</span>: <span class="str">{vault://aws/openai-key}</span>
+          <span class="key">model</span>:
+            <span class="key">provider</span>: <span class="str">openai</span>
+            <span class="key">name</span>: <span class="str">gpt-5.4</span>
+        - <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">x-api-key</span>
+            <span class="key">header_value</span>: <span class="str">{vault://aws/anthropic-key}</span>
+          <span class="key">model</span>:
+            <span class="key">provider</span>: <span class="str">anthropic</span>
+            <span class="key">name</span>: <span class="str">claude-sonnet-4-6</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/ai-gateway/ai-audit-log-reference/" target="_blank">ai-audit-log-reference</a> · <a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">monitor-ai-llm-metrics</a> · <a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">ai-proxy-advanced</a></div>
+
+<!-- Kong Data Governance Diagram -->
+<div class="svg-wrap">
+<svg viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="760" height="250" fill="#121826"/>
+  <text x="380" y="22" text-anchor="middle" fill="#00D27B" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">KONG — DATA GOVERNANCE PLUGIN CHAIN</text>
+  <defs>
+    <marker id="ka" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#00D27B"/></marker>
+    <marker id="kaout" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#7a8899"/></marker>
+  </defs>
+
+  <!-- Client -->
+  <rect x="15" y="90" width="60" height="40" rx="5" fill="#1a2233" stroke="#4a5568"/>
+  <text x="45" y="107" text-anchor="middle" fill="#7a8899" font-size="9" font-weight="600">Client</text>
+  <text x="45" y="121" text-anchor="middle" fill="#4a5568" font-size="8">Request</text>
+  <line x1="75" y1="110" x2="95" y2="110" stroke="#4a5568" stroke-width="1.5" marker-end="url(#kaout)"/>
+
+  <!-- Plugin 1: Auth/Consumer -->
+  <rect x="97" y="75" width="88" height="70" rx="6" fill="#001e13" stroke="#00D27B" stroke-opacity=".6"/>
+  <text x="141" y="97" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">Auth / ACL</text>
+  <text x="141" y="112" text-anchor="middle" fill="#7a8899" font-size="7.5">Consumer ID</text>
+  <text x="141" y="125" text-anchor="middle" fill="#4a5568" font-size="7">Key · OIDC · mTLS</text>
+  <line x1="185" y1="110" x2="203" y2="110" stroke="#00D27B" stroke-width="1.5" stroke-opacity=".6" marker-end="url(#ka)"/>
+
+  <!-- Plugin 2: AI PII Sanitizer -->
+  <rect x="205" y="75" width="102" height="70" rx="6" fill="#001e13" stroke="#00D27B"/>
+  <text x="256" y="95" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">AI PII Sanitizer</text>
+  <text x="256" y="110" text-anchor="middle" fill="#7a8899" font-size="7.5">Req+Resp bodies</text>
+  <text x="256" y="123" text-anchor="middle" fill="#4a5568" font-size="7">Anonymize + restore</text>
+  <text x="256" y="136" text-anchor="middle" fill="#ff4757" font-size="7">Enterprise</text>
+  <line x1="307" y1="110" x2="325" y2="110" stroke="#00D27B" stroke-width="1.5" marker-end="url(#ka)"/>
+
+  <!-- Plugin 3: Rate Limiting -->
+  <rect x="327" y="75" width="98" height="70" rx="6" fill="#001e13" stroke="#00D27B" stroke-opacity=".6"/>
+  <text x="376" y="97" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">Rate Limiting</text>
+  <text x="376" y="112" text-anchor="middle" fill="#7a8899" font-size="7.5">Token + cost aware</text>
+  <text x="376" y="125" text-anchor="middle" fill="#4a5568" font-size="7">Per consumer</text>
+  <line x1="425" y1="110" x2="443" y2="110" stroke="#00D27B" stroke-width="1.5" marker-end="url(#ka)"/>
+
+  <!-- Plugin 4: AI Proxy Advanced -->
+  <rect x="445" y="75" width="100" height="70" rx="6" fill="#001e13" stroke="#00D27B"/>
+  <text x="495" y="93" text-anchor="middle" fill="#00D27B" font-size="9" font-weight="700">AI Proxy Adv.</text>
+  <text x="495" y="108" text-anchor="middle" fill="#7a8899" font-size="7.5">Multi-target bal.</text>
+  <text x="495" y="121" text-anchor="middle" fill="#4a5568" font-size="7">e2e latency</text>
+  <line x1="545" y1="100" x2="580" y2="85" stroke="#10a37f" stroke-width="1.2"/>
+  <line x1="545" y1="115" x2="580" y2="130" stroke="#e8843a" stroke-width="1.2"/>
+  <text x="612" y="88" fill="#10a37f" font-size="8" font-weight="600">gpt-5.4</text>
+  <text x="612" y="134" fill="#e8843a" font-size="8" font-weight="600">claude-sonnet-4-6</text>
+
+  <!-- Log output path -->
+  <line x1="350" y1="165" x2="700" y2="165" stroke="#1e2d45" stroke-width="1"/>
+  <text x="145" y="185" text-anchor="middle" fill="#00D27B" font-size="8.5" font-family="IBM Plex Mono, monospace" fill-opacity=".7">http-log plugin</text>
+  <text x="145" y="199" text-anchor="middle" fill="#4a5568" font-size="7.5">Routes AI audit logs</text>
+  <text x="145" y="213" text-anchor="middle" fill="#4a5568" font-size="7.5">→ Internal SIEM</text>
+  <text x="370" y="185" text-anchor="middle" fill="#00D27B" font-size="8.5" font-family="IBM Plex Mono, monospace" fill-opacity=".7">Prometheus plugin</text>
+  <text x="370" y="199" text-anchor="middle" fill="#4a5568" font-size="7.5">ai_metrics: true</text>
+  <text x="370" y="213" text-anchor="middle" fill="#4a5568" font-size="7.5">Token / cost / latency</text>
+  <text x="580" y="185" text-anchor="middle" fill="#00D27B" font-size="8.5" font-family="IBM Plex Mono, monospace" fill-opacity=".7">OTel collector</text>
+  <text x="580" y="199" text-anchor="middle" fill="#4a5568" font-size="7.5">Gen AI attributes</text>
+  <text x="580" y="213" text-anchor="middle" fill="#4a5568" font-size="7.5">OTLP/HTTP+protobuf</text>
+  <circle cx="250" cy="165" r="2" fill="#1e2d45"/>
+  <circle cx="480" cy="165" r="2" fill="#1e2d45"/>
+  <text x="380" y="236" text-anchor="middle" fill="#3a4a5a" font-size="8">Source: developer.konghq.com/ai-gateway/ · ai-audit-log-reference · llm-open-telemetry</text>
+</svg>
+</div>
+<div class="img-caption">Kong's AI data governance composes via the plugin chain. The AI PII Sanitizer (enterprise) intercepts and anonymizes payloads before model calls. Logs, metrics, and traces each route through separate, operator-configured plugin paths — no mandatory outbound to Konnect in self-managed deployments.</div>
+
+<div class="callout warn">
+  <div class="callout-title">⚠ Limitation — Advanced Data Governance is Version and License Gated</div>
+  <p>Kong's AI PII Sanitizer (min. Kong 3.10, enterprise license), AI AWS Guardrails (min. Kong 3.11, enterprise), and AI Azure Content Safety (enterprise) are not available in open-source Kong Gateway. Self-managed enterprise deployments do not require Konnect connectivity and maintain full data residency. However, the full PII sanitization surface requires an enterprise contract and careful version planning against the <a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">plugin compatibility reference</a>. Teams on Kong OSS must implement payload masking through custom Lua plugins or upstream application logic.</p>
+</div>
+
+<hr>
+
+<!-- ══════ §4 PORTKEY ══════ -->
+<div class="vendor-header portkey">
+  <span class="vendor-badge">Portkey</span>
+  <span class="vendor-title">§4 — Hybrid VPC Data Plane with Cloud Control Dependency</span>
+</div>
+
+<h3>Residency Architecture</h3>
+<p>Portkey's default deployment is a managed SaaS Anycast edge network. In this mode, prompt and response payloads transit Portkey's infrastructure. For many enterprise compliance frameworks, this is a non-starter: the SaaS endpoint is a data processor operating in vendor-controlled infrastructure, and the data processing agreement scope must encompass your full prompt content.</p>
+
+<p>Portkey addresses this through a hybrid deployment path documented at <a href="https://docs.portkey.ai/docs/self-hosting/hybrid-deployments/architecture" target="_blank">docs.portkey.ai/docs/self-hosting/hybrid-deployments/architecture</a>. In hybrid mode, the Helm-based data plane runs gateway pods inside your Kubernetes VPC while the control plane remains hosted by Portkey. Current docs describe the split as follows: the data plane keeps sensitive LLM traffic in your environment, while the Portkey-hosted control plane handles administration, configs, and analytics. Treat the “no data leaves your network” marketing summary as applying to the LLM traffic hot path, not to all control-plane synchronization.</p>
+
+<p>This split creates a well-defined but incomplete residency posture. The hot path — prompt content, model responses, provider credentials — stays in your VPC. The control plane, including the config dashboard, guardrail configuration UI, analytics aggregation, and higher-level observability surfaces, operates in Portkey's infrastructure in hybrid mode. Current Portkey docs also expose configurable request-logging modes such as Full Logging, Metrics Only, and Do Not Track behaviors for sensitive traffic. For audit and compliance purposes, this means prompt payload residency is achievable, but control-plane sovereignty is only partial in hybrid deployments. Organizations subject to stricter frameworks should map this boundary explicitly before adopting the hybrid mode.</p>
+
+<h3>Payload Masking and Guardrails</h3>
+<p>Portkey's PII Redaction feature, documented at <a href="https://portkey.ai/docs/product/guardrails/pii-redaction" target="_blank">portkey.ai/docs/product/guardrails/pii-redaction</a>, can detect and redact phones, emails, locations, IP addresses, SSNs, names, and credit card information. Redaction is attached to configs via <code>before_request_hooks</code> and <code>after_request_hooks</code>. This means PII masking runs on the gateway data plane — within your VPC in hybrid mode — before any content is logged or transmitted.</p>
+
+<p>For teams with existing compliance tooling, the Bring Your Own Guardrails webhook documented at <a href="https://portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails" target="_blank">portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails</a> is architecturally significant. The webhook contract accepts the full OpenAI-formatted request body along with request metadata, and the response determines whether the request proceeds or is blocked. In hybrid mode, this webhook can point to an internal endpoint in your VPC, keeping the payload entirely within your network boundary even during policy evaluation.</p>
+
+<p><strong>Enterprise OTel Analytics Export</strong><br>
+While control-plane configuration remains SaaS-managed in hybrid deployments, Portkey Enterprise recently introduced automatic log export to OTLP-compatible HTTP endpoints. This allows organizations to push all telemetry—including GenAI semantic attributes, tool definitions, and token usage—directly into their own internal observability stack (e.g., Datadog, Splunk, or an in-VPC OTel Collector), strengthening the data localization posture for audit logs.</p>
+
+<div class="code-wrap"><pre><span class="cm">// Portkey hybrid config — PII hooks + BYOG webhook for payload masking</span>
+<span class="cm">// Source: portkey.ai/docs/product/ai-gateway/configs</span>
+<span class="cm">//         portkey.ai/docs/product/guardrails/pii-redaction</span>
+<span class="cm">//         portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails</span>
+{
+  <span class="key">"strategy"</span>: { <span class="key">"mode"</span>: <span class="str">"fallback"</span> },
+  <span class="key">"targets"</span>: [
+    {
+      <span class="key">"provider"</span>: <span class="str">"@openai-prod"</span>,
+      <span class="key">"override_params"</span>: { <span class="key">"model"</span>: <span class="str">"gpt-5.4"</span> }
+    },
+    {
+      <span class="key">"provider"</span>: <span class="str">"@anthropic-prod"</span>,
+      <span class="key">"override_params"</span>: { <span class="key">"model"</span>: <span class="str">"claude-sonnet-4-6"</span> }
+    }
+  ],
+  <span class="cm">// PII redaction runs on data plane (in VPC in hybrid mode)</span>
+  <span class="key">"before_request_hooks"</span>: [
+    { <span class="key">"id"</span>: <span class="str">"your-pii-redaction-guardrail-id"</span> }
+  ],
+  <span class="key">"after_request_hooks"</span>: [
+    { <span class="key">"id"</span>: <span class="str">"your-pii-redaction-guardrail-id"</span> }
+  ],
+  <span class="key">"retry"</span>: {
+    <span class="key">"attempts"</span>: <span class="num">3</span>,
+    <span class="key">"on_status_codes"</span>: [<span class="num">408</span>, <span class="num">429</span>, <span class="num">500</span>, <span class="num">503</span>]
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">portkey.ai/docs/product/ai-gateway/configs</a> · <a href="https://portkey.ai/docs/product/guardrails/pii-redaction" target="_blank">pii-redaction</a> · <a href="https://portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails" target="_blank">bring-your-own-guardrails</a></div>
+
+<!-- Portkey Hybrid Architecture Diagram -->
+<div class="svg-wrap">
+<svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="760" height="280" fill="#121826"/>
+  <text x="380" y="22" text-anchor="middle" fill="#5A67FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">PORTKEY — HYBRID VPC ARCHITECTURE: WHAT STAYS VS. WHAT LEAVES</text>
+
+  <!-- VPC boundary -->
+  <rect x="20" y="42" width="440" height="210" rx="8" fill="#080c14" stroke="#5A67FF" stroke-width="1.5" stroke-dasharray="8,4"/>
+  <text x="32" y="60" fill="#5A67FF" font-size="9" font-weight="600" font-family="IBM Plex Mono, monospace">Customer VPC (Hybrid Mode)</text>
+
+  <!-- Client -->
+  <rect x="40" y="75" width="70" height="40" rx="5" fill="#1a2233" stroke="#4a5568"/>
+  <text x="75" y="93" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="600">Apps</text>
+  <text x="75" y="107" text-anchor="middle" fill="#7a8899" font-size="8">Your services</text>
+
+  <!-- Arrow to gateway pods -->
+  <line x1="110" y1="95" x2="148" y2="95" stroke="#5A67FF" stroke-width="1.5"/>
+
+  <!-- Gateway pods -->
+  <rect x="150" y="58" width="130" height="120" rx="6" fill="#0a0c24" stroke="#5A67FF"/>
+  <text x="215" y="80" text-anchor="middle" fill="#5A67FF" font-size="10" font-weight="700">Gateway Pods</text>
+  <text x="215" y="96" text-anchor="middle" fill="#7a8899" font-size="8">PII hooks (before/after)</text>
+  <text x="215" y="111" text-anchor="middle" fill="#7a8899" font-size="8">BYOG webhook (internal)</text>
+  <text x="215" y="126" text-anchor="middle" fill="#7a8899" font-size="8">Routing + fallback</text>
+  <text x="215" y="141" text-anchor="middle" fill="#7a8899" font-size="8">Cache (Redis in VPC)</text>
+  <text x="215" y="156" text-anchor="middle" fill="#7a8899" font-size="8">Retries</text>
+  <text x="215" y="168" text-anchor="middle" fill="#50fa7b" font-size="7.5" font-weight="600">Prompt payload stays here ✓</text>
+
+  <!-- Arrow to LLM provider (stays in VPC outbound) -->
+  <line x1="280" y1="95" x2="335" y2="95" stroke="#e8843a" stroke-width="1.5"/>
+  <rect x="337" y="75" width="100" height="40" rx="4" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="387" y="95" text-anchor="middle" fill="#e8843a" font-size="9" font-weight="600">LLM Provider</text>
+  <text x="387" y="108" text-anchor="middle" fill="#4a5568" font-size="8">gpt-5.4 / sonnet-4-6</text>
+
+  <!-- What STAYS in VPC -->
+  <rect x="40" y="200" width="400" height="44" rx="6" fill="#0a1a0a" stroke="#50fa7b" stroke-opacity=".5"/>
+  <text x="240" y="218" text-anchor="middle" fill="#50fa7b" font-size="9" font-weight="600">Stays in VPC: Prompt payloads · Responses · PII-redacted request content · Internal BYOG evaluations</text>
+  <text x="240" y="234" text-anchor="middle" fill="#4a5568" font-size="8">Portkey docs: "prompts and responses stay inside the network" — portkey.ai/docs/enterprise/hybrid2</text>
+
+  <!-- DIVIDER -->
+  <line x1="470" y1="42" x2="470" y2="260" stroke="#2d3f5a" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="540" y="58" text-anchor="middle" fill="#ff4757" font-size="9" font-weight="600" font-family="IBM Plex Mono, monospace">LEAVES VPC</text>
+
+  <!-- Portkey cloud -->
+  <rect x="490" y="70" width="245" height="180" rx="8" fill="#0d0a1e" stroke="#5A67FF" stroke-opacity=".5"/>
+  <text x="612" y="90" text-anchor="middle" fill="#5A67FF" font-size="10" font-weight="700">Portkey Cloud</text>
+
+  <rect x="510" y="100" width="205" height="28" rx="4" fill="#1a1a2e" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="612" y="119" text-anchor="middle" fill="#7a8899" font-size="8.5">Control Dashboard + Config UI</text>
+  <rect x="510" y="134" width="205" height="28" rx="4" fill="#1a1a2e" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="612" y="153" text-anchor="middle" fill="#7a8899" font-size="8.5">Analytics + Aggregated Metrics</text>
+  <rect x="510" y="168" width="205" height="28" rx="4" fill="#1a1a2e" stroke="#5A67FF" stroke-opacity=".3"/>
+  <text x="612" y="187" text-anchor="middle" fill="#7a8899" font-size="8.5">Guardrail Config + Trace Storage</text>
+  <rect x="510" y="202" width="205" height="34" rx="4" fill="#1a0a0a" stroke="#ff475744"/>
+  <text x="612" y="218" text-anchor="middle" fill="#ff4757" font-size="8" font-weight="600">Control-plane data sovereignty</text>
+  <text x="612" y="230" text-anchor="middle" fill="#ff4757" font-size="8" font-weight="600">not achievable in hybrid mode</text>
+
+  <!-- Arrow: metrics leave -->
+  <line x1="280" y1="145" x2="490" y2="145" stroke="#ff4757" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="385" y="138" fill="#ff4757" font-size="8" font-style="italic">control-plane sync / analytics →</text>
+</svg>
+</div>
+<div class="img-caption">Portkey hybrid mode keeps prompt and response payloads on the customer side of the split for the LLM hot path, while the control dashboard, analytics, and configuration plane remain Portkey-hosted. This is a well-defined but partial residency posture in hybrid mode — suitable for many data-localization requirements, but not for frameworks requiring operator-controlled control-plane residency.</div>
+
+<div class="callout danger">
+  <div class="callout-title">⛔ In Portkey Hybrid Deployments, Control Plane Is Portkey-Hosted</div>
+  <p>In hybrid VPC deployments, Portkey's docs confirm the control dashboard and higher-level features remain in Portkey's cloud. For organizations subject to FedRAMP, financial sector sovereignty rules (e.g., DORA in the EU), or frameworks requiring that all system components processing or controlling AI inference be under operator jurisdiction, the hybrid mode does not satisfy the complete requirement. The data plane residency is genuine; the control plane residency is vendor-managed. Treat this boundary explicitly in your DPA and sub-processor disclosure. Consult current Portkey enterprise docs for any fully air-gapped or on-premises control-plane options that may be available under separate enterprise agreements.</p>
+</div>
+
+<hr>
+
+<!-- ══════ §5 TRUEFOUNDRY ══════ -->
+<div class="vendor-header tf">
+  <span class="vendor-badge">TrueFoundry</span>
+  <span class="vendor-title">§5 — K8s-Native In-Cluster Data Plane with Four-Hook Guardrails and Configurable Data Routing</span>
+</div>
+
+<h3>Residency Architecture</h3>
+<p>TrueFoundry's AI Gateway data residency story is architecturally explicit about the synchronous hot path. The gateway plane architecture page at <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">truefoundry.com/docs/platform/gateway-plane-architecture</a> documents the request-handling principle directly: <strong>no external calls during request handling</strong> (unless cache is involved). Rate limits, load balancing, authentication, authorization, and built-in guardrails are evaluated in-memory, while logs and metrics are queued asynchronously. Request handling continues even if the external queue is down.</p>
+
+<p>This is best understood as a residency-first hot-path design, not an unconditional guarantee. Prompt and response payloads are not sent to a vendor logging endpoint, remote policy engine, or SaaS analytics collector on the synchronous inference path. The payload exists in memory within the Kubernetes pod, transits to the LLM provider, and the response returns to the caller within the request lifecycle. Separately, current deployment docs describe request-response data export to an ingestion server on the TrueFoundry control plane in some deployment modes, after which the data may be stored in TrueFoundry-managed or customer-managed storage depending on configuration.</p>
+
+<p>The OTEL export page at <a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">truefoundry.com/docs/ai-gateway/export-opentelemetry-data</a> confirms that the gateway is OTEL compliant for <strong>traces</strong> and can export those traces to compatible observability platforms without disabling TrueFoundry-managed trace storage. That is valuable for customer-controlled observability, but it should not be conflated with universal direct log export. Current data-routing docs separately state that all metrics always go to the default destination, while custom destinations are traces-only. Kubernetes-native IAM patterns such as IRSA or Workload Identity remain relevant when the chosen customer-managed sink uses those identities.</p>
+
+<p>TrueFoundry's current data-routing docs make the storage picture more specific than the changelog summary: you can configure the default destination for request-response data and metrics, but <strong>all metrics always go to the default destination</strong>, while <strong>custom destinations are traces-only</strong>. In parallel, deployment docs describe a mode where request-response data is exported to an ingestion server on the TrueFoundry control plane before being stored in either TrueFoundry-managed or customer-managed blob storage. The combined picture is strong but nuanced: customer-managed storage is supported, trace export to customer-controlled OTEL backends is explicitly documented, and the exact residency boundary depends on the deployment and routing mode you choose.</p>
+
+<p>One caveat the docs explicitly acknowledge: two globally hosted services exist outside customer infrastructure — a licensing and authentication endpoint, and an analytics endpoint. The docs characterize these as "narrower in scope," but compliance teams should evaluate whether these endpoints constitute data processing under their applicable regulations. The gateway hot path itself (authentication, rate limits, routing) operates in-memory within the cluster; the global services are involved in licensing validation and aggregate analytics, not per-request prompt processing.</p>
+
+<h3>Four-Hook Guardrail System for Per-Application Payload Masking</h3>
+<p>TrueFoundry's guardrail system, documented at <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">truefoundry.com/docs/ai-gateway/guardrails-overview</a>, offers the most granular payload masking architecture of the four platforms. Four distinct hooks — LLM input, LLM output, MCP pre-tool, MCP post-tool — can each carry independent guardrail configurations. This is significant for data residency because different applications processing different data classes can be assigned different masking policies without a single global rule that over-masks some workloads and under-protects others.</p>
+
+<p>The built-in PII/PHI detection at <a href="https://www.truefoundry.com/docs/ai-gateway/tfy-pii" target="_blank">truefoundry.com/docs/ai-gateway/tfy-pii</a> recommends explicit hook-placement mapping: redact PII from user prompts at LLM input, from model answers at LLM output, from tool parameters at MCP pre-tool, and from tool results at MCP post-tool. The built-in secrets detection at <a href="https://www.truefoundry.com/docs/ai-gateway/secrets-detection" target="_blank">truefoundry.com/docs/ai-gateway/secrets-detection</a> operates in either <code>validate</code> mode (block the request) or <code>mutate</code> mode (redact the credential in-place), with zero external dependencies — meaning the detection logic runs in-process within the gateway pod, not via an outbound API call.</p>
+
+<p>The guardrail configuration at <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">truefoundry.com/docs/ai-gateway/guardrails-configuration</a> evaluates <strong>all matching rules</strong> and applies the union of their guardrails, using subject and target conditions to compose policies. This means a rule targeting <code>team:finance-app</code> with IBAN and credit card redaction can coexist alongside a rule targeting <code>team:healthcare-app</code> with PHI-specific hooks — and a request that matches multiple scopes inherits the combined policy set. The X-TFY-GUARDRAILS request header, documented on the headers page at <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">truefoundry.com/docs/ai-gateway/headers</a>, allows per-request dynamic guardrail selection for advanced use cases.</p>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — per-team payload masking with four-hook guardrails</span>
+<span class="cm"># Source: truefoundry.com/docs/ai-gateway/guardrails-configuration</span>
+<span class="cm">#         truefoundry.com/docs/ai-gateway/guardrails-overview</span>
+<span class="key">name</span>: <span class="str">data-residency-guardrails</span>
+<span class="key">type</span>: <span class="str">gateway-guardrails-config</span>
+<span class="key">rules</span>:
+  <span class="cm"># Finance team: IBAN, PII, secrets scrubbing on all four hooks</span>
+  - <span class="key">id</span>: <span class="str">finance-pii-full-coverage</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        <span class="key">operator</span>: <span class="kw">and</span>
+        <span class="key">conditions</span>:
+          <span class="key">in</span>:
+            - <span class="str">team:finance-app</span>
+    <span class="key">llm_input_guardrails</span>:
+      - <span class="str">my-guardrail-group/tfy-pii</span>          <span class="cm"># built-in PII/PHI — no external dep</span>
+      - <span class="str">my-guardrail-group/secrets-detection</span> <span class="cm"># built-in secrets — mutate mode</span>
+    <span class="key">llm_output_guardrails</span>:
+      - <span class="str">my-guardrail-group/tfy-pii</span>
+      - <span class="str">my-guardrail-group/secrets-detection</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>:
+      - <span class="str">my-guardrail-group/tfy-pii</span>
+    <span class="key">mcp_tool_post_invoke_guardrails</span>:
+      - <span class="str">my-guardrail-group/secrets-detection</span>
+
+  <span class="cm"># Healthcare team: PHI detection via Azure PII (healthcare domain enabled)</span>
+  - <span class="key">id</span>: <span class="str">healthcare-phi-coverage</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        <span class="key">operator</span>: <span class="kw">and</span>
+        <span class="key">conditions</span>:
+          <span class="key">in</span>:
+            - <span class="str">team:healthcare-app</span>
+    <span class="key">llm_input_guardrails</span>:
+      - <span class="str">my-guardrail-group/azure-pii-healthcare</span>
+    <span class="key">llm_output_guardrails</span>:
+      - <span class="str">my-guardrail-group/azure-pii-healthcare</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>: []
+    <span class="key">mcp_tool_post_invoke_guardrails</span>: []</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">guardrails-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrails-overview</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/tfy-pii" target="_blank">tfy-pii</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/secrets-detection" target="_blank">secrets-detection</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/azure-pii" target="_blank">azure-pii</a></div>
+
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — rate limiting scoped per team/workload for data governance</span>
+<span class="cm"># Source: truefoundry.com/docs/ai-gateway/ratelimiting</span>
+<span class="key">name</span>: <span class="str">ratelimiting-config</span>
+<span class="key">type</span>: <span class="str">gateway-rate-limiting-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">finance-app-daily-tokens</span>
+    <span class="key">when</span>:
+      <span class="key">metadata</span>:
+        <span class="key">environment</span>: <span class="str">production</span>
+        <span class="key">team</span>: <span class="str">finance-app</span>
+    <span class="key">limit_to</span>: <span class="num">2000000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_day</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'metadata.team_id'</span>]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">truefoundry.com/docs/ai-gateway/ratelimiting</a></div>
+
+<!-- TrueFoundry K8s Data Plane Diagram -->
+<div class="svg-wrap">
+<svg viewBox="0 0 760 270" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="760" height="270" fill="#121826"/>
+  <text x="380" y="22" text-anchor="middle" fill="#FF5533" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">TRUEFOUNDRY — K8S-NATIVE IN-CLUSTER DATA PLANE</text>
+
+  <!-- K8s cluster boundary -->
+  <rect x="18" y="38" width="530" height="210" rx="8" fill="#0d0906" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="35" y="56" fill="#FF5533" font-size="9" font-weight="600" font-family="IBM Plex Mono, monospace">Customer Kubernetes Cluster</text>
+
+  <!-- Stateless gateway pods -->
+  <rect x="35" y="68" width="380" height="108" rx="6" fill="#1e0d08" stroke="#FF5533"/>
+  <text x="225" y="86" text-anchor="middle" fill="#FF5533" font-size="10" font-weight="700">Stateless Hono Gateway Pods (K8s Deployment)</text>
+  <text x="225" y="102" text-anchor="middle" fill="#7a8899" font-size="8.5">In-memory hot path — NO external calls on request-response path</text>
+
+  <!-- Internal blocks -->
+  <rect x="50" y="112" width="78" height="26" rx="3" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="89" y="129" text-anchor="middle" fill="#7a8899" font-size="7.5">Auth (in-memory)</text>
+  <rect x="135" y="112" width="78" height="26" rx="3" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="174" y="129" text-anchor="middle" fill="#7a8899" font-size="7.5">Rate / Budget</text>
+  <rect x="220" y="112" width="78" height="26" rx="3" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="259" y="129" text-anchor="middle" fill="#7a8899" font-size="7.5">Routing</text>
+  <rect x="305" y="112" width="96" height="26" rx="3" fill="#2a1508" stroke="#FF5533" stroke-opacity=".4"/>
+  <text x="353" y="129" text-anchor="middle" fill="#7a8899" font-size="7.5">PII/PHI + Secrets</text>
+  <text x="353" y="139" text-anchor="middle" fill="#50fa7b" font-size="6.5">4-hook guardrails</text>
+  <text x="225" y="165" text-anchor="middle" fill="#50fa7b" font-size="8" font-weight="600">Payload never leaves pod synchronously ✓</text>
+
+  <!-- Async log/metric queue -->
+  <rect x="35" y="196" width="190" height="40" rx="5" fill="#1e0d08" stroke="#FF5533" stroke-opacity=".5"/>
+  <text x="130" y="213" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="600">Async Log + Metric Queue</text>
+  <text x="130" y="228" text-anchor="middle" fill="#7a8899" font-size="7.5">Continues if queue is down</text>
+  <line x1="225" y1="176" x2="130" y2="194" stroke="#FF5533" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <!-- OTEL exporter -->
+  <rect x="255" y="196" width="170" height="40" rx="5" fill="#1e0d08" stroke="#FF5533"/>
+  <text x="340" y="213" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="600">OTEL Trace Exporter</text>
+  <text x="340" y="228" text-anchor="middle" fill="#7a8899" font-size="7.5">K8s IRSA / Workload Identity</text>
+  <line x1="225" y1="216" x2="253" y2="216" stroke="#FF5533" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <!-- Arrow to customer storage -->
+  <defs><marker id="tfa" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#FF5533"/></marker></defs>
+  <line x1="425" y1="216" x2="565" y2="216" stroke="#FF5533" stroke-width="1.5" marker-end="url(#tfa)"/>
+  <rect x="567" y="200" width="160" height="32" rx="5" fill="#1e0d08" stroke="#FF5533"/>
+  <text x="647" y="213" text-anchor="middle" fill="#FF5533" font-size="9" font-weight="600">Customer Storage</text>
+  <text x="647" y="226" text-anchor="middle" fill="#7a8899" font-size="7.5">Customer-managed sink / OTEL backend</text>
+  <text x="647" y="238" text-anchor="middle" fill="#7a8899" font-size="7">Storage depends on deployment mode</text>
+
+  <!-- LLM Provider call (direct) -->
+  <line x1="415" y1="115" x2="568" y2="115" stroke="#e8843a" stroke-width="1.5" marker-end="url(#tfa)"/>
+  <rect x="570" y="98" width="165" height="34" rx="4" fill="#1a0f06" stroke="#e8843a"/>
+  <text x="652" y="113" text-anchor="middle" fill="#e8843a" font-size="9" font-weight="600">LLM Provider</text>
+  <text x="652" y="126" text-anchor="middle" fill="#4a5568" font-size="8">gpt-5.4 / claude-sonnet-4-6</text>
+
+  <!-- Global services note (outside cluster) -->
+  <rect x="567" y="38" width="165" height="52" rx="5" fill="#0a0a1a" stroke="#BD93F9" stroke-opacity=".6"/>
+  <text x="649" y="56" text-anchor="middle" fill="#BD93F9" font-size="8.5" font-weight="600">Global Services (Narrow)</text>
+  <text x="649" y="70" text-anchor="middle" fill="#7a8899" font-size="7.5">Licensing / Auth endpoint</text>
+  <text x="649" y="83" text-anchor="middle" fill="#7a8899" font-size="7.5">Analytics endpoint</text>
+  <text x="649" y="96" text-anchor="middle" fill="#4a5568" font-size="7">Not on per-request hot path</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry's stateless K8s gateway pods evaluate hot-path logic in-memory. Traces can be exported via OTEL to customer-controlled observability backends, and customer-managed storage is supported for request-response data in certain deployment modes. The gateway pod's Kubernetes service account identity can still be mapped to IAM roles (IRSA on AWS, Workload Identity on GCP) for compatible sinks. Two global services (licensing/auth and analytics) exist outside the cluster, and the exact storage boundary depends on the selected deployment and data-routing mode.</div>
+
+<div class="callout info">
+  <div class="callout-title">ℹ Note — Global Services Are a Narrow-Scope Caveat</div>
+  <p>TrueFoundry's architecture documentation explicitly acknowledges two globally hosted services outside customer infrastructure: a licensing/authentication endpoint and an analytics endpoint. The docs characterize these as "narrower in scope" compared to the control plane. The hot path — prompt content, routing, rate limits, guardrails — operates entirely in-memory within the cluster. For compliance reviews, these global endpoints should be documented as sub-processors with defined data scope (aggregate analytics, license validation), not as prompt-processing endpoints. Enterprise deployments can additionally self-host the control plane, documented at <a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">truefoundry.com/docs/platform/deployment-overview</a>, to eliminate this dependency entirely.</p>
+</div>
+
+<hr>
+
+<!-- ══════ §6 FEATURE MATRIX ══════ -->
+<h2>§6 — Feature Matrix: Data Residency &amp; Sovereignty</h2>
+<p>Cross-referenced against each vendor's official public documentation as of March 2026. ✅ = native, ⚠ = achievable with configuration or caveats, ❌ = not natively supported.</p>
+
+<div class="matrix-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>FEATURE</th>
+      <th style="color:var(--litellm)">LITELLM</th>
+      <th style="color:var(--kong)">KONG AI GW</th>
+      <th style="color:var(--portkey)">PORTKEY</th>
+      <th style="color:var(--tf)">TRUEFOUNDRY</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Fully self-hosted data plane</strong></td>
+      <td><span class="check">✅</span> No cloud dependency; Docker / K8s / ECS</td>
+      <td><span class="check">✅</span> Self-managed traditional, hybrid, db-less topologies</td>
+      <td><span class="partial">⚠</span> Helm VPC data plane; control dashboard remains in Portkey cloud</td>
+      <td><span class="check">✅</span> Entire data plane in customer VPC; GovCloud/air-gap supported</td>
+    </tr>
+    <tr>
+      <td><strong>Self-hosted control plane</strong></td>
+      <td><span class="check">✅</span> Fully self-operated; no SaaS control dependency</td>
+      <td><span class="check">✅</span> Self-managed mode (vs. Konnect SaaS); Admin API on-prem</td>
+      <td><span class="partial">⚠</span> Hybrid: Portkey-hosted control plane; air-gapped docs describe self-hosted control plane</td>
+      <td><span class="check">✅</span> Fully self-hosted option available; global auth/analytics endpoints decoupled</td>
+    </tr>
+    <tr>
+      <td><strong>Payload logging suppression</strong></td>
+      <td><span class="check">✅</span> <code>turn_off_message_logging: true</code></td>
+      <td><span class="partial">⚠</span> Depends on logging plugin configuration</td>
+      <td><span class="check">✅</span> "DO NOT TRACK" / "Metrics Only" (Privacy Mode) natively supported</td>
+      <td><span class="check">✅</span> Configurable data routing; payload export can be disabled</td>
+    </tr>
+    <tr>
+      <td><strong>In-process PII redaction</strong></td>
+      <td><span class="cross">❌</span> Requires external Presidio service</td>
+      <td><span class="cross">❌</span> Requires external AI PII Anonymizer Service</td>
+      <td><span class="partial">⚠</span> Regex natively; NER requires external provider</td>
+      <td><span class="check">✅</span> TrueFoundry-managed PII detection; zero external dependencies</td>
+    </tr>
+    <tr>
+      <td><strong>Per-application payload masking policies</strong></td>
+      <td><span class="partial">⚠</span> Per-key/team router overrides</td>
+      <td><span class="partial">⚠</span> Plugin attachment at Route/Consumer Group level</td>
+      <td><span class="check">✅</span> Per-config <code>before_request_hooks</code> / <code>after_request_hooks</code>; BYOG webhook</td>
+      <td><span class="check">✅</span> Rules engine: <code>when</code> conditions scope policies by metadata/team/app</td>
+    </tr>
+    <tr>
+      <td><strong>No synchronous external call on prompt hot path</strong></td>
+      <td><span class="partial">⚠</span> Core proxy/callback path is local, but Presidio PII masking introduces a synchronous external service dependency</td>
+      <td><span class="partial">⚠</span> Core data plane is local, but AI PII Sanitizer uses an external service</td>
+      <td><span class="partial">⚠</span> VPC data plane routes directly to LLM. BYOG webhook is synchronous</td>
+      <td><span class="check">✅</span> In-memory hot path; no external calls for auth, routing, or guardrails</td>
+    </tr>
+    <tr>
+      <td><strong>OTel trace export to operator-controlled backend</strong></td>
+      <td><span class="check">✅</span> <code>callbacks: ["otel"]</code></td>
+      <td><span class="check">✅</span> Gen AI OTel attributes via OTLP/HTTP</td>
+      <td><span class="check">✅</span> Enterprise OTel Analytics Export to OTLP-compatible HTTP endpoints</td>
+      <td><span class="check">✅</span> Trace export to OTLP backends natively documented</td>
+    </tr>
+    <tr>
+      <td><strong>K8s-native log export with IAM roles</strong></td>
+      <td><span class="partial">⚠</span> Container-deployable; K8s IRSA via OTel collector</td>
+      <td><span class="partial">⚠</span> K8s deployment supported; depends on logging plugin</td>
+      <td><span class="partial">⚠</span> Metrics leave to Portkey cloud; IRSA/IMDS auth supported for providers</td>
+      <td><span class="check">✅</span> Native K8s IRSA / Workload Identity for customer-managed sinks</td>
+    </tr>
+    <tr>
+      <td><strong>Operational posture (Editorial)</strong></td>
+      <td>Python runtime; Redis + PostgreSQL for scale; no cloud dependency</td>
+      <td>C/Lua non-blocking; mature enterprise plugin ecosystem; license gating on PII</td>
+      <td>SaaS-managed edge; hybrid VPC data plane keeps LLM traffic local</td>
+      <td>K8s-native stateless gateway pods + in-cluster policy eval</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<hr>
+
+<!-- ══════ §7 VERDICT ══════ -->
+<h2>§7 — Editorial Verdict</h2>
+<p>Editorial assessments as of March 25, 2026.</p>
+
+<div class="verdict-grid">
+  <div class="verdict-card litellm">
+    <div class="verdict-label">LiteLLM</div>
+    <div class="verdict-name">The Self-Hosted Pragmatist</div>
+    <div class="verdict-text">Wins on deployment simplicity and zero cloud dependency. <code>turn_off_message_logging: true</code> plus operator-configured callbacks gives any team a clean residency baseline within hours, not days. PII masking requires Presidio integration — an operational dependency that must be scoped to the same residency zone.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Teams that need full stack sovereignty quickly, without Kubernetes, on Docker or ECS. Strong for internal tooling, regulated batch workloads, and organizations who can run Presidio in-region.</div>
+  </div>
+  <div class="verdict-card kong">
+    <div class="verdict-label">Kong AI Gateway</div>
+    <div class="verdict-name">The Plugin-Composable Network Workhorse</div>
+    <div class="verdict-text">Strongest data governance plugin catalog when enterprise features are available: bidirectional AI PII Sanitizer with restoration, Gen AI OTel attributes, standard Kong logging plugins routing to internal SIEMs, and token-level attribution. Version and license gating on the PII surface requires careful planning.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Existing Kong enterprise operators, high-throughput regulated workloads, and teams needing bidirectional prompt/response PII sanitization with model-transparent anonymization.</div>
+  </div>
+  <div class="verdict-card portkey">
+    <div class="verdict-label">Portkey</div>
+    <div class="verdict-name">The Composable Hybrid — Partial Sovereignty</div>
+    <div class="verdict-text">Hybrid VPC mode genuinely keeps prompt payloads in the customer network and is well-documented. The hard constraint in hybrid mode is that control-plane sovereignty is not achievable: the dashboard, guardrail config UI, and analytics aggregation remain in Portkey's cloud by design. This is a defined, well-articulated architectural tradeoff — not a hidden gap.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> Product and SaaS teams that can accept cloud-resident control plane, need fast deployment, and want GDPR data-localization (payload residency) without full infrastructure ownership.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">TrueFoundry</div>
+    <div class="verdict-name">The K8s-Native Sovereignty-First Platform</div>
+    <div class="verdict-text">The strongest hot-path residency posture of the four: in-memory request handling, four-hook guardrails with composable per-team masking policies, built-in in-process PII/PHI and secrets detection, OTEL trace export to customer-controlled observability backends, and customer-managed storage options for request data in supported deployment modes. The K8s prerequisite is a real adoption barrier, and the exact storage boundary plus the two documented global services warrant explicit DPA review.</div>
+    <div class="verdict-use"><strong>Ideal for:</strong> K8s-native platform teams in regulated industries (financial services, healthcare, government), enterprises requiring full stack sovereignty, and organizations building multi-tenant AI platforms with per-application data governance.</div>
+  </div>
+</div>
+
+<h3>Positioning Map — Data Sovereignty Completeness vs. Native Governance Feature Depth</h3>
+<div class="svg-wrap">
+<svg viewBox="0 0 620 420" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="620" height="420" fill="#121826"/>
+  <line x1="65" y1="20" x2="65" y2="340" stroke="#1e2d45" stroke-width="1"/>
+  <line x1="65" y1="340" x2="575" y2="340" stroke="#1e2d45" stroke-width="1"/>
+  <line x1="65" y1="180" x2="575" y2="180" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="320" y1="20" x2="320" y2="340" stroke="#1e2d45" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- Axis labels -->
+  <text x="320" y="378" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono, monospace">← Partial Sovereignty — Full Sovereignty →</text>
+  <text x="14" y="180" text-anchor="middle" fill="#7a8899" font-size="12" font-family="IBM Plex Mono, monospace" transform="rotate(-90,14,180)">Governance Feature Depth</text>
+
+  <!-- Portkey bubble: partial sovereignty, moderate governance depth -->
+  <circle cx="155" cy="188" r="46" fill="#5A67FF" fill-opacity=".1" stroke="#5A67FF" stroke-width="1.5"/>
+  <text x="155" y="183" text-anchor="middle" fill="#5A67FF" font-size="13" font-weight="700">Portkey</text>
+  <text x="155" y="200" text-anchor="middle" fill="#5A67FF" font-size="9.5" font-family="IBM Plex Mono, monospace">Hybrid · Cloud ctrl-plane</text>
+
+  <!-- LiteLLM bubble: good sovereignty, moderate-high governance depth -->
+  <circle cx="280" cy="148" r="48" fill="#00C2CB" fill-opacity=".1" stroke="#00C2CB" stroke-width="1.5"/>
+  <text x="280" y="143" text-anchor="middle" fill="#00C2CB" font-size="13" font-weight="700">LiteLLM</text>
+  <text x="280" y="160" text-anchor="middle" fill="#00C2CB" font-size="9.5" font-family="IBM Plex Mono, monospace">Self-hosted · Callback logs</text>
+
+  <!-- Kong bubble: high sovereignty, high governance (enterprise gated) -->
+  <circle cx="445" cy="118" r="52" fill="#00D27B" fill-opacity=".1" stroke="#00D27B" stroke-width="1.5"/>
+  <text x="445" y="112" text-anchor="middle" fill="#00D27B" font-size="13" font-weight="700">Kong</text>
+  <text x="445" y="129" text-anchor="middle" fill="#00D27B" font-size="9.5" font-family="IBM Plex Mono, monospace">Enterprise plugins · PII Sanitizer</text>
+
+  <!-- TrueFoundry bubble: highest sovereignty, richest native governance -->
+  <circle cx="490" cy="65" r="54" fill="#FF5533" fill-opacity=".1" stroke="#FF5533" stroke-width="1.5"/>
+  <text x="490" y="58" text-anchor="middle" fill="#FF5533" font-size="13" font-weight="700">TrueFoundry</text>
+  <text x="490" y="75" text-anchor="middle" fill="#FF5533" font-size="9.5" font-family="IBM Plex Mono, monospace">K8s-native · 4-hook guardrails</text>
+
+  <!-- Quadrant labels -->
+  <text x="190" y="335" text-anchor="middle" fill="#1e2d45" font-size="9.5" font-family="IBM Plex Mono, monospace">PARTIAL SOV / LOWER DEPTH</text>
+  <text x="450" y="335" text-anchor="middle" fill="#1e2d45" font-size="9.5" font-family="IBM Plex Mono, monospace">FULL SOV / LOWER DEPTH</text>
+  <text x="190" y="42" text-anchor="middle" fill="#1e2d45" font-size="9.5" font-family="IBM Plex Mono, monospace">PARTIAL SOV / HIGH DEPTH</text>
+  <text x="450" y="42" text-anchor="middle" fill="#1e2d45" font-size="9.5" font-family="IBM Plex Mono, monospace">FULL SOV / HIGH DEPTH</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Bubble size reflects relative native data governance feature breadth. Axes are editorial assessments as of March 2026. "Full Sovereignty" means both data plane and control plane can be fully operator-controlled.</p>
+
+<hr>
+
+<!-- ══════ §8 REFERENCES ══════ -->
+<h2>§8 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://docs.litellm.ai/docs/simple_proxy" target="_blank">LiteLLM — AI Gateway Landing Page</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Settings Reference (turn_off_message_logging, callbacks)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">LiteLLM — Logging (x-litellm-call-id)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" target="_blank">LiteLLM — Guardrails Quick Start (Presidio PII integration)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/deploy" target="_blank">LiteLLM — Deployment Guide (Redis requirement at 1000+ RPS)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">LiteLLM — Virtual Keys (spend tracking, model access control)</a></li>
+  <li><a href="https://docs.litellm.ai/docs/proxy/pass_through_guardrails" target="_blank">LiteLLM — Pass-Through Guardrails</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/" target="_blank">Kong AI Gateway Landing Page</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/ai-audit-log-reference/" target="_blank">Kong — AI Gateway Audit Log Reference</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM Metrics (ai_metrics on Prometheus plugin)</a></li>
+  <li><a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank">Kong — Gen AI OpenTelemetry Attributes Reference</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-sanitizer/" target="_blank">Kong — AI PII Sanitizer Plugin</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-sanitizer/reference/" target="_blank">Kong — AI PII Sanitizer Configuration Reference</a></li>
+  <li><a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">Kong — AI Proxy Advanced Plugin</a></li>
+  <li><a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">Kong — Plugin Compatibility Reference</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway" target="_blank">Portkey — AI Gateway Overview</a></li>
+  <li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy in Your Infrastructure (Hybrid VPC)</a></li>
+  <li><a href="https://portkey.ai/docs/product/guardrails/pii-redaction" target="_blank">Portkey — PII Redaction</a></li>
+  <li><a href="https://portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails" target="_blank">Portkey — Bring Your Own Guardrails (webhook contract)</a></li>
+  <li><a href="https://portkey.ai/docs/product/observability/traces" target="_blank">Portkey — Tracing (OTel-compliant, W3C trace context)</a></li>
+  <li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Configs (before_request_hooks, after_request_hooks)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture (no external calls on hot path)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/architecture" target="_blank">TrueFoundry — Platform Architecture (control / compute / gateway / data planes)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">TrueFoundry — Export OpenTelemetry Data</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview (four-hook model)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">TrueFoundry — Guardrails Configuration (all matching rules apply; subject/target conditions)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/tfy-pii" target="_blank">TrueFoundry — PII/PHI Detection (hook-placement mapping)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/secrets-detection" target="_blank">TrueFoundry — Secrets Detection (validate/mutate modes, zero external deps)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/azure-pii" target="_blank">TrueFoundry — Azure PII Integration (healthcare domain)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">TrueFoundry — Request and Response Headers (logging configuration, x-tfy headers)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">TrueFoundry — Deployment Overview (hosted vs. self-hosted scenarios)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/changelog" target="_blank">TrueFoundry — Changelog (configurable data-routing location for request/metric storage)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting (metadata-scoped rules)</a></li>
+</ol>
+
+<hr>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 12 of 15 &nbsp;·&nbsp; March 25, 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
+  Feature claims cross-referenced against official public documentation as of March 25, 2026. Verify before production compliance decisions.<br>
+  This post does not constitute legal advice. Consult qualified data protection counsel for GDPR, HIPAA, or sector-specific compliance reviews.
+</p>
+
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+
+</body></html>
