@@ -1,0 +1,1119 @@
+
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Gateway Series #4 — Semantic Caching &amp; Performance</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg: #0b0e17; --surface: #121826; --surface2: #1a2233; --border: #1e2d45;
+    --litellm: #00C2CB;
+    --kong:    #00D27B;
+    --portkey: #5A67FF;
+    --tf:      #FF5533;
+    --text: #e2e8f0; --muted: #7a8899; --danger: #ff4757; --warn: #ffa726;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px; line-height: 1.75;
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  }
+  code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
+  p { margin-bottom: 1rem; }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: .3rem; }
+
+  .series-bar {
+    display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem; flex-wrap: wrap;
+  }
+  .tag-pill {
+    display: inline-block; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-size: .72rem; font-family: 'IBM Plex Mono', monospace;
+    padding: .25rem .7rem; border-radius: 999px; letter-spacing: .05em; text-transform: uppercase;
+  }
+  .tag-pill.active { background: #0f1d2e; border-color: #60a5fa; color: #60a5fa; }
+  .series-dots { display: flex; gap: .3rem; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .dot.active { background: #60a5fa; }
+  .meta { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .meta-item { font-size: .82rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .disclaimer {
+    background: #1a1200; border: 1px solid #3d2c00; color: var(--warn);
+    font-size: .78rem; padding: .5rem 1rem; border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .code-wrap { position: relative; margin: 1rem 0 .4rem; }
+  .code-wrap pre {
+    background: #080c12; border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.2rem 1.4rem; padding-right: 3.2rem; overflow-x: auto;
+    font-size: .83rem; line-height: 1.6; margin: 0;
+  }
+  .copy-btn {
+    position: absolute; top: .55rem; right: .55rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    font-size: .68rem; padding: .22rem .55rem; border-radius: 5px;
+    cursor: pointer; transition: all .15s ease; user-select: none;
+    letter-spacing: .03em; line-height: 1.4;
+  }
+  .copy-btn:hover { background: var(--border); color: var(--text); border-color: #2e4060; }
+  .copy-btn.copied { color: #50fa7b; border-color: #50fa7b44; background: #0a1a10; }
+  .kw { color: #ff79c6; } .str { color: #f1fa8c; } .cm { color: #6272a4; }
+  .key { color: #50fa7b; } .num { color: #bd93f9; }
+  .source-note {
+    font-size: .74rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    margin-bottom: 1.4rem; padding: .3rem .8rem; border-left: 2px solid var(--border);
+  }
+  .source-note a { color: #7a8899; }
+  .source-note a:hover { color: #60a5fa; }
+
+  .callout { border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .callout.danger { border-color: var(--danger); background: #1a0a0a; }
+  .callout.warn { border-color: var(--warn); background: #1a1200; }
+  .callout.info { border-color: #60a5fa; background: #0a1220; }
+  .callout-title { font-size: .75rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+  .callout.danger .callout-title { color: var(--danger); }
+  .callout.warn .callout-title { color: var(--warn); }
+  .callout.info .callout-title { color: #60a5fa; }
+
+  .quickpick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .qp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem; }
+  .qp-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .qp-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+  .qp-desc { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+  .c-litellm { color: var(--litellm); border-top: 3px solid var(--litellm); }
+  .c-kong { color: var(--kong); border-top: 3px solid var(--kong); }
+  .c-portkey { color: var(--portkey); border-top: 3px solid var(--portkey); }
+  .c-tf { color: var(--tf); border-top: 3px solid var(--tf); }
+
+  .vendor-header { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.4rem; border-radius: 10px; margin: 2.5rem 0 1.2rem; }
+  .vendor-header.litellm { background: #001d1e; border: 1px solid var(--litellm); }
+  .vendor-header.kong    { background: #001e13; border: 1px solid var(--kong); }
+  .vendor-header.portkey { background: #0a0c24; border: 1px solid var(--portkey); }
+  .vendor-header.tf      { background: #1e0d08; border: 1px solid var(--tf); }
+  .vendor-badge { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+  .vendor-header.litellm .vendor-badge { background: var(--litellm); color: #000; }
+  .vendor-header.kong .vendor-badge { background: var(--kong); color: #000; }
+  .vendor-header.portkey .vendor-badge { background: var(--portkey); color: #fff; }
+  .vendor-header.tf .vendor-badge { background: var(--tf); color: #fff; }
+  .vendor-title { font-size: 1.2rem; font-weight: 700; }
+
+  .matrix-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+  thead tr { background: var(--surface2); }
+  th { padding: .7rem 1rem; text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+  td { padding: .62rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  .check { color: #50fa7b; } .cross { color: var(--danger); } .partial { color: var(--warn); }
+
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; position: relative; }
+  .verdict-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .verdict-card.litellm::before { background: var(--litellm); }
+  .verdict-card.kong::before { background: var(--kong); }
+  .verdict-card.portkey::before { background: var(--portkey); }
+  .verdict-card.tf::before { background: var(--tf); }
+  .verdict-label { font-size: .7rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+  .verdict-card.litellm .verdict-label { color: var(--litellm); }
+  .verdict-card.kong .verdict-label { color: var(--kong); }
+  .verdict-card.portkey .verdict-label { color: var(--portkey); }
+  .verdict-card.tf .verdict-label { color: var(--tf); }
+  .verdict-name { font-weight: 700; font-size: 1.05rem; margin-bottom: .5rem; }
+  .verdict-text { font-size: .83rem; color: var(--muted); line-height: 1.55; }
+  .verdict-use { font-size: .78rem; color: var(--text); margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+  .verdict-use strong { color: #a5f3fc; }
+
+  .scenario { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; }
+  .scenario-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--warn); margin-bottom: .7rem; }
+
+  .model-pills { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mpill { font-size: .74rem; font-family: 'IBM Plex Mono', monospace; padding: .2rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+  .mpill.openai { border-color: #10a37f55; color: #10a37f; background: #0a1a14; }
+  .mpill.anthropic { border-color: #c96a1a55; color: #e8843a; background: #1a0f06; }
+  .mpill.google { border-color: #4285f455; color: #6ba3f5; background: #080e1a; }
+  .mpill.embed { border-color: #9b59b655; color: #c39bd3; background: #110e18; }
+
+  .svg-wrap { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 1.5rem 0; }
+  .svg-wrap svg { display: block; max-width: 100%; margin: 0 auto; }
+  .img-caption { font-size: .76rem; color: var(--muted); text-align: center; margin-top: .4rem; margin-bottom: 1rem; font-family: 'IBM Plex Mono', monospace; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .ref-list { font-size: .83rem; }
+  .ref-list li { margin-bottom: .4rem; color: var(--muted); }
+  .ref-list a { color: #60a5fa; }
+
+  .privacy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .8rem; margin: 1.2rem 0; }
+  .priv-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .9rem 1rem; }
+  .priv-label { font-size: .68rem; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: .07em; margin-bottom: .35rem; color: var(--muted); }
+  .priv-name { font-size: .92rem; font-weight: 700; margin-bottom: .3rem; }
+  .priv-desc { font-size: .78rem; color: var(--muted); line-height: 1.5; }
+</style>
+</head>
+<body>
+<!-- ══════ HEADER ══════ -->
+<div class="series-bar">
+<span class="tag-pill">AI Gateway Series</span>
+<div class="series-dots">
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot active" title="Blog 4 — Semantic Caching &amp; Performance"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+</div>
+<span class="tag-pill active">Blog 4 of 15</span>
+</div>
+<h1>Semantic Caching &amp; Performance:<br/>Stop Paying for the Same Answer Twice</h1>
+<div class="meta">
+<span class="meta-item">⏱ 22 min read</span>
+<span class="meta-item">🗓 March 2026</span>
+<span class="meta-item">👤 Platform Engineering · LLM Cost Optimisation</span>
+<div class="disclaimer">EDITORIAL DISCLAIMER — Reviewed against vendor public docs on March 25, 2026. Opinionated positioning remains editorial; configuration details were updated to match current published documentation.</div>
+</div>
+<p style="font-size:.82rem; color:var(--muted);">Example models and embedding models referenced in the code/config snippets below:</p>
+<div class="model-pills">
+<span class="mpill openai">gpt-4o</span>
+<span class="mpill openai">gpt-4o-mini</span>
+<span class="mpill anthropic">claude-3-5-sonnet-20241022</span>
+<span class="mpill anthropic">claude-3-7-sonnet</span>
+<span class="mpill google">gemini-2.5-pro</span>
+<span class="mpill google">gemini-2.0-flash</span>
+<span class="mpill embed">text-embedding-3-small (1536-d)</span>
+<span class="mpill embed">text-embedding-3-large (3072-d)</span>
+</div>
+<!-- ══════ §0 TL;DR ══════ -->
+<h2>§0 — TL;DR &amp; The Invoice, the Slowdowns, and the Business Case for Caching</h2>
+
+<div class="scenario">
+  <div class="scenario-title">💸 Illustrative Scenario: The Compliance FAQ That Went Cross-Divisional</div>
+  <p>A mid-sized financial services firm deployed an AI-powered compliance FAQ assistant in January — one pod, one model endpoint, one team consuming it. By mid-March, three separate business units had quietly integrated the same gateway endpoint into their internal tooling: regulatory affairs, risk management, and client onboarding. The model was <code>gpt-4o</code>. The use-case was ideal for caching: answering questions about KYC documentation requirements, internal policy thresholds, and reporting deadlines.</p>
+  <p>When Finance reviewed the monthly cloud cost allocation, the OpenAI invoice had reached <strong>$38,400 for a single month</strong>. A quick log analysis told the story immediately. The top 30 question clusters accounted for 71% of all API calls. Queries such as <em>"What documents are required for corporate KYC?"</em>, <em>"What is the threshold for SAR filing?"</em>, and <em>"How many business days for settlement reporting?"</em> were being answered fresh — hundreds of times per day across different users who phrased them with minor natural-language variation. Not one exact duplicate. But the same question, hundreds of times over.</p>
+  <p>The fix was not adding an exact string cache — nobody typed the same sentence twice. The fix was <strong>semantic caching at the gateway layer</strong>: intercepting each prompt before it reached the model, computing a dense vector embedding, and checking whether a sufficiently similar question had already been answered. On this domain-bounded workload, a properly tuned semantic cache would have served 60–70% of those calls from cache at under 20ms, reducing the monthly invoice to under $14,000.</p>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-litellm">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">LiteLLM</div>
+    <div class="qp-desc">Most flexible cache backend choice: Redis Stack or Qdrant. Per-request <code>no-cache</code>/<code>no-store</code> overrides via <code>extra_body</code>. Best for teams that want full config control with zero licensing cost.</div>
+  </div>
+  <div class="qp-card c-kong">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Kong AI Gateway</div>
+    <div class="qp-desc">Plugin-native semantic cache via <code>ai-semantic-cache</code> (Enterprise, ≥3.8). Current docs show Redis-based and <code>pgvector</code>-based backends, with an OpenAI+Redis example. Best for orgs already on Kong who want caching in the plugin chain alongside auth, rate limiting, and guardrails.</div>
+  </div>
+  <div class="qp-card c-portkey">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Portkey</div>
+    <div class="qp-desc">Managed semantic cache via <code>mode: "semantic"</code> in SaaS, with enterprise hybrid/self-hosted options documented separately. Best for teams that want fast time-to-value, while noting the documented plan, route, message-count, and token-size constraints.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">Self-hosted gateway deployment plus request-level semantic-cache controls. Public docs explicitly expose <code>x-tfy-cache-config</code>, cache namespaces, similarity thresholds, and cache-status headers; they do not publicly name the underlying vector-store implementation.</div>
+  </div>
+</div>
+
+<!-- ══════ §1 WHY SEMANTIC CACHING ══════ -->
+<h2>§1 — Why Semantic Caching Belongs in the Gateway, Not the Application</h2>
+<p>Exact-match caching — keying on a verbatim hash of the prompt string — captures perhaps 5–15% of real-world traffic duplication on conversational workloads. Natural language is inherently paraphrastic: the same intent surfaces across an enormous surface of phrasing variants. <em>"What docs do I need for KYC?"</em>, <em>"KYC documentation requirements?"</em>, and <em>"List the corporate KYC documents"</em> are three strings that map to one answer. Exact-match caching treats them as three cache misses.</p>
+<p>Semantic caching solves this by embedding incoming prompts into a dense vector space and performing a nearest-neighbour search against previously cached prompt–response pairs. When the cosine similarity (or equivalent distance metric) between the incoming prompt and a cached prompt exceeds a configurable threshold, the cached response is returned directly — the upstream model is never called.</p>
+<p>The AI gateway is the architecturally correct layer for this for three reasons:</p>
+<ul>
+<li><strong>Centralized interception.</strong> All application requests flow through one path. No per-application caching code to build, test, or audit.</li>
+<li><strong>Model-agnostic cost control.</strong> A cache hit means the upstream LLM endpoint is never called regardless of whether the model is <code>gpt-4o</code>, <code>claude-3-7-sonnet</code>, or <code>gemini-2.5-pro</code> — and never billed.</li>
+<li><strong>Uniform policy enforcement.</strong> TTL, similarity threshold, per-tenant namespace isolation, and data-residency controls are enforced centrally rather than hoping individual application teams implement them correctly.</li>
+</ul>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewBox="0 0 820 330" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="330" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="24">Universal Semantic Caching Pipeline - Where Steps 2 and 3 Execute</text>
+<rect fill="#1a2233" height="60" rx="6" stroke="#1e2d45" width="92" x="20" y="60"></rect>
+<text fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle" x="66" y="85">Client App</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="66" y="101">"KYC docs?"</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="66" y="114">"KYC requirements?"</text>
+<defs>
+<marker id="arr" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#60a5fa" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="arrG" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="arrR" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ff4757" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="arrY" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ffa726" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<line marker-end="url(#arr)" stroke="#60a5fa" stroke-width="1.5" x1="112" x2="145" y1="90" y2="90"></line>
+<rect fill="#0d1e30" height="80" rx="6" stroke="#60a5fa" stroke-width="1.5" width="130" x="147" y="50"></rect>
+<text fill="#60a5fa" font-size="10" font-weight="700" text-anchor="middle" x="212" y="71">1) AI Gateway</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="212" y="88">Receive prompt</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="212" y="103">Dispatch embedding call</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="212" y="118">Route on result</text>
+<line marker-end="url(#arrY)" stroke="#ffa726" stroke-width="1.5" x1="277" x2="315" y1="70" y2="70"></line>
+<rect fill="#1a1200" height="36" rx="5" stroke="#ffa726" width="148" x="317" y="52"></rect>
+<text fill="#ffa726" font-size="10" font-weight="600" text-anchor="middle" x="391" y="68">2) Embedding Model</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="391" y="82">text-embedding-3-small / -large</text>
+<line marker-end="url(#arr)" stroke="#bd93f9" stroke-width="1.5" x1="391" x2="391" y1="88" y2="112"></line>
+<rect fill="#16112a" height="36" rx="5" stroke="#bd93f9" width="148" x="317" y="114"></rect>
+<text fill="#bd93f9" font-size="10" font-weight="600" text-anchor="middle" x="391" y="130">3) Vector Store</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="391" y="144">Redis Stack | Qdrant | Managed</text>
+<line marker-end="url(#arr)" stroke="#bd93f9" stroke-width="1.5" x1="465" x2="498" y1="132" y2="132"></line>
+<rect fill="#1a2233" height="36" rx="5" stroke="#1e2d45" width="110" x="500" y="114"></rect>
+<text fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle" x="555" y="130">Similarity &gt;= threshold?</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="555" y="144">cosine / distance check</text>
+<text fill="#50fa7b" font-size="9.5" font-weight="700" text-anchor="end" x="606" y="92">CACHE HIT (about 5-20 ms)</text>
+<line marker-end="url(#arrG)" stroke="#50fa7b" stroke-width="1.5" x1="610" x2="642" y1="120" y2="88"></line>
+<rect fill="#0a1a10" height="46" rx="5" stroke="#50fa7b" width="158" x="644" y="64"></rect>
+<text fill="#50fa7b" font-size="10" font-weight="600" text-anchor="middle" x="723" y="81">Cached Response</text>
+<text fill="#7a8899" font-size="7.6" text-anchor="middle" x="723" y="94">example: tokens saved;</text>
+<text fill="#7a8899" font-size="7.6" text-anchor="middle" x="723" y="103">no upstream bill</text>
+<line stroke="#50fa7b" stroke-dasharray="3,3" stroke-width="1" x1="723" x2="723" y1="64" y2="42"></line>
+<line stroke="#50fa7b" stroke-dasharray="3,3" stroke-width="1" x1="723" x2="212" y1="42" y2="42"></line>
+<line marker-end="url(#arrG)" stroke="#50fa7b" stroke-dasharray="3,3" stroke-width="1" x1="212" x2="212" y1="42" y2="50"></line>
+<text fill="#ff4757" font-size="9.5" font-weight="700" text-anchor="end" x="606" y="179">CACHE MISS (about 1.5-4 s)</text>
+<line marker-end="url(#arrR)" stroke="#ff4757" stroke-dasharray="5,3" stroke-width="1.5" x1="610" x2="650" y1="145" y2="175"></line>
+<rect fill="#1a0a0a" height="38" rx="5" stroke="#ff475755" stroke-dasharray="4,3" width="150" x="652" y="157"></rect>
+<text fill="#ff4757" font-size="10" font-weight="600" text-anchor="middle" x="727" y="173">Upstream LLM API</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="727" y="186">gpt-4o | claude-3-7-sonnet | ...</text>
+<line marker-end="url(#arrR)" stroke="#ff4757" stroke-dasharray="3,2" stroke-width="1" x1="652" x2="480" y1="175" y2="155"></line>
+<text fill="#7a8899" font-size="8" font-style="italic" text-anchor="middle" x="560" y="165">write response and embedding back to store</text>
+<rect fill="#0a0e16" height="72" rx="8" stroke="#1e2d45" width="780" x="20" y="240"></rect>
+<text fill="#e2e8f0" font-size="11" font-weight="700" text-anchor="middle" x="410" y="260">Key design question: Where do steps 2 and 3 physically execute?</text>
+<text fill="#ffa726" font-size="10" text-anchor="middle" x="410" y="280">Self-hosted / in-cluster VPC:</text>
+<text fill="#7a8899" font-size="9.5" text-anchor="middle" x="410" y="294">embeddings are computed and stored on your infrastructure; vector representations do not leave your network</text>
+<text fill="#ff4757" font-size="9.5" text-anchor="middle" x="410" y="308">Managed SaaS path: prompt text and derived embeddings transit a third-party cloud; assess residency and compliance requirements</text>
+</svg>
+</div>
+<div class="img-caption">Figure 1. Universal semantic caching pipeline. The platform you choose determines where the embedding computation and vector lookup physically happen. For regulated workloads, this distinction carries the same weight as data residency for the prompt text itself.</div>
+<p>Dense embeddings preserve substantial semantic information about the original prompt. For regulated workloads, they should generally be treated as sensitive derived data rather than as harmless metadata. <strong>Where embeddings are computed and stored is a data-residency question, not just a performance question.</strong></p>
+<hr/>
+<!-- ══════ §2 LITELLM ══════ -->
+<div class="vendor-header litellm">
+<span class="vendor-badge">LiteLLM</span>
+<span class="vendor-title">§2 — Redis Stack + Qdrant: Maximum Backend Flexibility</span>
+</div>
+<h3>Architecture</h3>
+<p>LiteLLM's proxy implements semantic caching natively as part of its <code>litellm_settings.cache_params</code> block in <code>config.yaml</code>. Setting <code>type</code> to <code>"redis-semantic"</code> or <code>"qdrant-semantic"</code> activates the vector pipeline. The public <a href="https://docs.litellm.ai/docs/proxy/caching" target="_blank">caching docs</a> document both backends fully. On each inbound request, the proxy first checks for an exact-match hit (fast, hash-based), then falls through to a semantic similarity check, and only forwards to the upstream LLM on a full miss — writing the response and its embedding back to the store afterwards.</p>
+<p>LiteLLM's complete cache type inventory, per the <a href="https://docs.litellm.ai/docs/proxy/caching" target="_blank">official caching page</a>:</p>
+<ul>
+<li><code>in-memory</code> — process-local, exact match only; cleared on proxy restart.</li>
+<li><code>disk</code> — file-backed, exact match only.</li>
+<li><code>redis</code> — vanilla Redis, exact string match; good for high-throughput exact deduplication.</li>
+<li><code>redis-semantic</code> — requires <strong>Redis Stack</strong> (not vanilla Redis) with the RediSearch module for HNSW vector indexing.</li>
+<li><code>qdrant-semantic</code> — connects to a Qdrant instance (self-hosted or cloud). Preferred for richer vector management, metadata filtering, or multi-collection tenancy.</li>
+<li><code>s3</code> / <code>gcs</code> — object-store backed, exact match only.</li>
+</ul>
+<div class="callout warn">
+<div class="callout-title">Redis Stack ≠ Redis</div>
+<p><code>redis-semantic</code> requires the <code>redis/redis-stack</code> Docker image (or an equivalent Redis deployment with the RediSearch module enabled). Vanilla Redis will not work as a vector backend. If your team runs standard Redis for other workloads, you need a separate Redis Stack instance or a managed Redis with vector search support.</p>
+</div>
+<h3>Redis Stack Semantic Cache</h3>
+<div class="code-wrap"><pre>model_list:
+  - model_name: openai-embedding
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: "redis-semantic"
+    similarity_threshold: 0.8
+    redis_semantic_cache_embedding_model: "openai-embedding"
+    ttl: 86400</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/caching" target="_blank">docs.litellm.ai/docs/proxy/caching</a></div>
+<h3>Qdrant Semantic Cache</h3>
+<div class="code-wrap"><pre>model_list:
+  - model_name: openai-embedding
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: "qdrant-semantic"
+    qdrant_semantic_cache_embedding_model: "openai-embedding"
+    qdrant_collection_name: "semantic_cache"
+    qdrant_quantization_config: "binary"
+    qdrant_semantic_cache_vector_size: 1536
+    similarity_threshold: 0.8</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/caching" target="_blank">docs.litellm.ai/docs/proxy/caching</a></div>
+<h3>Per-Request Cache Control</h3>
+<p>LiteLLM exposes fine-grained per-request cache overrides via the <code>cache</code> key in <code>extra_body</code>. Both cache lookup and cache write behavior can be adjusted per request.</p>
+<div class="code-wrap"><pre>from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://litellm-proxy:4000/v1",
+    api_key="sk-litellm-master-key",
+)
+
+# Read from cache if possible, but do not write the new response back
+client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "What are KYC documentation requirements?"}],
+    extra_body={"cache": {"no-store": True}},
+)
+
+# Force a live model call, then write the fresh response back to cache
+client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "What are KYC documentation requirements?"}],
+    extra_body={"cache": {"no-cache": True, "no-store": False}},
+)
+
+# Use a custom cache namespace for tenant isolation
+client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "What are KYC documentation requirements?"}],
+    extra_body={"cache": {"namespace": "team-compliance"}},
+)</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/caching" target="_blank">docs.litellm.ai/docs/proxy/caching</a> — per-request cache controls</div>
+<!-- LiteLLM SVG - FIXED -->
+<div class="svg-wrap">
+<svg viewBox="0 0 820 260" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
+  <rect width="820" height="260" fill="#121826"/>
+  <text x="410" y="22" text-anchor="middle" fill="#00C2CB" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace" letter-spacing="1">LITELLM — SELF-HOSTED SEMANTIC CACHE ARCHITECTURE</text>
+  <defs>
+    <marker id="la" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#00C2CB"/></marker>
+    <marker id="laG" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#50fa7b"/></marker>
+    <marker id="laR" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#ff4757"/></marker>
+    <marker id="laY" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#ffa726"/></marker>
+    <marker id="laP" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#bd93f9"/></marker>
+  </defs>
+  <!-- Self-hosted boundary -->
+  <rect x="8" y="34" width="804" height="210" rx="8" fill="none" stroke="#00C2CB" stroke-opacity=".35" stroke-dasharray="6,3"/>
+  <text x="22" y="50" fill="#00C2CB" font-size="9.5" font-weight="700" font-family="IBM Plex Mono, monospace">SELF-HOSTED INFRASTRUCTURE</text>
+
+  <!-- Clients -->
+  <rect x="18" y="64" width="88" height="30" rx="5" fill="#1a2233" stroke="#1e2d45"/><text x="62" y="83" text-anchor="middle" fill="#e2e8f0" font-size="10">App A</text>
+  <rect x="18" y="104" width="88" height="30" rx="5" fill="#1a2233" stroke="#1e2d45"/><text x="62" y="123" text-anchor="middle" fill="#e2e8f0" font-size="10">App B</text>
+  <rect x="18" y="144" width="88" height="30" rx="5" fill="#1a2233" stroke="#1e2d45"/><text x="62" y="163" text-anchor="middle" fill="#e2e8f0" font-size="10">App C</text>
+  <line x1="106" y1="79" x2="136" y2="107" stroke="#4a5568" stroke-width="1.4" marker-end="url(#la)"/>
+  <line x1="106" y1="119" x2="136" y2="119" stroke="#4a5568" stroke-width="1.4" marker-end="url(#la)"/>
+  <line x1="106" y1="159" x2="136" y2="131" stroke="#4a5568" stroke-width="1.4" marker-end="url(#la)"/>
+
+  <!-- LiteLLM Proxy -->
+  <rect x="138" y="72" width="148" height="94" rx="7" fill="#001d1e" stroke="#00C2CB" stroke-width="2"/>
+  <text x="212" y="94" text-anchor="middle" fill="#00C2CB" font-size="11" font-weight="700">LiteLLM Proxy</text>
+  <text x="212" y="112" text-anchor="middle" fill="#7a8899" font-size="9">:4000 · exact → semantic</text>
+  <text x="212" y="128" text-anchor="middle" fill="#7a8899" font-size="9">no-cache / no-store</text>
+  <text x="212" y="144" text-anchor="middle" fill="#7a8899" font-size="9">budget + auth preamble</text>
+  <text x="212" y="158" text-anchor="middle" fill="#00C2CB" font-size="8">MIT open source</text>
+
+  <!-- Proxy → Embed -->
+  <line x1="286" y1="96" x2="332" y2="82" stroke="#ffa726" stroke-width="1.5" marker-end="url(#laY)"/>
+
+  <!-- Embedding Model -->
+  <rect x="334" y="60" width="182" height="44" rx="6" fill="#1a1200" stroke="#ffa726" stroke-width="1.5"/>
+  <text x="425" y="79" text-anchor="middle" fill="#ffa726" font-size="11" font-weight="600">② Embedding Model</text>
+  <text x="425" y="96" text-anchor="middle" fill="#7a8899" font-size="9">text-embedding-3-small / -large</text>
+
+  <!-- Embed → Vector -->
+  <line x1="425" y1="104" x2="425" y2="126" stroke="#bd93f9" stroke-width="1.5" marker-end="url(#laP)"/>
+
+  <!-- Redis Stack -->
+  <rect x="334" y="128" width="182" height="44" rx="6" fill="#16112a" stroke="#bd93f9" stroke-width="1.5"/>
+  <text x="425" y="148" text-anchor="middle" fill="#bd93f9" font-size="11" font-weight="600">Redis Stack</text>
+  <text x="425" y="163" text-anchor="middle" fill="#7a8899" font-size="9">RediSearch · HNSW vector index</text>
+
+  <!-- OR + Qdrant -->
+  <text x="535" y="155" text-anchor="middle" fill="#4a5568" font-size="12" font-weight="700">OR</text>
+  <rect x="552" y="128" width="160" height="44" rx="6" fill="#16112a" stroke="#bd93f9" stroke-width="1.5"/>
+  <text x="632" y="148" text-anchor="middle" fill="#bd93f9" font-size="11" font-weight="600">Qdrant</text>
+  <text x="632" y="163" text-anchor="middle" fill="#7a8899" font-size="9">Collection · cosine similarity</text>
+
+  <!-- HIT arrow back to proxy -->
+  <line x1="334" y1="148" x2="288" y2="136" stroke="#50fa7b" stroke-width="1.5" marker-end="url(#laG)"/>
+  <text x="308" y="136" text-anchor="middle" fill="#50fa7b" font-size="9" font-weight="700">HIT</text>
+
+  <!-- MISS arrow to Upstream LLM -->
+  <line x1="286" y1="148" x2="332" y2="210" stroke="#ff4757" stroke-width="1.4" stroke-dasharray="5,3" marker-end="url(#laR)"/>
+  <rect x="334" y="198" width="200" height="38" rx="6" fill="#1a0a0a" stroke="#ff475766" stroke-dasharray="4,3"/>
+  <text x="434" y="215" text-anchor="middle" fill="#ff4757" font-size="11" font-weight="600">Upstream LLM API</text>
+  <text x="434" y="229" text-anchor="middle" fill="#7a8899" font-size="9">gpt-4o · claude-3-7-sonnet · gemini-2.5-pro</text>
+  <text x="308" y="196" text-anchor="middle" fill="#ff4757" font-size="9" font-weight="700">MISS</text>
+
+  <!-- Write-back label -->
+  <text x="520" y="186" text-anchor="middle" fill="#7a8899" font-size="8.5" font-style="italic">write response + embedding back to store</text>
+  <line x1="534" y1="198" x2="516" y2="172" stroke="#ff4757" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#laR)"/>
+
+  <!-- Footer -->
+  <text x="410" y="246" text-anchor="middle" fill="#4a5568" font-size="9">Redis Stack and Qdrant run within the same self-hosted environment. No prompt or embedding data leaves the operator's network.</text>
+</svg>
+</div>
+<div class="img-caption">Figure 2. LiteLLM's semantic cache pipeline runs entirely within self-hosted infrastructure. Both Redis Stack and Qdrant are operator-deployed alongside the proxy, giving full data-path control.</div>
+<div class="callout info">
+<div class="callout-title">LiteLLM Cache Scope Control</div>
+<p>The LiteLLM caching docs expose <code>supported_call_types</code> so operators can restrict caching to selected API surfaces instead of assuming every proxy call should be cached. Use that control when you want semantic caching only for specific endpoints or workloads.</p>
+</div>
+<hr/>
+<!-- ══════ §3 KONG ══════ -->
+<div class="vendor-header kong">
+<span class="vendor-badge">Kong</span>
+<span class="vendor-title">§3 — ai-semantic-cache: Plugin-Native Semantic Cache</span>
+</div>
+<h3>Architecture</h3>
+<p>Kong AI Gateway implements semantic caching as a dedicated plugin: <code>ai-semantic-cache</code>, available in Kong Gateway ≥ 3.8 under the Enterprise license. As documented on the <a href="https://developer.konghq.com/plugins/ai-semantic-cache/" target="_blank">plugin page</a> and its <a href="https://developer.konghq.com/plugins/ai-semantic-cache/examples/openai/" target="_blank">OpenAI + Redis example</a>, the plugin stores user requests in a vector database based on semantic meaning and retrieves relevant cached requests when a similar query is made.</p>
+<p>The plugin integrates natively into Kong's plugin execution chain — the same chain that handles authentication, rate limiting, and prompt guards. Semantic caching can therefore be scoped with surgical precision: per-route, per-service, or per-consumer, without any application changes. The embedding model is called from the Kong Gateway node to a configured external provider, and the resulting vector is stored in and queried against a supported vector backend such as Redis with vector search or PostgreSQL with <code>pgvector</code>.</p>
+<p>The <a href="https://developer.konghq.com/ai-gateway/semantic-similarity/" target="_blank">semantic similarity reference</a> documents the shared substrate that also powers Kong's semantic routing, RAG injection, and semantic prompt guards — all using the same embedding-plus-vector-DB pattern.</p>
+<div class="callout warn">
+<div class="callout-title">Supported Backends: Redis or pgvector — Not Qdrant</div>
+<p>Current Kong docs for <code>ai-semantic-cache</code> describe Redis-based and <code>pgvector</code>-based vector backends. Qdrant is still not documented as a supported backend for this plugin, so teams standardised on Qdrant would need an alternative approach.</p>
+</div>
+<div class="callout warn">
+<div class="callout-title">Threshold Semantics: Distance, Not Similarity</div>
+<p>Kong's <code>threshold</code> parameter in <code>ai-semantic-cache</code> is a <strong>distance</strong> value, not a cosine similarity score. A <em>lower</em> value means stricter matching. The example below uses <code>threshold: 0.1</code>, which corresponds roughly to cosine similarity ≥ 0.90. The <code>dimensions</code> field must match the exact output dimensionality of the configured embedding model: <code>1536</code> for <code>text-embedding-3-small</code>, <code>3072</code> for <code>text-embedding-3-large</code>.</p>
+</div>
+<h3>Declarative Configuration (decK)</h3>
+<div class="code-wrap"><pre>_format_version: "3.0"
+
+plugins:
+- name: ai-semantic-cache
+  config:
+    embeddings:
+      auth:
+        header_name: Authorization
+        header_value: Bearer ${{ env "DECK_OPENAI_API_KEY" }}
+      model:
+        provider: openai
+        name: text-embedding-3-large
+        options:
+          upstream_url: https://api.openai.com/v1/embeddings
+    vectordb:
+      dimensions: 3072
+      distance_metric: cosine
+      strategy: redis
+      threshold: 0.1
+      redis:
+        host: ${{ env "DECK_REDIS_HOST" }}
+        port: 6379
+    cache_ttl: 300</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/plugins/ai-semantic-cache/examples/openai/" target="_blank">ai-semantic-cache: Set up with OpenAI and Redis</a> · <a href="https://developer.konghq.com/ai-gateway/semantic-similarity/" target="_blank">Semantic similarity reference</a></div>
+<!-- Kong SVG - FIXED -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewBox="0 0 820 290" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="290" width="820"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="700" letter-spacing="1" text-anchor="middle" x="410" y="22">KONG AI GATEWAY — ai-semantic-cache PLUGIN CHAIN</text>
+<defs>
+<marker id="ka" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#00D27B" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="kaG" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="kaR" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ff4757" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="kaY" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ffa726" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="kaP" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#bd93f9" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<!-- Clients -->
+<rect fill="#1a2233" height="30" rx="5" stroke="#1e2d45" width="82" x="16" y="88"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="57" y="107">Client A</text>
+<rect fill="#1a2233" height="30" rx="5" stroke="#1e2d45" width="82" x="16" y="130"></rect>
+<text fill="#e2e8f0" font-size="10" text-anchor="middle" x="57" y="149">Client B</text>
+<line marker-end="url(#ka)" stroke="#4a5568" stroke-width="1.4" x1="98" x2="120" y1="103" y2="120"></line>
+<line marker-end="url(#ka)" stroke="#4a5568" stroke-width="1.4" x1="98" x2="120" y1="145" y2="135"></line>
+<!-- Plugin 1: Auth -->
+<rect fill="#001e13" height="64" rx="6" stroke="#00D27B" stroke-opacity=".6" width="104" x="122" y="96"></rect>
+<text fill="#00D27B" font-size="10" font-weight="700" text-anchor="middle" x="174" y="117">Auth / ACL</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="174" y="133">Consumer identity</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="174" y="148">Key Auth · OIDC</text>
+<line marker-end="url(#ka)" stroke="#00D27B" stroke-opacity=".7" stroke-width="1.4" x1="226" x2="240" y1="128" y2="128"></line>
+<!-- Plugin 2: Rate Limiting -->
+<rect fill="#001e13" height="64" rx="6" stroke="#00D27B" stroke-opacity=".6" width="110" x="242" y="96"></rect>
+<text fill="#00D27B" font-size="10" font-weight="700" text-anchor="middle" x="297" y="117">Rate Limiting</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="297" y="133">ai-rate-limiting</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="297" y="148">-advanced</text>
+<line marker-end="url(#ka)" stroke="#00D27B" stroke-opacity=".7" stroke-width="1.4" x1="352" x2="366" y1="128" y2="128"></line>
+<!-- Plugin 3: ai-semantic-cache (highlighted, taller) -->
+<rect fill="#001e13" height="106" rx="6" stroke="#00D27B" stroke-width="2" width="130" x="368" y="76"></rect>
+<text fill="#00D27B" font-size="10.5" font-weight="700" text-anchor="middle" x="433" y="98">ai-semantic-cache</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="433" y="115">embed then distance check</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="433" y="130">strategy: redis (example)</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="433" y="145">threshold: 0.1 (distance)</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="433" y="160">dimensions: 3072</text>
+<text fill="#00D27B" font-size="8" text-anchor="middle" x="433" y="175">Enterprise | &gt;= Kong 3.8</text>
+<!-- Embed call upward -->
+<line marker-end="url(#kaY)" stroke="#ffa726" stroke-width="1.5" x1="433" x2="433" y1="76" y2="56"></line>
+<rect fill="#1a1200" height="20" rx="4" stroke="#ffa726" width="198" x="334" y="34"></rect>
+<text fill="#ffa726" font-size="9.5" font-weight="600" text-anchor="middle" x="433" y="48">Embedding API (external provider)</text>
+<!-- Redis Stack -->
+<rect fill="#16112a" height="64" rx="6" stroke="#bd93f9" stroke-width="1.5" width="138" x="520" y="96"></rect>
+<text fill="#bd93f9" font-size="11" font-weight="600" text-anchor="middle" x="589" y="116">Vector DB</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="589" y="133">Redis with VSS</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="589" y="148">or PostgreSQL + pgvector</text>
+<line marker-end="url(#kaP)" stroke="#bd93f9" stroke-width="1.5" x1="498" x2="518" y1="120" y2="120"></line>
+<!-- HIT back to plugin -->
+<line marker-end="url(#kaG)" stroke="#50fa7b" stroke-width="1.5" x1="520" x2="500" y1="138" y2="148"></line>
+<text fill="#50fa7b" font-size="9.5" font-weight="700" text-anchor="middle" x="508" y="162">HIT</text>
+<!-- Upstream LLM -->
+<rect fill="#1a0a0a" height="64" rx="6" stroke="#ff475766" stroke-dasharray="5,3" width="128" x="678" y="96"></rect>
+<text fill="#ff4757" font-size="10.5" font-weight="600" text-anchor="middle" x="742" y="118">Upstream LLM</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="742" y="134">gpt-4o</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="742" y="149">claude-3-7-sonnet</text>
+<line marker-end="url(#kaR)" stroke="#ff4757" stroke-dasharray="4,3" stroke-width="1.4" x1="658" x2="676" y1="130" y2="130"></line>
+<text fill="#ff4757" font-size="9" font-weight="700" text-anchor="middle" x="666" y="124">MISS</text>
+<!-- Kong Manager -->
+<rect fill="#1a2233" height="58" rx="6" stroke="#1e2d45" width="138" x="520" y="200"></rect>
+<text fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle" x="589" y="220">Kong Manager UI</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="589" y="236">ai_cache_fetch_latency</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="589" y="250">cache hit/miss · Prometheus</text>
+<line stroke="#1e2d45" stroke-dasharray="3,3" stroke-width="1" x1="589" x2="589" y1="160" y2="198"></line>
+<!-- Footer -->
+<text fill="#3a4a5a" font-size="9" text-anchor="middle" x="410" y="278">developer.konghq.com/plugins/ai-semantic-cache/ | Enterprise tier | min Kong Gateway 3.8 | Redis or pgvector</text>
+</svg>
+</div>
+<div class="img-caption">Figure 3. Kong's ai-semantic-cache plugin sits inline in the Kong plugin execution chain. The embedding API call exits the Kong node to the configured external provider. Current docs describe Redis-based and pgvector-based backends. Enterprise-tier, minimum Kong Gateway 3.8.</div>
+<div class="callout info">
+<div class="callout-title">Kong Cache Metrics</div>
+<p>When <code>config.ai_metrics</code> is enabled in the Prometheus plugin, Kong exposes an <code>ai_cache_fetch_latency</code> metric along with cache hit/miss signals per the <a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Monitor AI LLM Metrics</a> docs. This gives Kong users cache observability through the same Prometheus scrape target used for all other gateway metrics — no separate analytics backend required.</p>
+</div>
+<hr/>
+<!-- ══════ §4 PORTKEY ══════ -->
+<div class="vendor-header portkey">
+<span class="vendor-badge">Portkey</span>
+<span class="vendor-title">§4 — Semantic Cache: Managed SaaS Path, Hybrid Enterprise Options</span>
+</div>
+<h3>Architecture</h3>
+<p>Portkey's semantic cache is activated through the <code>cache</code> key in a Portkey Config object, with <code>mode: "semantic"</code>. In the managed SaaS path documented on the <a href="https://portkey.ai/docs/product/ai-gateway/cache-simple-and-semantic" target="_blank">Cache (Simple &amp; Semantic)</a> page, customers do not provision a vector database directly: the embedding, indexing, and lookup workflow is managed by Portkey.</p>
+<p>Current Portkey enterprise docs also describe hybrid and self-hosted deployments where the data plane, cache store, and semantic cache store can run inside customer infrastructure. In other words, the product supports both a managed SaaS experience and more controlled enterprise deployment postures; it is inaccurate to describe Portkey as SaaS-only.</p>
+<p>Key behaviours documented on the Portkey caching page:</p>
+<ul>
+<li><strong>Two modes:</strong> <code>simple</code> (exact string match, broadly available) and <code>semantic</code> (vector similarity, documented as available only on select Enterprise plans).</li>
+<li><strong>Documented constraints:</strong> Semantic cache currently applies only to <code>/chat/completions</code> and <code>/completions</code>, and only within the documented message-count and token-size limits.</li>
+<li><strong>System prompt ignored:</strong> For semantic cache matching, the first message (typically the system prompt) is intentionally ignored during matching.</li>
+<li><strong>Namespace isolation:</strong> The <code>cache_namespace</code> per-request option partitions the cache by custom key.</li>
+<li><strong>Refresh control:</strong> The SDK docs expose <code>cache_force_refresh=True</code> for fetching a fresh response and refreshing the cache entry.</li>
+<li><strong>Observability:</strong> Analytics expose hit rate, latency savings, and cost savings; logs expose states such as <em>Cache Hit</em>, <em>Cache Semantic Hit</em>, <em>Cache Miss</em>, and <em>Cache Refreshed</em>.</li>
+</ul>
+<h3>Config Object - Semantic Cache</h3>
+<div class="code-wrap"><pre>{
+  "cache": {
+    "mode": "semantic",
+    "max_age": 60
+  },
+  "strategy": {
+    "mode": "fallback"
+  },
+  "targets": [
+    {
+      "override_params": {
+        "model": "@openai-prod/gpt-4o"
+      }
+    },
+    {
+      "override_params": {
+        "model": "@anthropic-prod/claude-3-5-sonnet-20241022"
+      }
+    }
+  ]
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/ai-gateway/cache-simple-and-semantic" target="_blank">portkey.ai — Cache (Simple &amp; Semantic)</a></div>
+<h3>SDK Usage with Namespace Isolation</h3>
+<div class="code-wrap"><pre>from portkey_ai import Portkey
+
+portkey = Portkey(api_key="PORTKEY_API_KEY")
+
+response = portkey.with_options(
+    cache_namespace="team-compliance"
+).chat.completions.create(
+    model="@openai-prod/gpt-4o",
+    messages=[{"role": "user", "content": "What are the KYC documentation requirements?"}]
+)
+
+fresh = portkey.with_options(
+    cache_force_refresh=True
+).chat.completions.create(
+    model="@openai-prod/gpt-4o",
+    messages=[{"role": "user", "content": "What are the KYC documentation requirements?"}]
+)</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/ai-gateway/cache-simple-and-semantic" target="_blank">portkey.ai — Cache (Simple &amp; Semantic)</a> · <a href="https://portkey.ai/docs/guides/getting-started/return-repeat-requests-from-cache" target="_blank">Return Repeat Requests from Cache</a></div>
+<!-- Portkey SVG -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="250" width="720"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="360" y="22">PORTKEY - SEMANTIC CACHE (SAAS PATH)</text>
+<defs>
+<marker id="pa" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#5A67FF" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="paG" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="paR" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ff4757" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="none" height="200" rx="7" stroke="#5A67FF" stroke-dasharray="5,3" stroke-opacity=".4" width="230" x="10" y="36"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600" x="22" y="50">CUSTOMER ENVIRONMENT</text>
+<rect fill="#1a2233" height="26" rx="4" stroke="#1e2d45" width="95" x="25" y="62"></rect><text fill="#7a8899" font-size="9" text-anchor="middle" x="72" y="79">Python SDK</text>
+<rect fill="#1a2233" height="26" rx="4" stroke="#1e2d45" width="95" x="25" y="97"></rect><text fill="#7a8899" font-size="9" text-anchor="middle" x="72" y="114">Node SDK</text>
+<rect fill="#1a2233" height="26" rx="4" stroke="#1e2d45" width="95" x="25" y="132"></rect><text fill="#7a8899" font-size="9" text-anchor="middle" x="72" y="149">REST Client</text>
+<rect fill="#1a2233" height="26" rx="4" stroke="#1e2d45" width="95" x="25" y="167"></rect><text fill="#7a8899" font-size="9" text-anchor="middle" x="72" y="184">LangChain App</text>
+<line marker-end="url(#pa)" stroke="#5A67FF" stroke-width="1.2" x1="120" x2="265" y1="75" y2="86"></line>
+<line marker-end="url(#pa)" stroke="#5A67FF" stroke-width="1.2" x1="120" x2="265" y1="110" y2="102"></line>
+<line marker-end="url(#pa)" stroke="#5A67FF" stroke-width="1.2" x1="120" x2="265" y1="145" y2="118"></line>
+<line marker-end="url(#pa)" stroke="#5A67FF" stroke-width="1.2" x1="120" x2="265" y1="180" y2="134"></line>
+<text fill="#5A67FF" font-size="8" text-anchor="middle" x="188" y="108">HTTPS</text>
+<rect fill="none" height="200" rx="7" stroke="#5A67FF" stroke-opacity=".7" stroke-width="1.5" width="462" x="248" y="36"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600" x="262" y="50">PORTKEY CLOUD INFRASTRUCTURE (SAAS EXAMPLE)</text>
+<rect fill="#0a0c24" height="88" rx="6" stroke="#5A67FF" stroke-width="1.5" width="138" x="265" y="60"></rect>
+<text fill="#5A67FF" font-size="10" font-weight="700" text-anchor="middle" x="334" y="80">Portkey Gateway</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="334" y="97">mode: semantic</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="334" y="111">cache_namespace routing</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="334" y="125">TTL via max_age</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="334" y="140">cache_force_refresh</text>
+<line marker-end="url(#pa)" stroke="#ffa726" stroke-width="1.3" x1="403" x2="435" y1="80" y2="68"></line>
+<rect fill="#1a1200" height="28" rx="5" stroke="#ffa726" width="170" x="437" y="53"></rect>
+<text fill="#ffa726" font-size="9.2" font-weight="600" text-anchor="middle" x="522" y="71">Managed embedding service</text>
+<line marker-end="url(#pa)" stroke="#bd93f9" stroke-width="1.3" x1="522" x2="522" y1="81" y2="104"></line>
+<rect fill="#16112a" height="34" rx="5" stroke="#bd93f9" width="220" x="412" y="106"></rect>
+<text fill="#bd93f9" font-size="10" font-weight="600" text-anchor="middle" x="522" y="122">Managed semantic cache store</text>
+<text fill="#7a8899" font-size="7.5" text-anchor="middle" x="522" y="135">SaaS path: backend is abstracted from the customer</text>
+<line marker-end="url(#paG)" stroke="#50fa7b" stroke-width="1.3" x1="437" x2="405" y1="120" y2="112"></line>
+<text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="420" y="109">HIT</text>
+<line marker-end="url(#paR)" stroke="#ff4757" stroke-dasharray="4,3" stroke-width="1.2" x1="403" x2="437" y1="120" y2="172"></line>
+<rect fill="#1a0a0a" height="34" rx="5" stroke="#ff475755" stroke-dasharray="4,3" width="250" x="414" y="160"></rect>
+<text fill="#ff4757" font-size="9.5" font-weight="600" text-anchor="middle" x="539" y="177">Upstream LLM API</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="539" y="190">@openai-prod/gpt-4o | @anthropic-prod/claude-3-5-sonnet</text>
+<text fill="#ff4757" font-size="8.5" text-anchor="middle" x="421" y="155">MISS</text>
+<rect fill="#1a2233" height="42" rx="5" stroke="#1e2d45" width="138" x="265" y="178"></rect>
+<text fill="#e2e8f0" font-size="9.5" font-weight="600" text-anchor="middle" x="334" y="196">Portkey Analytics</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="334" y="210">hit rate | latency saved | cost saved</text>
+<text fill="#ff4757" font-size="8.2" text-anchor="middle" x="480" y="222">SaaS path: prompts and embeddings traverse Portkey-managed infrastructure</text>
+</svg>
+</div>
+<div class="img-caption">Figure 4. This diagram shows Portkey's managed SaaS path. Current enterprise docs separately describe customer-hosted deployment options: a data plane in the customer's VPC, Redis or ElastiCache as the cache store, and Milvus or Pinecone as semantic-cache-store options.</div>
+<div class="callout info">
+<div class="callout-title">Enterprise Deployment Nuance</div>
+<p>Portkey's public docs now separate the managed SaaS path from customer-hosted enterprise options. The hybrid deployment guide says the data plane can run in your VPC, while the enterprise-components docs list Redis or ElastiCache for cache storage and Milvus or Pinecone for semantic-cache storage. Residency conclusions therefore depend on the deployment mode under review.</p>
+</div>
+<hr/>
+<!-- ══════ §5 TRUEFOUNDRY ══════ -->
+<div class="vendor-header tf">
+<span class="vendor-badge">TrueFoundry</span>
+<span class="vendor-title">§5 — Request-Level Exact and Semantic Cache Controls</span>
+</div>
+<h3>Architecture</h3>
+<p>TrueFoundry's public caching docs describe request caching as an AI Gateway feature controlled per request through the <code>x-tfy-cache-config</code> header. The gateway currently documents two cache strategies: <code>exact-match</code> for identical requests and <code>semantic</code> for meaning-based reuse with embeddings and cosine-similarity scoring.</p>
+<p>The cache page is strongest on runtime semantics and request controls. The separate <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway plane architecture</a> page explains that the gateway plane can run on customer infrastructure and is designed as a low-latency Hono-based proxy with in-memory checks plus asynchronous logs and metrics.</p>
+<h3>Simple Caching (Exact-Match)</h3>
+<p>TrueFoundry's exact-match mode is the simple cache. The docs say the gateway hashes the complete request — messages, model, and parameters — and returns a cached response only when that hash matches exactly. This is the right mode for deterministic flows, repeated internal tooling calls, and development or test traffic where you expect identical inputs to produce identical outputs.</p>
+<h3>Semantic Caching</h3>
+<p>TrueFoundry's semantic cache uses embeddings and cosine similarity to match requests that mean the same thing even when phrased differently. The current docs add two useful implementation details: semantic mode is a superset that also covers exact-match hits, and the gateway embeds only the last message while hashing the rest of the request parameters exactly. That means the semantic comparison is intentionally narrow and should be understood as <em>semantic matching on the newest user turn, exact matching on the rest of the request envelope</em>.</p>
+<p>The docs also publish practical operating limits: start with a <code>similarity_threshold</code> of <code>0.9</code>, tune based on hit rate versus accuracy, and note that semantic cache currently works only when the input is within the documented embedding-model token limits.</p>
+<h3>Cache Backend Configuration</h3>
+<p>This is the place where the public docs are intentionally narrower than some competitors. TrueFoundry currently documents <strong>embedding-model configuration</strong>, not a public vector-database selector. On on-prem deployments, the embedding model is configurable through <em>Controls &gt; Settings &gt; Semantic Cache</em>. In the SaaS deployment, the docs say TrueFoundry uses OpenAI <code>text-embedding-3-small</code> by default and does not expose that choice as customer-configurable. The public cache docs do <strong>not</strong> currently name the underlying vector-store or cache-store engine, so this review avoids claiming Redis, Qdrant, pgvector, or any other backend for TrueFoundry without a separate source.</p>
+<h3>What the Current Public Docs Explicitly Document</h3>
+<ul>
+<li><strong>Request-level cache policy.</strong> <code>x-tfy-cache-config</code> supports <code>type</code>, <code>ttl</code>, <code>namespace</code>, and (for semantic cache) <code>similarity_threshold</code>.</li>
+<li><strong>Simple cache semantics.</strong> Exact-match mode hashes the complete request and only returns a hit when the full request matches.</li>
+<li><strong>Semantic cache semantics.</strong> The last message is embedded; the rest of the request parameters must still match exactly.</li>
+<li><strong>Threshold guidance.</strong> The docs recommend starting at <code>0.9</code> and adjusting based on hit rate and answer quality.</li>
+<li><strong>Deployment-type-specific embedding configuration.</strong> On-prem embedding model selection is configurable; SaaS defaults to OpenAI <code>text-embedding-3-small</code>.</li>
+<li><strong>Cache observability headers.</strong> Responses can include <code>x-tfy-cache-status</code>, <code>x-tfy-cached-trace-id</code>, and <code>x-tfy-cache-similarity-score</code>.</li>
+</ul>
+<h3>Exact-Match Cache via Request Header</h3>
+<div class="code-wrap"><pre>curl https://{controlPlaneURL}/api/llm/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-truefoundry-api-key" \
+  -H "x-tfy-cache-config: {\"type\": \"exact-match\", \"ttl\": 600, \"namespace\": \"production-app\"}" \
+  -d '{
+    "model": "openai-main/gpt-4o",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is the capital of France?"
+      }
+    ]
+  }' </pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/caching" target="_blank">TrueFoundry Docs — Caching (Exact and Semantic)</a></div>
+<h3>Semantic Cache via Request Header</h3>
+<div class="code-wrap"><pre>curl -i https://{controlPlaneURL}/api/llm/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-truefoundry-api-key" \
+  -H "x-tfy-cache-config: {\"type\": \"semantic\", \"similarity_threshold\": 0.9, \"ttl\": 600, \"namespace\": \"production-app\"}" \
+  -d '{
+    "model": "openai-main/gpt-4o",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello"
+      }
+    ]
+  }'
+
+# Response headers can include:
+# x-tfy-cache-status: hit | miss | error
+# x-tfy-cached-trace-id: trace_abc123
+# x-tfy-cache-similarity-score: 0.95</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/caching" target="_blank">TrueFoundry Docs — Caching (Exact and Semantic)</a> · <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">Gateway Plane Architecture</a></div>
+<!-- TrueFoundry SVG -->
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewBox="0 0 760 310" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="310" width="760"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle" x="380" y="22">TRUEFOUNDRY - EXACT-MATCH AND SEMANTIC CACHE CONTROLS</text>
+<defs>
+<marker id="ta" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#FF5533" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="taG" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#50fa7b" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="taR" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#ff4757" points="0 0,7 2.5,0 5"></polygon></marker>
+<marker id="taB" markerheight="5" markerwidth="7" orient="auto" refx="7" refy="2.5"><polygon fill="#bd93f9" points="0 0,7 2.5,0 5"></polygon></marker>
+</defs>
+<rect fill="none" height="260" rx="10" stroke="#FF5533" stroke-width="2" width="744" x="8" y="34"></rect>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="700" x="24" y="50">CUSTOMER-DEPLOYED GATEWAY PLANE / ON-PREM OR SELF-HOSTED MODE</text>
+<rect fill="#1a2233" height="28" rx="4" stroke="#1e2d45" width="100" x="22" y="66"></rect><text fill="#7a8899" font-size="9" text-anchor="middle" x="72" y="84">Team A</text>
+<rect fill="#1a2233" height="28" rx="4" stroke="#1e2d45" width="100" x="22" y="104"></rect><text fill="#7a8899" font-size="9" text-anchor="middle" x="72" y="122">Team B</text>
+<rect fill="#1a2233" height="28" rx="4" stroke="#1e2d45" width="100" x="22" y="142"></rect><text fill="#7a8899" font-size="9" text-anchor="middle" x="72" y="160">Team C</text>
+<line marker-end="url(#ta)" stroke="#FF5533" stroke-opacity=".5" stroke-width="1.2" x1="122" x2="160" y1="80" y2="108"></line>
+<line marker-end="url(#ta)" stroke="#FF5533" stroke-opacity=".5" stroke-width="1.2" x1="122" x2="160" y1="118" y2="126"></line>
+<line marker-end="url(#ta)" stroke="#FF5533" stroke-opacity=".5" stroke-width="1.2" x1="122" x2="160" y1="156" y2="143"></line>
+<rect fill="#1e0d08" height="124" rx="6" stroke="#FF5533" stroke-width="2" width="166" x="162" y="74"></rect>
+<text fill="#FF5533" font-size="10" font-weight="700" text-anchor="middle" x="245" y="93">TrueFoundry AI Gateway</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="245" y="110">Hono | stateless gateway plane</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="245" y="124">in-memory hot-path checks</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="245" y="138">async logs and metrics</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="245" y="152">x-tfy-cache-config request header</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="245" y="166">type | ttl | namespace | threshold</text>
+<text fill="#FF5533" font-size="8" text-anchor="middle" x="245" y="184">exact-match and semantic modes</text>
+<line marker-end="url(#ta)" stroke="#ffa726" stroke-width="1.3" x1="328" x2="370" y1="104" y2="88"></line>
+<rect fill="#1a1200" height="36" rx="5" stroke="#ffa726" width="188" x="372" y="68"></rect>
+<text fill="#ffa726" font-size="10" font-weight="600" text-anchor="middle" x="466" y="84">Embedding Model</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="466" y="97">On-prem: configurable | SaaS: default text-embedding-3-small</text>
+<line marker-end="url(#taB)" stroke="#bd93f9" stroke-width="1.3" x1="466" x2="466" y1="104" y2="130"></line>
+<rect fill="#16112a" height="46" rx="5" stroke="#bd93f9" stroke-width="2" width="188" x="372" y="132"></rect>
+<text fill="#bd93f9" font-size="10" font-weight="700" text-anchor="middle" x="466" y="151">Cache Engine</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="466" y="165">public docs expose behavior and headers</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="466" y="176">underlying store not publicly named</text>
+<line marker-end="url(#taG)" stroke="#50fa7b" stroke-width="1.3" x1="372" x2="330" y1="150" y2="138"></line>
+<text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="346" y="136">HIT</text>
+<line marker-end="url(#taR)" stroke="#ff4757" stroke-dasharray="4,3" stroke-width="1.2" x1="328" x2="560" y1="164" y2="226"></line>
+<rect fill="#1a0a0a" height="40" rx="5" stroke="#ff475755" stroke-dasharray="4,3" width="176" x="562" y="214"></rect>
+<text fill="#ff4757" font-size="9.5" font-weight="600" text-anchor="middle" x="650" y="232">Upstream LLM API</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="650" y="245">called only on cache miss</text>
+<text fill="#ff4757" font-size="8.5" text-anchor="middle" x="434" y="212">MISS</text>
+<rect fill="#1a2233" height="60" rx="5" stroke="#1e2d45" width="176" x="562" y="72"></rect>
+<text fill="#e2e8f0" font-size="9.5" font-weight="600" text-anchor="middle" x="650" y="92">Cache Headers and Metrics</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="650" y="107">x-tfy-cache-status</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="650" y="119">x-tfy-cached-trace-id</text>
+<text fill="#7a8899" font-size="8" text-anchor="middle" x="650" y="131">x-tfy-cache-similarity-score</text>
+<text fill="#7a8899" font-size="8.5" text-anchor="middle" x="380" y="278">Public docs emphasise cache modes, request headers, response headers, and deployment-type-specific embedding-model behavior.</text>
+<text fill="#3a4a5a" font-size="8" text-anchor="middle" x="380" y="292">Source: truefoundry.com/docs/ai-gateway/caching | truefoundry.com/docs/platform/gateway-plane-architecture</text>
+</svg>
+</div>
+<div class="img-caption">Figure 5. TrueFoundry's current public docs clearly document exact-match caching, semantic caching, the x-tfy-cache-config request header, response headers, and deployment-type-specific embedding-model behavior. They do not publicly name the underlying vector-store implementation.</div>
+<div class="callout info">
+<div class="callout-title">Four-Hook Guardrails Complement the Cache</div>
+<p>TrueFoundry's public guardrails docs describe four hook points (LLM input, LLM output, MCP pre-tool, MCP post-tool). That matters operationally because cacheable requests can be normalised or sanitised at the gateway layer before they reach downstream systems.</p>
+</div>
+<!-- ══════ §6 DATA PRIVACY ══════ -->
+<h2>§6 — Data Privacy Boundaries for Cached Payloads</h2>
+<p>Semantic caching introduces a new data artifact that compliance teams often overlook: <strong>the prompt embedding vector</strong>. Even when embeddings are much smaller than the original text, they still preserve semantic information about the request. For regulated workloads, they should usually be reviewed as sensitive derived data rather than as harmless metadata.</p>
+<p>Different applications within the same organisation may need radically different privacy postures for their cached payloads. A public knowledge-base FAQ assistant and an internal HR benefits chatbot should never share a cache namespace — and ideally, the sensitive application's embeddings should never reach an external service at all.</p>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewBox="0 0 820 260" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="260" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="24">Data Privacy Boundary Matrix for Cached Payloads</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="410" y="42">Different workloads require different cache isolation and deployment choices</text>
+<rect fill="#0a1a14" height="100" rx="7" stroke="#50fa7b" stroke-opacity=".6" width="180" x="20" y="60"></rect>
+<text fill="#50fa7b" font-size="10" font-weight="700" text-anchor="middle" x="110" y="80">Public FAQ Bot</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="110" y="96">Low sensitivity</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="110" y="110">Public knowledge base</text>
+<text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="110" y="128">Managed or self-hosted cache can fit</text>
+<text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="110" y="141">Shared namespace may be acceptable</text>
+<text fill="#50fa7b" font-size="8.5" text-anchor="middle" x="110" y="154">Optimise for hit rate and cost</text>
+<rect fill="#1a1200" height="100" rx="7" stroke="#ffa726" stroke-opacity=".6" width="180" x="220" y="60"></rect>
+<text fill="#ffa726" font-size="10" font-weight="700" text-anchor="middle" x="310" y="80">Internal HR Assistant</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="310" y="96">Medium sensitivity</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="310" y="110">Employee policy and internal data</text>
+<text fill="#ffa726" font-size="8.5" text-anchor="middle" x="310" y="128">Namespace isolation required</text>
+<text fill="#ffa726" font-size="8.5" text-anchor="middle" x="310" y="141">Review SaaS vs self-hosted path</text>
+<text fill="#ffa726" font-size="8.5" text-anchor="middle" x="310" y="154">Tune TTL per application</text>
+<rect fill="#1a0a0a" height="100" rx="7" stroke="#ff4757" stroke-opacity=".7" width="180" x="420" y="60"></rect>
+<text fill="#ff4757" font-size="10" font-weight="700" text-anchor="middle" x="510" y="80">Compliance / PHI Bot</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="510" y="96">High sensitivity</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="510" y="110">Regulated or confidential data</text>
+<text fill="#ff4757" font-size="8.5" text-anchor="middle" x="510" y="128">Prefer self-hosted or private data plane</text>
+<text fill="#ff4757" font-size="8.5" text-anchor="middle" x="510" y="141">Require explicit residency review</text>
+<text fill="#ff4757" font-size="8.5" text-anchor="middle" x="510" y="154">Treat embeddings as sensitive data</text>
+<rect fill="#0d1420" height="100" rx="7" stroke="#60a5fa" stroke-opacity=".6" width="180" x="620" y="60"></rect>
+<text fill="#60a5fa" font-size="10" font-weight="700" text-anchor="middle" x="710" y="80">Live Market Data</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="710" y="96">Real-time sensitivity</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="710" y="110">Rapidly expiring data</text>
+<text fill="#60a5fa" font-size="8.5" text-anchor="middle" x="710" y="128">Disable cache when freshness dominates</text>
+<text fill="#60a5fa" font-size="8.5" text-anchor="middle" x="710" y="141">Use short TTL if cache is unavoidable</text>
+<text fill="#60a5fa" font-size="8.5" text-anchor="middle" x="710" y="154">Need request-level overrides</text>
+<line stroke="#1e2d45" stroke-width="1" x1="20" x2="800" y1="178" y2="178"></line>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="410" y="206">Specific platform fit depends on plan tier, deployment mode, vector-backend placement, and legal/compliance requirements.</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="410" y="224">The key architectural question is not only "does semantic cache exist?" but also "where do embeddings and cache entries physically live?"</text>
+<text fill="#7a8899" font-size="9" text-anchor="middle" x="410" y="246">Good gateways let one deployment support different namespaces, TTLs, and cache policies for different applications.</text>
+</svg>
+</div>
+<div class="img-caption">Figure 6. Different workloads within the same organisation require different cache privacy postures. The correct deployment choice depends on sensitivity, namespace isolation, TTL policy, and where embeddings and cached responses physically live.</div>
+<h3>How Each Platform Implements Privacy Boundaries</h3>
+<div class="privacy-grid">
+<div class="priv-card">
+<div class="priv-label" style="color:var(--litellm)">LiteLLM</div>
+<div class="priv-name">Manual Namespace Planning</div>
+<div class="priv-desc">LiteLLM documents Redis namespaces for exact-match cache and exposes per-request <code>no-cache</code> / <code>no-store</code> controls. Teams using semantic cache still need to plan collection or backend isolation deliberately when running multi-tenant workloads.</div>
+</div>
+<div class="priv-card">
+<div class="priv-label" style="color:var(--kong)">Kong AI GW</div>
+<div class="priv-name">Plugin Scoping + Backend Isolation</div>
+<div class="priv-desc">The <code>ai-semantic-cache</code> plugin can be scoped at Route, Service, or Consumer level. Current docs describe Redis-based and pgvector-based backends, and the embedding API call still exits the Kong node to an external provider unless you self-host that embedding endpoint.</div>
+</div>
+<div class="priv-card">
+<div class="priv-label" style="color:var(--portkey)">Portkey</div>
+<div class="priv-name">cache_namespace Parameter</div>
+<div class="priv-desc">The <code>cache_namespace</code> per-request option partitions the cache store by custom key. Residency depends on deployment mode: SaaS keeps the managed path in Portkey infrastructure, while current enterprise docs also describe hybrid/self-hosted options with customer-hosted data-plane components.</div>
+</div>
+<div class="priv-card">
+<div class="priv-label" style="color:var(--tf)">TrueFoundry</div>
+<div class="priv-name">Request Namespace + Deployment Controls</div>
+<div class="priv-desc">Current public docs expose cache namespaces directly in <code>x-tfy-cache-config</code> and describe self-hosted/on-prem gateway deployment plus deployment-type-specific embedding-model behaviour. The docs do not publicly spell out the underlying cache-store implementation, so privacy conclusions should stay at the documented deployment-model level.</div>
+</div>
+</div>
+<hr/>
+<!-- ══════ §7 FEATURE MATRIX ══════ -->
+<h2>§7 — Feature Matrix</h2>
+<p>Cross-referenced against each vendor's current public documentation. ✅ = documented support · ⚠ = deployment-mode, plan-tier, or configuration caveat · ❌ = not documented.</p>
+<div class="matrix-wrap">
+<table>
+<thead>
+<tr>
+<th>Feature / Capability</th>
+<th style="color:var(--litellm)">LiteLLM</th>
+<th style="color:var(--kong)">Kong AI GW</th>
+<th style="color:var(--portkey)">Portkey</th>
+<th style="color:var(--tf)">TrueFoundry</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Simple / exact-match cache</strong></td>
+<td><span class="check">✅</span> <code>in-memory</code>, <code>disk</code>, <code>redis</code>, <code>s3</code>, <code>gcs</code></td>
+<td><span class="check">✅</span> The plugin docs describe exact and semantic caching mechanisms</td>
+<td><span class="check">✅</span> <code>mode: "simple"</code> (available for all plans)</td>
+<td><span class="check">✅</span> <code>type: "exact-match"</code> via <code>x-tfy-cache-config</code></td>
+</tr>
+<tr>
+<td><strong>Semantic (vector) cache</strong></td>
+<td><span class="check">✅</span> <code>redis-semantic</code> and <code>qdrant-semantic</code></td>
+<td><span class="check">✅</span> <code>ai-semantic-cache</code> plugin (Enterprise, ≥3.8)</td>
+<td><span class="check">✅</span> <code>mode: "semantic"</code> on select Enterprise plans</td>
+<td><span class="check">✅</span> <code>type: "semantic"</code> via <code>x-tfy-cache-config</code></td>
+</tr>
+<tr>
+<td><strong>Supported vector backend(s)</strong></td>
+<td><span class="check">✅</span> Redis Stack and Qdrant</td>
+<td><span class="check">✅</span> Redis with VSS / AWS MemoryDB for Redis, and PostgreSQL + <code>pgvector</code>; Qdrant is not documented</td>
+<td><span class="partial">⚠</span> Semantic cache requires a vector database, but the public cache page does not enumerate the engine list</td>
+<td><span class="cross">❌</span> Public cache docs do not name the underlying cache/vector store</td>
+</tr>
+<tr>
+<td><strong>Public cache-backend configuration surface</strong></td>
+<td><span class="check">✅</span> Choose <code>type: "redis-semantic"</code> or <code>type: "qdrant-semantic"</code></td>
+<td><span class="check">✅</span> Choose <code>vectordb.strategy: redis</code> or <code>vectordb.strategy: pgvector</code></td>
+<td><span class="partial">⚠</span> Public docs expose cache mode and config placement, not an engine selector on the cache page</td>
+<td><span class="partial">⚠</span> Public docs expose embedding-model configuration by deployment type, not a public vector-store selector</td>
+</tr>
+<tr>
+<td><strong>Embedding computation location</strong></td>
+<td><span class="partial">⚠</span> At the proxy, using the configured embedding model/provider</td>
+<td><span class="partial">⚠</span> At the Kong node, calling the configured embedding provider</td>
+<td><span class="partial">⚠</span> Depends on deployment mode; SaaS is provider-managed, enterprise architecture varies</td>
+<td><span class="partial">⚠</span> Semantic cache generates embeddings in the gateway flow; on-prem model is configurable, SaaS defaults to OpenAI <code>text-embedding-3-small</code></td>
+</tr>
+<tr>
+<td><strong>Prompt embeddings stay inside customer VPC</strong></td>
+<td><span class="partial">⚠</span> Achievable if you self-host the embedding endpoint and backend in-network</td>
+<td><span class="partial">⚠</span> Achievable if you self-host the embedding endpoint and chosen backend in-network</td>
+<td><span class="partial">⚠</span> Not true for managed SaaS by default; enterprise deployment posture must be evaluated separately</td>
+<td><span class="partial">⚠</span> Self-hosted gateway can run on customer infrastructure, but the public cache docs do not name the cache-store placement</td>
+</tr>
+<tr>
+<td><strong>Similarity threshold control</strong></td>
+<td><span class="check">✅</span> <code>similarity_threshold</code></td>
+<td><span class="check">✅</span> <code>threshold</code> (distance value)</td>
+<td><span class="cross">❌</span> No customer-facing threshold control documented on the public cache page</td>
+<td><span class="check">✅</span> <code>similarity_threshold</code> in <code>x-tfy-cache-config</code></td>
+</tr>
+<tr>
+<td><strong>Per-request cache bypass / refresh</strong></td>
+<td><span class="check">✅</span> <code>no-cache</code>, <code>no-store</code>, and <code>namespace</code> via per-request <code>cache</code> controls</td>
+<td><span class="partial">⚠</span> Supports HTTP cache-control semantics such as <code>no-cache</code> and <code>no-store</code></td>
+<td><span class="check">✅</span> <code>cache_force_refresh=True</code> is documented per request</td>
+<td><span class="partial">⚠</span> Public docs expose per-request cache config, but not LiteLLM-style <code>no-cache</code>/<code>no-store</code> flags</td>
+</tr>
+<tr>
+<td><strong>Cache namespace / tenant isolation</strong></td>
+<td><span class="check">✅</span> <code>namespace</code> is documented in per-request cache controls</td>
+<td><span class="partial">⚠</span> Plugin scoping plus backend isolation strategy; exact tenant model depends on the chosen backend deployment</td>
+<td><span class="check">✅</span> <code>cache_namespace</code> per request</td>
+<td><span class="check">✅</span> <code>namespace</code> field in <code>x-tfy-cache-config</code></td>
+</tr>
+<tr>
+<td><strong>TTL configuration</strong></td>
+<td><span class="check">✅</span> <code>ttl</code></td>
+<td><span class="check">✅</span> <code>cache_ttl</code></td>
+<td><span class="check">✅</span> <code>max_age</code></td>
+<td><span class="check">✅</span> <code>ttl</code> (maximum 259200 seconds / 3 days)</td>
+</tr>
+<tr>
+<td><strong>Cache hit metrics / observability</strong></td>
+<td><span class="partial">⚠</span> Headers plus callback/Prometheus-style integration, but no native cache dashboard is documented</td>
+<td><span class="check">✅</span> <code>ai_cache_fetch_latency</code> and cache-related headers/metrics are documented</td>
+<td><span class="check">✅</span> Analytics: hit rate, latency savings, cost savings; logs: hit/miss/refresh states</td>
+<td><span class="check">✅</span> <code>x-tfy-cache-status</code>, <code>x-tfy-cached-trace-id</code>, <code>x-tfy-cache-similarity-score</code>, plus cache metrics</td>
+</tr>
+<tr>
+<td><strong>System prompt excluded from semantic matching</strong></td>
+<td><span class="partial">⚠</span> Not documented as native behavior</td>
+<td><span class="partial">⚠</span> Not documented as native behavior</td>
+<td><span class="check">✅</span> Documented: first message is ignored for semantic matching</td>
+<td><span class="partial">⚠</span> Not documented as native behavior; docs instead say only the last message is embedded while other parameters must match exactly</td>
+</tr>
+<tr>
+<td><strong>Deployment model</strong></td>
+<td>Self-hosted (Docker / K8s / Helm)</td>
+<td>Self-managed Kong Gateway and Kong Cloud / Konnect options</td>
+<td>Managed SaaS plus enterprise hybrid/self-hosted options</td>
+<td>SaaS gateway plus self-hosted/on-prem gateway-plane deployment options</td>
+</tr>
+<tr>
+<td><strong>Enterprise license / plan requirement for semantic cache</strong></td>
+<td><span class="check">✅</span> No gateway license requirement — MIT open source</td>
+<td><span class="cross">❌</span> Yes — Enterprise license, ≥ Kong 3.8</td>
+<td><span class="cross">❌</span> Yes — select Enterprise plans per the public cache page</td>
+<td><span class="partial">⚠</span> Public cache page says caching is available for SaaS customers and should be enabled with TrueFoundry</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p style="font-size:.72rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-top:.3rem;">Feature claims cross-referenced against official public documentation reviewed on March 25, 2026. Verify current capabilities before production decisions.</p>
+<hr/>
+<!-- ══════ §8 VERDICT ══════ -->
+<h2>§8 — Editorial Verdict</h2>
+<p>Editorial assessments based on public documentation reviewed on March 25, 2026.</p>
+<div class="verdict-grid">
+<div class="verdict-card litellm">
+<div class="verdict-label">LiteLLM</div>
+<div class="verdict-name">The Configurable Open-Source Cache</div>
+<div class="verdict-text">Strongest backend flexibility: choose Redis Stack or Qdrant without changing application code. MIT-licensed core means zero caching-specific licensing cost. The per-request cache controls are unusually granular. The trade-off is operational ownership: you still deploy and operate the proxy plus the cache backend yourself.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Platform teams that want full control over backend choice, data residency, and cache policy, and are comfortable owning the infrastructure.</div>
+</div>
+<div class="verdict-card kong">
+<div class="verdict-label">Kong AI Gateway</div>
+<div class="verdict-name">The Plugin-Chain Integrator</div>
+<div class="verdict-text">The best fit when you are already in the Kong ecosystem and want semantic caching to sit alongside auth, rate limiting, guardrails, and RAG in one plugin chain. Current docs now make the backend story stronger than older drafts: Redis-based and <code>pgvector</code>-based options are documented. The trade-off is enterprise licensing and a more infrastructure-centric operating model.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Existing Kong users who want semantic caching as one more governed traffic control in the broader gateway stack.</div>
+</div>
+<div class="verdict-card portkey">
+<div class="verdict-label">Portkey</div>
+<div class="verdict-name">The Managed-First Cache</div>
+<div class="verdict-text">Portkey is strongest when you want a managed-first experience and strong analytics. But the public docs are more nuanced than a simple “zero-ops semantic cache” story: simple cache is broadly available, while semantic cache is documented as an enterprise capability that requires a vector database and comes with route and payload constraints.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams that value fast adoption and observability, and that are willing to evaluate Portkey's exact deployment mode and commercial tier before standardising on semantic cache.</div>
+</div>
+<div class="verdict-card tf">
+<div class="verdict-label">TrueFoundry</div>
+<div class="verdict-name">The Explicit Request-Level Cache</div>
+<div class="verdict-text">TrueFoundry's public docs are especially clear on runtime behavior: exact-match caching, semantic caching, threshold guidance, namespace isolation, response headers, and deployment-type-specific embedding-model configuration are all published. The gap is that the public docs do not name the underlying cache/vector store, so backend claims should stop where the docs stop.</div>
+<div class="verdict-use"><strong>Ideal for:</strong> Teams already standardising on TrueFoundry AI Gateway who want documented request-level cache controls and a self-hosted gateway-plane story without over-claiming undocumented backend details.</div>
+</div>
+</div>
+<h3>Positioning Map — Operational Complexity vs. Cache Data Sovereignty</h3>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans, system-ui, sans-serif" viewBox="0 0 620 420" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="420" width="620"></rect>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="65" y1="20" y2="340"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="65" x2="590" y1="340" y2="340"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="65" x2="590" y1="180" y2="180"></line>
+<line stroke="#1e2d45" stroke-dasharray="4,4" stroke-width="1" x1="327" x2="327" y1="20" y2="340"></line>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" x="327" y="380">← Lower Ops Complexity — Higher →</text>
+<text fill="#7a8899" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle" transform="rotate(-90,14,180)" x="14" y="180">Cache Data Sovereignty</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="196" y="352">LOW OPS · LOWER CONTROL</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="458" y="352">HIGH OPS · LOWER CONTROL</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="196" y="38">LOW OPS · HIGH CONTROL</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" x="458" y="38">HIGH OPS · HIGH CONTROL</text>
+<circle cx="160" cy="248" fill="#5A67FF" fill-opacity=".1" r="46" stroke="#5A67FF" stroke-width="1.5"></circle>
+<text fill="#5A67FF" font-size="13" font-weight="700" text-anchor="middle" x="160" y="242">Portkey</text>
+<text fill="#5A67FF" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="160" y="259">Managed-first</text>
+<text fill="#4a5568" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="160" y="272">Deployment-mode dependent</text>
+<circle cx="250" cy="220" fill="#00D27B" fill-opacity=".09" r="42" stroke="#00D27B" stroke-width="1.5"></circle>
+<text fill="#00D27B" font-size="13" font-weight="700" text-anchor="middle" x="250" y="214">Kong</text>
+<text fill="#00D27B" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="250" y="231">Enterprise gateway</text>
+<circle cx="415" cy="145" fill="#FF5533" fill-opacity=".08" r="50" stroke="#FF5533" stroke-width="1.6"></circle>
+<text fill="#FF5533" font-size="13" font-weight="700" text-anchor="middle" x="415" y="139">TrueFoundry</text>
+<text fill="#FF5533" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="415" y="156">Self-hosted gateway plane</text>
+<circle cx="505" cy="120" fill="#00C2CB" fill-opacity=".08" r="54" stroke="#00C2CB" stroke-width="1.6"></circle>
+<text fill="#00C2CB" font-size="13" font-weight="700" text-anchor="middle" x="505" y="114">LiteLLM</text>
+<text fill="#00C2CB" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="505" y="131">Self-hosted flexibility</text>
+<text fill="#3a4a5a" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="310" y="400">Bubble size reflects relative cache feature depth. Axes are editorial assessments as of March 2026.</text>
+<text fill="#3a4a5a" font-family="IBM Plex Mono, monospace" font-size="8.5" text-anchor="middle" x="310" y="414">The sovereignty axis reflects how directly the public docs support customer control over cache-path deployment and data placement.</text>
+</svg>
+</div>
+<p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Operational complexity rises left to right. Documentation support for customer-controlled cache/data placement rises bottom to top. These are editorial assessments, not vendor guarantees.</p>
+<hr/>
+<!-- ══════ REFERENCES ══════ -->
+<h2>§9 — References</h2>
+<ol class="ref-list">
+<li><a href="https://docs.litellm.ai/docs/proxy/caching" target="_blank">LiteLLM — Caching (redis-semantic, qdrant-semantic, and all cache types)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture (Life of a Request)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Settings Reference (cache_params)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/deploy" target="_blank">LiteLLM — Deployment Guide (Redis at 1000+ RPS)</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-semantic-cache/" target="_blank">Kong — AI Semantic Cache Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-semantic-cache/examples/openai/" target="_blank">Kong — AI Semantic Cache: Set up with OpenAI and Redis</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/semantic-similarity/" target="_blank">Kong — Embedding-Based Semantic Similarity Reference</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM Metrics (ai_cache_fetch_latency)</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/" target="_blank">Kong — AI Gateway Landing Page</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway/cache-simple-and-semantic" target="_blank">Portkey — Cache (Simple &amp; Semantic)</a></li>
+<li><a href="https://portkey.ai/docs/guides/getting-started/return-repeat-requests-from-cache" target="_blank">Portkey — Return Repeat Requests from Cache</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Gateway Configs</a></li>
+<li><a href="https://portkey.ai/docs/product/observability/logs" target="_blank">Portkey — Logs (cache hit state visibility)</a></li>
+<li><a href="https://portkey.ai/docs/product/observability/analytics" target="_blank">Portkey — Analytics (cache hit rate, latency/cost saved)</a></li>
+<li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy in Your Infrastructure (Hybrid)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/intro-to-llm-gateway" target="_blank">TrueFoundry — AI Gateway Overview</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/caching" target="_blank">TrueFoundry — Caching (Exact and Semantic)</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">TrueFoundry — Deployment Overview</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview (four-hook model)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">TrueFoundry — Export OpenTelemetry Data</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">TrueFoundry — Request and Response Headers</a></li>
+</ol>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  AI Gateway Series · Blog 4 of 15  ·  March 25, 2026  ·  All vendor names are trademarks of their respective owners.<br/>
+  Feature claims cross-referenced against official public documentation reviewed on March 25, 2026. Embedding model dimensions verified against OpenAI API reference. Verify all claims against current vendor docs before production decisions.
+</p>
+<script>
+(function () {
+  function flashCopied(btn) {
+    btn.textContent = 'OK copied';
+    btn.classList.add('copied');
+    window.setTimeout(function() { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-9999px'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta); return ok;
+  }
+  async function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var wrap = pre.parentElement && pre.parentElement.classList.contains('code-wrap') ? pre.parentElement : null;
+    if (!wrap) { wrap = document.createElement('div'); wrap.className = 'code-wrap'; pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre); }
+    var btn = wrap.querySelector('.copy-btn');
+    if (!btn) { btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = 'copy'; wrap.appendChild(btn); }
+    if (btn.dataset.copyBound === '1') return;
+    btn.dataset.copyBound = '1'; btn.type = 'button';
+    btn.addEventListener('click', async function() {
+      var text = pre.innerText; var ok = await copyText(text);
+      if (ok) { flashCopied(btn); } else { btn.textContent = 'copy failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
+    });
+  });
+})();
+</script>
+</body></html>
