@@ -1,0 +1,1192 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="How LiteLLM, Kong, Portkey, and TrueFoundry implement zero-trust security for LLMs — comparing AuthN, AuthZ, PEP placement, and compliance controls." name="description"/>
+<!-- Canonical intentionally omitted until the final production URL is known. Add a real absolute URL before publishing. -->
+<title>LLM Security: LiteLLM vs Kong vs Portkey vs TrueFoundry</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+    :root {
+      --bg:#0b0e17;--surface:#121826;--surface2:#1a2233;--border:#1e2d45;
+      --litellm:#00C2CB;--kong:#00D27B;--portkey:#5A67FF;--tf:#FF5533;
+      --text:#e2e8f0;--muted:#7a8899;--danger:#ff4757;--warn:#ffa726;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    html{scroll-behavior:smooth;}
+    body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.75;max-width:900px;margin:0 auto;padding:2rem 1.5rem 6rem;}
+    code,pre,.mono{font-family:'IBM Plex Mono',monospace;}
+    h1{font-size:2.2rem;font-weight:700;line-height:1.2;margin-bottom:1rem;}
+    h2{font-size:1.5rem;font-weight:700;margin:3rem 0 1rem;padding-bottom:.4rem;border-bottom:1px solid var(--border);}
+    h3{font-size:1.15rem;font-weight:600;margin:1.8rem 0 .6rem;}
+    p{margin-bottom:1rem;}
+    a{color:#60a5fa;text-decoration:none;}
+    a:hover{text-decoration:underline;}
+    ul,ol{padding-left:1.5rem;margin-bottom:1rem;}
+    li{margin-bottom:.3rem;}
+
+    .series-bar{display:flex;align-items:center;gap:.6rem;margin-bottom:1.2rem;flex-wrap:wrap;}
+    .tag-pill{display:inline-block;background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:.72rem;font-family:'IBM Plex Mono',monospace;padding:.25rem .7rem;border-radius:999px;letter-spacing:.05em;text-transform:uppercase;}
+    .tag-pill.active{background:#0f1d2e;border-color:#60a5fa;color:#60a5fa;}
+    .series-dots{display:flex;gap:.3rem;align-items:center;}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--border);}
+    .dot.active{background:#60a5fa;}
+    .meta{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap;}
+    .meta-item{font-size:.82rem;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+
+    .methodology{background:#0a1220;border:1px solid #1e3a5f;color:#94b8d8;font-size:.8rem;padding:.8rem 1.2rem;border-radius:8px;font-family:'IBM Plex Mono',monospace;line-height:1.7;margin-bottom:1.45rem;}
+    .methodology strong{color:#60a5fa;}
+    .intro-lead{margin-top:1.15rem;}
+    .scenario p{max-width:100%;}
+
+    .code-wrap{position:relative;margin:1rem 0 .4rem;}
+    .code-wrap pre{background:#080c12;border:1px solid var(--border);border-radius:8px;padding:1.2rem 1.4rem;padding-right:3.2rem;overflow-x:auto;font-size:.83rem;line-height:1.6;margin:0;}
+    .copy-btn{position:absolute;top:.55rem;right:.55rem;background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:.68rem;padding:.22rem .55rem;border-radius:5px;cursor:pointer;transition:all .15s ease;user-select:none;letter-spacing:.03em;line-height:1.4;}
+    .copy-btn:hover{background:var(--border);color:var(--text);border-color:#2e4060;}
+    .copy-btn.copied{color:#50fa7b;border-color:#50fa7b44;background:#0a1a10;}
+    .kw{color:#ff79c6;}.str{color:#f1fa8c;}.cm{color:#6272a4;}.key{color:#50fa7b;}.num{color:#bd93f9;}
+    .source-note{font-size:.74rem;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-bottom:1.4rem;padding:.3rem .8rem;border-left:2px solid var(--border);}
+    .source-note a{color:#7a8899;}
+    .source-note a:hover{color:#60a5fa;}
+
+    .callout{border-left:3px solid var(--border);background:var(--surface);border-radius:0 8px 8px 0;padding:1rem 1.2rem;margin:1.2rem 0;}
+    .callout.danger{border-color:var(--danger);background:#1a0a0a;}
+    .callout.warn{border-color:var(--warn);background:#1a1200;}
+    .callout.info{border-color:#60a5fa;background:#0a1220;}
+    .callout.ok{border-color:#50fa7b;background:#091510;}
+    .callout-title{font-size:.75rem;font-weight:700;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.4rem;}
+    .callout.danger .callout-title{color:var(--danger);}
+    .callout.warn .callout-title{color:var(--warn);}
+    .callout.info .callout-title{color:#60a5fa;}
+    .callout.ok .callout-title{color:#50fa7b;}
+
+    .quickpick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0;}
+    .qp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.1rem;}
+    .qp-label{font-size:.7rem;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;}
+    .qp-name{font-size:1.05rem;font-weight:700;margin-bottom:.3rem;}
+    .qp-desc{font-size:.82rem;color:var(--muted);line-height:1.5;}
+    .c-litellm{color:var(--litellm);border-top:3px solid var(--litellm);}
+    .c-kong{color:var(--kong);border-top:3px solid var(--kong);}
+    .c-portkey{color:var(--portkey);border-top:3px solid var(--portkey);}
+    .c-tf{color:var(--tf);border-top:3px solid var(--tf);}
+
+    .vendor-header{display:flex;align-items:center;gap:.8rem;padding:1rem 1.4rem;border-radius:10px;margin:2.5rem 0 1.2rem;}
+    .vendor-header.litellm{background:#001d1e;border:1px solid var(--litellm);}
+    .vendor-header.kong{background:#001e13;border:1px solid var(--kong);}
+    .vendor-header.portkey{background:#0a0c24;border:1px solid var(--portkey);}
+    .vendor-header.tf{background:#1e0d08;border:1px solid var(--tf);}
+    .vendor-badge{font-family:'IBM Plex Mono',monospace;font-size:.7rem;font-weight:700;padding:.2rem .6rem;border-radius:4px;text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;}
+    .vendor-header.litellm .vendor-badge{background:var(--litellm);color:#000;}
+    .vendor-header.kong .vendor-badge{background:var(--kong);color:#000;}
+    .vendor-header.portkey .vendor-badge{background:var(--portkey);color:#fff;}
+    .vendor-header.tf .vendor-badge{background:var(--tf);color:#fff;}
+    .vendor-title{font-size:1.2rem;font-weight:700;}
+
+    .matrix-wrap{overflow-x:auto;margin:1.5rem 0;}
+    .matrix-wrap table{min-width:1120px;}
+    .matrix-feature-wrap{position:static;width:auto;max-width:none;left:auto;transform:none;overflow-x:auto;margin:1.5rem 0;}
+    .feature-matrix-table{width:100%;min-width:0;table-layout:fixed;font-size:.78rem;}
+    .feature-matrix-table th,.feature-matrix-table td{overflow-wrap:anywhere;word-break:normal;hyphens:auto;}
+    .feature-matrix-table th{padding:.68rem .72rem;font-size:.65rem;letter-spacing:.06em;}
+    .feature-matrix-table td{padding:.58rem .72rem;}
+    .feature-matrix-table code,.feature-matrix-table em{font-size:.96em;}
+    .feature-matrix-table th:nth-child(1),.feature-matrix-table td:nth-child(1){width:12%;}
+    .feature-matrix-table th:nth-child(2),.feature-matrix-table td:nth-child(2){width:21%;}
+    .feature-matrix-table th:nth-child(3),.feature-matrix-table td:nth-child(3){width:19%;}
+    .feature-matrix-table th:nth-child(4),.feature-matrix-table td:nth-child(4){width:21%;}
+    .feature-matrix-table th:nth-child(5),.feature-matrix-table td:nth-child(5){width:27%;}
+    table{width:100%;border-collapse:collapse;font-size:.83rem;}
+    thead tr{background:var(--surface2);}
+    th{padding:.7rem 1rem;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;border-bottom:2px solid var(--border);}
+    td{padding:.62rem 1rem;border-bottom:1px solid var(--border);vertical-align:top;}
+    tr:hover td{background:var(--surface);}
+    .check{color:#50fa7b;}.cross{color:var(--danger);}.partial{color:var(--warn);}
+
+    .verdict-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0;}
+    .verdict-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem;position:relative;}
+    .verdict-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:10px 10px 0 0;}
+    .verdict-card.litellm::before{background:var(--litellm);}
+    .verdict-card.kong::before{background:var(--kong);}
+    .verdict-card.portkey::before{background:var(--portkey);}
+    .verdict-card.tf::before{background:var(--tf);}
+    .verdict-label{font-size:.7rem;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;}
+    .verdict-card.litellm .verdict-label{color:var(--litellm);}
+    .verdict-card.kong .verdict-label{color:var(--kong);}
+    .verdict-card.portkey .verdict-label{color:var(--portkey);}
+    .verdict-card.tf .verdict-label{color:var(--tf);}
+    .verdict-name{font-weight:700;font-size:1.05rem;margin-bottom:.5rem;}
+    .verdict-text{font-size:.83rem;color:var(--muted);line-height:1.55;}
+    .verdict-use{font-size:.78rem;color:var(--text);margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--border);}
+    .verdict-use strong{color:#a5f3fc;}
+
+    .scenario{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin:1.5rem 0;}
+    .scenario-title{font-family:'IBM Plex Mono',monospace;font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--warn);margin-bottom:.7rem;}
+    .svg-wrap{overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem;margin:1.5rem 0;}
+    .svg-wrap svg{display:block;max-width:100%;margin:0 auto;}
+    .img-caption{font-size:.76rem;color:var(--muted);text-align:center;margin-top:.4rem;margin-bottom:1rem;font-family:'IBM Plex Mono',monospace;}
+    hr{border:none;border-top:1px solid var(--border);margin:2.5rem 0;}
+    .ref-list{font-size:.83rem;}
+    .ref-list li{margin-bottom:.4rem;color:var(--muted);}
+    .ref-list a{color:#60a5fa;}
+    .auth-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.7rem;margin:1rem 0 1.5rem;}
+    .auth-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.8rem 1rem;}
+    .auth-card .aname{font-family:'IBM Plex Mono',monospace;font-size:.8rem;font-weight:700;margin-bottom:.25rem;}
+    .auth-card .adesc{font-size:.78rem;color:var(--muted);line-height:1.45;}
+    .auth-card .atag{font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:#444e5e;margin-top:.25rem;}
+    .litellm-auth .aname{color:var(--litellm);}
+    .kong-auth .aname{color:var(--kong);}
+    .portkey-auth .aname{color:var(--portkey);}
+    .tf-auth .aname{color:var(--tf);}
+
+    .placement-table{width:100%;border-collapse:collapse;font-size:.82rem;margin:1.2rem 0;}
+    .placement-table th{padding:.6rem .9rem;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;border-bottom:2px solid var(--border);background:var(--surface2);}
+    .placement-table td{padding:.55rem .9rem;border-bottom:1px solid var(--border);vertical-align:top;}
+    .placement-table tr:hover td{background:var(--surface);}
+    .pep-saas{color:#5A67FF;}.pep-vpc{color:#00D27B;}.pep-k8s{color:#FF5533;}.pep-self{color:#00C2CB;}
+  </style>
+</head>
+<body>
+<!-- HEADER -->
+<div class="series-bar">
+<span class="tag-pill">AI Gateway Series</span>
+<div class="series-dots">
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+<div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div>
+</div>
+<span class="tag-pill active">Blog 15 of 15</span>
+</div>
+<h1>LLM Security &amp; Zero-Trust AuthZ: LiteLLM vs Kong vs Portkey vs TrueFoundry</h1>
+<div class="meta">
+<span class="meta-item">⏱ 22 min read</span>
+<span class="meta-item">🗓 March 2026</span>
+<span class="meta-item">👤 Platform Engineering · InfoSec</span>
+</div>
+<div class="methodology">
+<strong>Methodology &amp; scope:</strong> This comparison is derived from vendors' publicly documented features as of the publication date. <strong>"Native"</strong> means the capability is implemented in the gateway product itself. <strong>"Operator-dependent"</strong> means it is typically provided by the deployment environment (ingress controller, service mesh, SIEM pipeline, or Vault sidecar). Configuration snippets are <strong>illustrative</strong> — field names are sourced from published docs but should be validated against your deployed version. Where documentation is ambiguous, statements are labeled as <em>inference</em> or flagged for verification. Editorial verdicts ("well-suited for…") represent the authors' judgment and are not vendor claims.
+</div>
+<p class="intro-lead">This comparison is framed around <strong>LLM security</strong>: who can call which models, where authorization is enforced, how provider credentials are isolated, and which compliance controls are native versus operator-dependent. Zero-trust remains an architectural lens here, but the primary practical question is simpler: which gateway reduces real LLM security risks in production?</p>
+<br/>
+<!-- §0 TL;DR -->
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<div class="scenario">
+<div class="scenario-title">🔐 Real-World LLM Security Risk: A Stale Contractor Credential</div>
+<p>During a routine controls review, the platform team discovers that a contractor credential from a completed project is still active in the LLM gateway. The key was meant to be removed at offboarding, but it can still send traffic into the shared model estate. Over the next few hours, that credential starts hitting a higher-cost production model at meaningful volume, pushing unnecessary spend, increasing the risk of provider throttling, and creating an avoidable audit issue for the team that now owns the environment.</p>
+<p>The technical problem is bigger than one forgotten key. The gateway is treating that caller as too broadly trusted. There is no clean model-level boundary to keep lower-trust identities away from production endpoints, no strong workspace isolation to keep one team’s credential from reaching the wrong control surface, and no subject-aware policy that tightens logging, guardrails, or rate controls for higher-risk callers.</p>
+<p>That is the business question behind this comparison. LLM security is not only about prompt injection or PII redaction after the fact. It is about ensuring that the right caller can reach the right model, in the right workspace, under the right budget, audit, and policy controls—before a routine access mistake turns into a finance, compliance, or customer-data incident.</p>
+</div>
+<p>The simplified diagram below shows the three controls that would have stopped the incident earlier.</p>
+<div class="svg-wrap">
+<svg viewbox="0 0 820 180" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="s3simple" markerheight="6" markerwidth="8" orient="auto" refx="7" refy="3">
+<polygon fill="#60a5fa" points="0 0,8 3,0 6"></polygon>
+</marker>
+</defs>
+<rect fill="#121826" height="180" width="820"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="13" font-weight="700" text-anchor="middle" x="410" y="18">Three Missing Controls Behind One LLM Security Incident</text>
+<rect fill="#1a2233" height="56" rx="8" stroke="#1e2d45" stroke-width="1.5" width="180" x="34" y="60"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="12" font-weight="700" text-anchor="middle" x="124" y="83">Old contractor key</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="124" y="100">still valid after offboarding</text>
+<rect fill="#0a1620" height="80" rx="8" stroke="#60a5fa" stroke-width="1.5" width="180" x="320" y="48"></rect>
+<text fill="#60a5fa" font-family="IBM Plex Sans,sans-serif" font-size="12" font-weight="700" text-anchor="middle" x="410" y="73">AI gateway</text>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="9.5" text-anchor="middle" x="410" y="91">No model ACL</text>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="9.5" text-anchor="middle" x="410" y="105">No workspace isolation</text>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="9.5" text-anchor="middle" x="410" y="119">No subject-aware policy</text>
+<rect fill="#1a0a0a" height="56" rx="8" stroke="#ff4757" stroke-width="1.5" width="180" x="606" y="60"></rect>
+<text fill="#ff4757" font-family="IBM Plex Sans,sans-serif" font-size="12" font-weight="700" text-anchor="middle" x="696" y="82">Sensitive model path</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="696" y="100">cost spike + data exposure risk</text>
+<line marker-end="url(#s3simple)" stroke="#60a5fa" stroke-width="2.5" x1="214" x2="320" y1="88" y2="88"></line>
+<line marker-end="url(#s3simple)" stroke="#60a5fa" stroke-width="2.5" x1="500" x2="606" y1="88" y2="88"></line>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="410" y="152">Prevent it with: model allowlists + workspace boundaries + subject-aware rules</text>
+</svg>
+</div>
+<div class="img-caption">A simpler view of the same failure chain: stale credential in, overly broad gateway policy in the middle, sensitive model path on the other side.</div>
+<div class="quickpick-grid">
+<div class="qp-card c-tf">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">TrueFoundry</div>
+<div class="qp-desc">K8s-native split-plane with an in-cluster PEP, local policy evaluation, workspace RBAC, subject-aware guardrails, and the clearest documented request-path boundary of the four.</div>
+</div>
+<div class="qp-card c-litellm">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">LiteLLM</div>
+<div class="qp-desc">Virtual key model with OIDC/JWT (incl. K8s ServiceAccount) and custom Python auth hook. mTLS is operator-dependent (external LB). Well-suited for teams needing fast multi-identity wiring with budget enforcement.</div>
+</div>
+<div class="qp-card c-kong">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Kong AI Gateway</div>
+<div class="qp-desc">Widest documented auth plugin surface: Key Auth (OSS), JWT (OSS), OIDC (Enterprise), mTLS (Enterprise), native Vault secret references. Consumer Groups anchor all AI policy attribution.</div>
+</div>
+<div class="qp-card c-portkey">
+<div class="qp-label">Quick-Pick</div>
+<div class="qp-name">Portkey</div>
+<div class="qp-desc">SaaS-managed PEP with API-key auth, native JWT gateway authentication (JWKS-validated, Enterprise/add-on), OIDC/SAML SSO for control-plane access, workspace isolation, and hybrid VPC data plane option. Native mTLS remains operator-dependent. Well-suited for teams prioritizing turnkey workspace compliance.</div>
+</div>
+</div>
+<!-- §1 WHY IT MATTERS -->
+<h2>§1 — Why LLM Security Is Specifically Hard for AI Gateways</h2>
+<p>Before comparing vendors, it helps to establish a common vocabulary for <em>where</em> LLM security decisions are enforced. This blog uses three terms consistently:</p>
+<ul>
+<li><strong>PEP (Policy Enforcement Point):</strong> the component that intercepts traffic and enforces an allow/reject decision — e.g., the gateway data plane. Its location (SaaS edge vs. customer VPC vs. in-cluster pod) determines data residency and network perimeter boundaries.</li>
+<li><strong>PDP (Policy Decision Point):</strong> where the authorization logic is evaluated. If the PDP makes a remote call (to a SaaS control plane or external IdP) on every request, that call is on the hot path and introduces a latency and availability dependency.</li>
+<li><strong>Content firewall:</strong> deterministic or ML-based checks on prompt/response payloads — PII masking, injection detection, secrets scanning. This is distinct from AuthN/AuthZ: it fires after identity is established, not instead of it.</li>
+</ul>
+<p>Standard API security assumes authentication, authorization, and content filtering are separable. AI gateways make all three harder:</p>
+<ul>
+<li><strong>The model endpoint is not a static resource.</strong> A request to <code>/v1/chat/completions</code> can route to different models depending on runtime policy. URL-level ACLs are insufficient as a standalone control — identity-aware routing policy must be enforced inside the PEP.</li>
+<li><strong>Provider credentials are high-value lateral movement targets.</strong> The gateway holds API keys for every LLM provider. A compromised gateway process or config store grants access to billing-enabled upstream endpoints. Vault integration and secret group isolation are not optional hardening.</li>
+<li><strong>Prompt payloads are data exfiltration vectors.</strong> Callers can craft prompts to extract training data, reveal system prompts, or probe internal tool schemas. The content firewall must compose with identity controls — not replace them.</li>
+<li><strong>Agent and MCP traffic introduces non-human identity surfaces.</strong> Autonomous agents calling tools on behalf of users require per-tool authorization checks at the PEP, not just per-request authentication.</li>
+<li><strong>PEP location determines the shared responsibility line.</strong> A SaaS-edge PEP means the vendor operates the enforcement boundary. A self-hosted K8s PEP transfers that operational responsibility — and all associated hardening — to your platform team.</li>
+</ul>
+<p>This compares <strong>documented guardrail surfaces</strong>, not identical internal implementations. Each vendor's content firewall architecture reflects what is described in their public docs.</p>
+<div class="svg-wrap">
+<svg font-family="IBM Plex Sans,system-ui,sans-serif" viewbox="0 0 820 290" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="290" width="820"></rect>
+<text fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle" x="410" y="22">LLM Security Enforcement Layers in an AI Gateway</text>
+<rect fill="#0f1c2e" height="36" rx="5" stroke="#1e2d45" stroke-width="1" width="764" x="28" y="36"></rect>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="700" x="46" y="50">LAYER 1 · NETWORK  [PEP location: edge SaaS | customer VPC | in-cluster pod]</text>
+<text fill="#e2e8f0" font-size="11" x="46" y="65">TLS termination · mTLS mutual auth · VPC / private endpoint egress · IP allowlisting</text>
+<rect fill="#0a1620" height="36" rx="5" stroke="#1e2d45" stroke-width="1" width="764" x="28" y="79"></rect>
+<text fill="#60a5fa" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="700" x="46" y="93">LAYER 2 · AUTHENTICATION (AuthN)  [PDP: local in-memory | remote IdP lookup]</text>
+<text fill="#e2e8f0" font-size="11" x="46" y="108">API key / virtual key · JWT / OIDC / SSO · OAuth2 token introspection · K8s ServiceAccount · mTLS client cert</text>
+<rect fill="#0f1a10" height="36" rx="5" stroke="#1e2d45" stroke-width="1" width="764" x="28" y="122"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="700" x="46" y="136">LAYER 3 · AUTHORIZATION (AuthZ)  [PDP: local config | remote policy engine]</text>
+<text fill="#e2e8f0" font-size="11" x="46" y="151">RBAC · workspace scoping · model endpoint ACL · consumer group policy · per-team budget ceiling</text>
+<rect fill="#1a0f00" height="36" rx="5" stroke="#1e2d45" stroke-width="1" width="764" x="28" y="165"></rect>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="700" x="46" y="179">LAYER 4 · CONTENT FIREWALL  [fires after identity is established, not instead of it]</text>
+<text fill="#e2e8f0" font-size="11" x="46" y="194">PII masking · prompt injection detection · secrets scanning · MCP pre/post-tool hooks · output moderation</text>
+<rect fill="#0a0a1a" height="36" rx="5" stroke="#1e2d45" stroke-width="1" width="764" x="28" y="208"></rect>
+<text fill="#bd93f9" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="700" x="46" y="222">LAYER 5 · AUDIT &amp; OBSERVABILITY</text>
+<text fill="#e2e8f0" font-size="11" x="46" y="237">Structured audit logs · OTel traces · per-request identity attribution · anomaly alerting</text>
+<text fill="#1e2d45" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="410" y="272">PEP/PDP placement and native vs. operator-dependent responsibility differs across all four vendors reviewed below.</text>
+</svg>
+</div>
+<div class="img-caption">Five-layer LLM security model annotated with PEP/PDP placement concepts. Original diagram.</div>
+<p>The diagram below shows where enforcement physically occurs for each deployment model — the central question for any compliance or data residency review.</p>
+<div class="svg-wrap">
+<svg viewbox="0 0 820 234" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="s5a" markerheight="7" markerwidth="7" orient="auto" refx="6" refy="3.5"><polygon fill="#e2e8f0" points="0 0,7 3.5,0 7"></polygon></marker>
+<marker id="s5b" markerheight="7" markerwidth="7" orient="auto" refx="6" refy="3.5"><polygon fill="#FF5533" points="0 0,7 3.5,0 7"></polygon></marker>
+</defs>
+<rect fill="#121826" height="234" width="820"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="12.5" font-weight="700" text-anchor="middle" x="410" y="16">Locating the Shared Responsibility Line</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="410" y="30">If the PDP requires a remote call to a SaaS control plane or external IdP on every request, it sits on the hot path —</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="410" y="41">introducing immediate latency and availability dependencies.</text>
+<rect fill="#091510" height="168" rx="7" stroke="#00D27B" stroke-width="1.5" width="290" x="22" y="54"></rect>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" x="167" y="75">PEP: Policy Enforcement Point</text>
+<line marker-end="url(#s5a)" stroke="#e2e8f0" stroke-width="1.5" x1="44" x2="122" y1="107" y2="107"></line>
+<line marker-end="url(#s5a)" stroke="#e2e8f0" stroke-width="1.5" x1="44" x2="212" y1="127" y2="127"></line>
+<line stroke="#e2e8f0" stroke-width="1.5" x1="44" x2="88" y1="147" y2="147"></line>
+<line stroke="#ff4757" stroke-width="2" x1="93" x2="105" y1="142" y2="155"></line>
+<line stroke="#ff4757" stroke-width="2" x1="105" x2="93" y1="142" y2="155"></line>
+<rect fill="#0d1f0d" height="55" rx="3" stroke="#00D27B" stroke-width="1.2" width="66" x="124" y="93"></rect>
+<rect fill="#00D27B" fill-opacity="0.25" height="30" rx="2" width="18" x="132" y="99"></rect>
+<rect fill="#00D27B" fill-opacity="0.25" height="30" rx="2" width="18" x="154" y="99"></rect>
+<circle cx="155" cy="119" fill="none" r="6" stroke="#00D27B" stroke-width="1.5"></circle>
+<line stroke="#00D27B" stroke-width="1.5" x1="155" x2="155" y1="125" y2="132"></line>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="167" y="167">Where traffic is physically</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="167" y="178">intercepted and blocked/allowed.</text>
+<text fill="#60a5fa" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="167" y="192">Determines Data Residency</text>
+<text fill="#60a5fa" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="167" y="203">(Edge SaaS / VPC / In-Cluster Pod)</text>
+<line marker-end="url(#s5b)" stroke="#FF5533" stroke-width="2.5" x1="316" x2="504" y1="137" y2="137"></line>
+<text fill="#FF5533" font-family="IBM Plex Sans,sans-serif" font-size="11" font-weight="700" text-anchor="middle" x="410" y="116">The Hot Path</text>
+<polygon fill="#1a0800" points="410,122 398,140 422,140" stroke="#FF5533" stroke-width="1.5"></polygon>
+<text fill="#FF5533" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="700" text-anchor="middle" x="410" y="137">!</text>
+<rect fill="#130d00" height="168" rx="7" stroke="#ffa726" stroke-width="1.5" width="290" x="508" y="54"></rect>
+<text fill="#ffa726" font-family="IBM Plex Sans,sans-serif" font-size="11.5" font-weight="700" text-anchor="middle" x="653" y="75">PDP: Policy Decision Point</text>
+<rect fill="#100c00" height="86" rx="4" stroke="#ffa726" stroke-opacity="0.5" stroke-width="1" width="142" x="582" y="89"></rect>
+<rect fill="#ffa726" fill-opacity="0.2" height="13" rx="2" width="126" x="590" y="97"></rect>
+<rect fill="#ffa726" fill-opacity="0.15" height="13" rx="2" width="126" x="590" y="114"></rect>
+<rect fill="#ffa726" fill-opacity="0.1" height="13" rx="2" width="126" x="590" y="131"></rect>
+<text fill="#ffa726" font-size="13" text-anchor="middle" x="653" y="159">✓</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="653" y="176">Business logic and</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="653" y="187">identity rules evaluated.</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="653" y="201">Local = no hot-path latency.</text>
+<text fill="#ff4757" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="653" y="212">Remote = availability dependency.</text>
+</svg>
+</div>
+<div class="img-caption">The shared responsibility line in AI gateway security. Where the PDP lives determines whether identity enforcement is a runtime dependency or a local in-process decision. Original diagram.</div>
+<p>We use this lens — hot-path vs. remote dependency — to evaluate each gateway in the sections below.</p>
+<hr/>
+<!-- §2 LITELLM -->
+<div class="vendor-header litellm">
+<span class="vendor-badge">LiteLLM</span>
+<span class="vendor-title">§2 — Python-Native Identity Stack: Virtual Keys to K8s Workload Auth</span>
+</div>
+<h3>Authentication Architecture</h3>
+<p>LiteLLM's PEP is the self-hosted Python proxy container. The PDP for authentication is local: bearer token validation checks Redis or in-memory cache before falling back to the database, as documented in the "Life of a Request" page at <a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">proxy/architecture</a>. No external identity service call is on the routing hot path for pre-issued virtual keys. Authorization context (team, budget, model allowlist) is resolved before routing — not as a post-routing check.</p>
+<div class="auth-grid">
+<div class="auth-card litellm-auth">
+<div class="aname">OIDC / JWT Auth</div>
+<div class="adesc">Validates tokens against one or more OIDC providers via <code>JWT_PUBLIC_KEY_URL</code> (comma-separated JWKs URIs for multiple providers). K8s ServiceAccount tokens authenticate workloads via namespace-to-team-alias mapping using <code>team_alias_jwt_field</code>. <em>Tier: verify against your deployed version — documentation tier may vary.</em></div>
+<div class="atag">proxy/token_auth</div>
+</div>
+<div class="auth-card litellm-auth">
+<div class="aname">OAuth 2.0</div>
+<div class="adesc">Token introspection-style auth configured via environment variables. Returns user ID, role, and team fields from the token info endpoint, populating the full gateway identity context including budget and route access.</div>
+<div class="atag">proxy/oauth2 — Enterprise only</div>
+</div>
+<div class="auth-card litellm-auth">
+<div class="aname">Custom Auth Hook</div>
+<div class="adesc">Python async function returning a <code>UserAPIKeyAuth</code> object. Documented fields: user, team, org, budget. Supports "auto" mode: custom auth fires first, falls back to built-in key validation. Correct integration point for LDAP or proprietary identity stores.</div>
+<div class="atag">proxy/custom_auth — Free tier</div>
+</div>
+<div class="auth-card litellm-auth">
+<div class="aname">Master Key</div>
+<div class="adesc">A <code>master_key</code> in <code>general_settings</code> gates the Admin UI and management CLI. Sub-keys cannot exceed master key permissions. Database-backed deployment required for key persistence and spend state.</div>
+<div class="atag">proxy/virtual_keys — Free tier</div>
+</div>
+</div>
+<div class="callout warn">
+<div class="callout-title">⚠ mTLS — Operator-Dependent (not native to LiteLLM proxy)</div>
+<p>The LiteLLM proxy public documentation contains no mTLS configuration. Mutual TLS is operator-dependent: it must be configured at the ingress controller, external load balancer (NGINX, AWS ALB), or service mesh (<code>PeerAuthentication</code> in Istio) in front of the Python container. This is a standard pattern but places mTLS ownership entirely outside LiteLLM's own configuration surface.</p>
+</div>
+<h3>Authorization &amp; RBAC</h3>
+<p>The <code>UserAPIKeyAuth</code> object carries a <code>team_id</code>, and keys with a team assignment consume from the team budget rather than the personal budget (<a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">proxy/users</a>). Model access scope is attached via a <code>models</code> allowlist per key. Router behavior is configurable per key or team at <a href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings" target="_blank">keys_teams_router_settings</a>. Applied to the opening scenario: issuing a contractor key with an explicit <code>models</code> allowlist, a <code>team_id</code> with a daily budget ceiling, and no access to production model group names closes the access gap at the PEP without additional infrastructure.</p>
+<div class="code-wrap"><pre><span class="cm"># LiteLLM — OIDC JWT auth with K8s ServiceAccount namespace→team mapping</span>
+<span class="cm"># Source: docs.litellm.ai/docs/proxy/token_auth</span>
+<span class="cm"># Verified fields: general_settings.master_key, general_settings.enable_jwt_auth</span>
+<span class="cm"># Verified: litellm_jwtauth.team_alias_jwt_field</span>
+<span class="cm"># Exact string "kubernetes\.io.namespace" from handbook code excerpt</span>
+<span class="key">general_settings</span>:
+  <span class="key">master_key</span>: <span class="str">sk-your-master-key</span>
+  <span class="key">enable_jwt_auth</span>: <span class="kw">true</span>
+
+<span class="key">litellm_jwtauth</span>:
+  <span class="key">team_alias_jwt_field</span>: <span class="str">"kubernetes\.io.namespace"</span>
+
+<span class="cm"># Multiple OIDC providers: JWT_PUBLIC_KEY_URL expects JWKS URIs (not OIDC discovery URLs)</span>
+<span class="cm"># Use the JWKS endpoint directly, e.g. /.well-known/jwks.json or provider-specific URI</span>
+<span class="cm"># export JWT_PUBLIC_KEY_URL="https://corp-idp.example.com/.well-known/jwks.json,https://www.googleapis.com/oauth2/v3/certs"</span>
+<span class="cm"># Source: proxy/token_auth — "Multiple OIDC providers" section</span>
+
+<span class="cm"># Virtual key with model allowlist + team budget</span>
+<span class="cm"># POST /key/generate — Source: docs.litellm.ai/docs/proxy/users</span>
+<span class="cm"># Verified fields: team_id, max_budget</span>
+<span class="cm"># {</span>
+<span class="cm">#   "team_id": "contractors-q1-2026",</span>
+<span class="cm">#   "models": ["sandbox-gpt5mini"],</span>
+<span class="cm">#   "max_budget": 5.0</span>
+<span class="cm"># }</span></pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://docs.litellm.ai/docs/proxy/token_auth" target="_blank">proxy/token_auth</a> · <a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">proxy/virtual_keys</a> · <a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">proxy/users</a></div>
+<h3>Secrets &amp; Provider Credential Isolation</h3>
+<p>Provider API keys use the <code>os.environ/VARIABLE_NAME</code> pattern in <code>config.yaml</code> (<a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">proxy/config_settings</a>). There is no native Vault integration documented in the public LiteLLM proxy docs — credential injection is operator-dependent (K8s secret manager, Vault Agent sidecar, or CI-injected environment variables). Credential rotation requires a pod restart under this model.</p>
+<div class="callout info">
+<div class="callout-title">📌 Shared Responsibility — LiteLLM</div>
+<p><strong>PEP location:</strong> self-hosted container (your infrastructure). <strong>PDP:</strong> local Redis/memory + DB for key resolution; no remote call on hot path for pre-issued keys. You own TLS termination, network isolation, secret rotation, database hardening, and Redis ACLs in their entirety. (Full placement breakdown: see Control Placement table, §6.5.)</p>
+</div>
+<hr/>
+<!-- §3 KONG -->
+<div class="vendor-header kong">
+<span class="vendor-badge">Kong</span>
+<span class="vendor-title">§3 — Plugin-First Auth Stack: mTLS, OIDC, and Consumer-Anchored Policy</span>
+</div>
+<h3>Authentication Architecture</h3>
+<p>Kong's PEP is the data plane proxy (always customer-operated regardless of whether the Konnect control plane is SaaS-managed). Security behaviors are Gateway plugins attached to Services, Routes, Consumers, or Consumer Groups — every authentication method Kong supports for non-AI traffic is immediately available to AI traffic. The PDP for each plugin runs inside the Lua/C data plane process; no external identity call is on the hot path for key-auth or mTLS validation. The AI audit log reference confirms Consumer identity as the anchor for all AI usage attribution, with a <code>consumer</code> label on AI metrics from Kong 3.11 onward.</p>
+<div class="auth-grid">
+<div class="auth-card kong-auth">
+<div class="aname">Key Authentication</div>
+<div class="adesc">The <code>key-auth</code> plugin validates API keys mapped to Kong Consumers. The <code>ai-rate-limiting-advanced</code> plugin uses Consumer identity as the primary attribution unit for token and request quotas across LLM providers.</div>
+<div class="atag">key-auth — OSS + Enterprise</div>
+</div>
+<div class="auth-card kong-auth">
+<div class="aname">JWT / OIDC</div>
+<div class="adesc">The <code>jwt</code> plugin (OSS) validates JWT signatures against configured secrets — PDP is local. The <code>openid-connect</code> plugin (Enterprise) supports full OIDC flows including token introspection (PDP involves remote IdP call) and automatic Consumer mapping from JWT claims.</div>
+<div class="atag">jwt: OSS · openid-connect: Enterprise</div>
+</div>
+<div class="auth-card kong-auth">
+<div class="aname">mTLS (Mutual TLS)</div>
+<div class="adesc">The <code>mtls-auth</code> plugin (Enterprise) validates client certificates against a CA store and maps certificate subjects to Kong Consumers. PDP is local — certificate validation happens inside the data plane process. Strongest zero-trust option for service-to-service AI traffic where PKI is already operational.</div>
+<div class="atag">mtls-auth — Enterprise · PDP local</div>
+</div>
+<div class="auth-card kong-auth">
+<div class="aname">Vault Secret References</div>
+<div class="adesc">Kong’s Vault entity docs explicitly list AI Proxy and AI Proxy Advanced auth fields as referenceable secret fields. A value such as <code>{vault://aws/openai-key}</code> is resolved through Kong Vaults, so the raw provider key does not need to live in declarative config, logs, or the UI.</div>
+<div class="atag">Vaults entity + referenceable AI Proxy / AI Proxy Advanced fields · Enterprise-capable secret backends</div>
+</div>
+</div>
+<h3>Consumer Groups &amp; RBAC at the AI Layer</h3>
+<p>Consumer Groups allow the same Route to serve multiple groups with different token quotas and content firewall policies simultaneously. The <code>ai-rate-limiting-advanced</code> plugin's config shape — <code>llm_providers[].name</code>, <code>limit</code> (array), <code>window_size</code> (array) — is documented in the handbook example. The <code>ai-prompt-guard</code> plugin's <code>deny_patterns</code> field includes best-practice regex patterns for Unicode bidirectional injection, documented in the plugin's best-practices section.</p>
+<div class="code-wrap"><pre><span class="cm"># Kong decK — Consumer Groups with AI rate limiting and prompt guard</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-prompt-guard (best-practices section)</span>
+<span class="cm"># Verified: _format_version, consumers, consumer_groups, plugins blocks</span>
+<span class="cm"># Verified: llm_providers.name, limit[], window_size[] (from handbook example)</span>
+<span class="cm"># Verified: deny_patterns Unicode patterns (from ai-prompt-guard best-practices)</span>
+<span class="key">_format_version</span>: <span class="str">"3.0"</span>
+
+<span class="key">consumers</span>:
+  - <span class="key">username</span>: <span class="str">contractor-alice</span>
+  - <span class="key">username</span>: <span class="str">svc-risk-engine</span>
+
+<span class="key">consumer_groups</span>:
+  - <span class="key">name</span>: <span class="str">external-contractors</span>
+    <span class="key">plugins</span>:
+      - <span class="key">name</span>: <span class="str">ai-rate-limiting-advanced</span>
+        <span class="key">config</span>:
+          <span class="key">llm_providers</span>:
+            - <span class="key">name</span>: <span class="str">openai</span>
+              <span class="key">limit</span>: [<span class="num">5000</span>]
+              <span class="key">window_size</span>: [<span class="num">86400</span>]
+      - <span class="key">name</span>: <span class="str">ai-prompt-guard</span>
+        <span class="key">config</span>:
+          <span class="key">deny_patterns</span>:
+            - <span class="str">"(\xE2\x80[\x8B-\x8D]|\xEF\xBB\xBF)"</span>  <span class="cm"># Unicode injection — from handbook</span>
+            - <span class="str">"\xE2\x80[\xAA-\xAE]"</span>
+            - <span class="str">"(?i)credit.scor"</span>
+            - <span class="str">"(?i)customer.pii"</span>
+
+  - <span class="key">name</span>: <span class="str">internal-production</span>
+    <span class="key">plugins</span>:
+      - <span class="key">name</span>: <span class="str">ai-rate-limiting-advanced</span>
+        <span class="key">config</span>:
+          <span class="key">llm_providers</span>:
+            - <span class="key">name</span>: <span class="str">openai</span>
+              <span class="key">limit</span>: [<span class="num">100</span>, <span class="num">1000</span>]      <span class="cm"># per-minute + per-hour windows</span>
+              <span class="key">window_size</span>: [<span class="num">60</span>, <span class="num">3600</span>]
+
+<span class="cm"># Vault-backed credentials — service or route plugin fragment; raw key never in config</span>
+<span class="cm"># Source: developer.konghq.com/plugins/ai-proxy-advanced</span>
+<span class="key">plugins</span>:
+  - <span class="key">name</span>: <span class="str">ai-proxy-advanced</span>
+    <span class="key">config</span>:
+      <span class="key">targets</span>:
+        - <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">Authorization</span>
+            <span class="key">header_value</span>: <span class="str">{vault://aws/openai-key}</span>
+          <span class="key">model</span>: { <span class="key">provider</span>: <span class="str">openai</span>, <span class="key">name</span>: <span class="str">gpt-4o</span> }
+        - <span class="key">route_type</span>: <span class="str">llm/v1/chat</span>
+          <span class="key">auth</span>:
+            <span class="key">header_name</span>: <span class="str">x-api-key</span>
+            <span class="key">header_value</span>: <span class="str">{vault://aws/anthropic-key}</span>
+          <span class="key">model</span>: { <span class="key">provider</span>: <span class="str">anthropic</span>, <span class="key">name</span>: <span class="str">claude-3-5-sonnet-20241022</span> }</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://developer.konghq.com/gateway/entities/vault/" target="_blank">vaults entity</a> · <a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">ai-proxy-advanced</a> · <a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">ai-rate-limiting-advanced example</a> · <a href="https://developer.konghq.com/plugins/ai-prompt-guard/" target="_blank">ai-prompt-guard best-practices</a></div>
+<p>The diagram below shows how Kong's Consumer Group anchors all AI policy attribution inside the customer-operated data plane, with Vault references keeping raw credentials out of declarative config.</p>
+<div class="svg-wrap">
+<svg viewbox="0 0 820 215" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="k7a" markerheight="7" markerwidth="7" orient="auto" refx="6" refy="3.5"><polygon fill="#00D27B" points="0 0,7 3.5,0 7"></polygon></marker></defs>
+<rect fill="#121826" height="215" width="820"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="12.5" font-weight="700" text-anchor="middle" x="410" y="15">Kong AI Gateway: The Enterprise Security Workhorse</text>
+<rect fill="#001e13" height="182" rx="6" stroke="#00D27B" stroke-width="1.5" width="290" x="18" y="24"></rect>
+<polygon fill="#00D27B" fill-opacity=".16" points="163,36 218,53 218,79 163,96 108,79 108,53" stroke="#00D27B" stroke-width="1"></polygon>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="9.5" font-weight="700" text-anchor="middle" x="163" y="58">Architecture:</text>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="8.5" text-anchor="middle" x="163" y="73">Customer-Operated Data Plane / Lua</text>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="9" font-weight="700" x="30" y="112">Core Strength:</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="8.5" x="30" y="124">Widest documented native auth surface</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="8.5" x="30" y="136">and deep PKI integration.</text>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="9" font-weight="700" x="30" y="152">Architectural Verdict:</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="8" x="30" y="164">PDP is local inside the data plane —</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="8" x="30" y="176">no hot-path latency for key-auth or</text>
+<text fill="#50fa7b" font-family="IBM Plex Sans,sans-serif" font-size="8" x="30" y="188">mTLS. Only vendor with native mTLS.</text>
+<rect fill="#001e13" height="182" rx="6" stroke="#1e2d45" stroke-width="1.5" width="476" x="326" y="24"></rect>
+<rect fill="#0a1a0a" height="20" rx="3" stroke="#ffa726" stroke-width="1" width="228" x="474" y="32"></rect>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="588" y="46">header_value: {vault://aws/openai-key}</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="588" y="29">Raw keys never appear in declarative config.</text>
+<line stroke="#ffa726" stroke-dasharray="3,2" stroke-width="1" x1="650" x2="726" y1="52" y2="68"></line>
+<rect fill="#002210" height="78" rx="6" stroke="#00D27B" stroke-width="1.5" width="118" x="340" y="74"></rect>
+<circle cx="374" cy="96" fill="none" r="10" stroke="#00D27B" stroke-width="1.5"></circle>
+<circle cx="396" cy="96" fill="none" r="10" stroke="#00D27B" stroke-width="1.5"></circle>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle" x="399" y="125">Kong Consumer</text>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="8.5" text-anchor="middle" x="399" y="137">Group</text>
+<line marker-end="url(#k7a)" stroke="#00D27B" stroke-width="1.5" x1="458" x2="498" y1="113" y2="113"></line>
+<rect fill="#002210" height="82" rx="6" stroke="#00D27B" stroke-width="1.5" width="112" x="500" y="72"></rect>
+<rect fill="#00D27B" fill-opacity=".35" height="22" rx="3" width="60" x="526" y="85"></rect>
+<rect fill="#00D27B" fill-opacity=".5" height="14" rx="2" width="36" x="538" y="107"></rect>
+<text fill="#00D27B" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="556" y="134">ai-rate-limiting-</text>
+<text fill="#00D27B" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="556" y="145">advanced</text>
+<line marker-end="url(#k7a)" stroke="#00D27B" stroke-width="1.5" x1="612" x2="650" y1="113" y2="113"></line>
+<rect fill="#001e13" height="90" rx="6" stroke="#00D27B" stroke-width="1.5" width="136" x="652" y="66"></rect>
+<rect fill="none" height="52" rx="3" stroke="#00D27B" stroke-width="1.2" width="40" x="668" y="78"></rect>
+<line stroke="#00D27B" stroke-width="1" x1="673" x2="702" y1="88" y2="88"></line>
+<line stroke="#00D27B" stroke-width="1" x1="673" x2="702" y1="97" y2="97"></line>
+<line stroke="#00D27B" stroke-width="1" x1="673" x2="702" y1="106" y2="106"></line>
+<line stroke="#00D27B" stroke-width="1" x1="673" x2="702" y1="115" y2="115"></line>
+<text fill="#00D27B" font-size="12" x="712" y="96">✓</text>
+<text fill="#00D27B" font-size="12" x="712" y="111">✓</text>
+<text fill="#00D27B" font-size="12" x="712" y="126">✓</text>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle" x="720" y="146">data plane</text>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="8.5" text-anchor="middle" x="720" y="158">gateway</text>
+</svg>
+</div>
+<div class="img-caption">Kong architectural anatomy: customer-operated data plane with Lua plugin evaluation. The Consumer Group anchors all AI policy attribution. Vault references keep raw credentials out of declarative config. Config values match documented <code>ai-proxy-advanced</code> and <code>ai-rate-limiting-advanced</code> handbook examples. Original diagram.</div>
+<div class="callout info">
+<div class="callout-title">📌 Shared Responsibility — Kong</div>
+<p><strong>PEP location:</strong> customer-operated data plane (always). <strong>PDP:</strong> local Lua/C plugin evaluation — no external identity call on hot path for key-auth or mTLS. Optional Konnect control plane (SaaS-managed) distributes configuration but is not in the request path. Kong's split model: you own the PEP; you can optionally outsource control-plane operations to Konnect.</p>
+</div>
+<hr/>
+<!-- §4 PORTKEY -->
+<div class="vendor-header portkey">
+<span class="vendor-badge">Portkey</span>
+<span class="vendor-title">§4 — SaaS-Managed PEP with Hybrid VPC Data Plane Option</span>
+</div>
+<h3>Authentication Architecture</h3>
+<p>In Portkey's default (hosted edge) deployment, both the PEP and PDP are vendor-operated — Portkey's SaaS infrastructure intercepts and enforces policy on every request. Authentication is API-key based: callers pass a Portkey API key via <code>x-portkey-api-key</code> or the SDK <code>apiKey</code> constructor. A default config can be attached at key issuance so authorization policy (routing, guardrails, rate limits) is encoded in the key's associated config object, documented at <a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">ai-gateway/configs</a>.</p>
+<p>The hybrid deployment (<a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">enterprise/hybrid2</a>) moves the <strong>data plane PEP into your VPC</strong> via Helm, so prompt and response payloads do not transit Portkey's infrastructure. However, per the public deployment guide, management and configuration interfaces remain in Portkey's cloud — the PDP for policy updates is vendor-operated. This is a customer-operated PEP with vendor-operated management plane, not a fully offline control plane. Teams with strict data sovereignty requirements should confirm the exact architecture boundaries with Portkey for their plan tier.</p>
+<div class="auth-grid">
+<div class="auth-card portkey-auth">
+<div class="aname">API Key Auth + Default Config</div>
+<div class="adesc">The validated Portkey handbook documents API-key authentication at the gateway and the ability to attach a default config to a key. That makes routing, retries, guardrails, and other policy surfaces key-bound by default rather than re-specified on every request.</div>
+</div>
+<div class="auth-card portkey-auth">
+<div class="aname">JWT Gateway Authentication</div>
+<div class="adesc">Clients can authenticate API requests using a JWT token validated against a configured JWKS (JSON Web Key Set). JWT authentication is documented as an enterprise add-on and provides temporary, expiring tokens, fine-grained permission scopes, user identity tracking, and centralized authentication management.</div>
+</div>
+<div class="auth-card portkey-auth">
+<div class="aname">SSO (OIDC &amp; SAML 2.0) — Control Plane</div>
+<div class="adesc">Portkey Control Plane supports OIDC and SAML 2.0 for enterprise SSO. This governs who can access the Portkey management interface, not how gateway requests are authenticated. The docs also state that first-time SSO users are auto-provisioned into the organization.</div>
+</div>
+<div class="auth-card portkey-auth">
+<div class="aname">Provider Credential Vaulting &amp; Secret References</div>
+<div class="adesc">Enterprise deployments can use <strong>Secret References</strong>: the control plane stores only the reference configuration, while the data plane fetches the actual secret at runtime from AWS Secrets Manager, Azure Key Vault, or HashiCorp Vault. The docs state that the data plane caches the fetched secret value for 5 minutes.</div>
+</div>
+<div class="auth-card portkey-auth">
+<div class="aname">Workspace Isolation</div>
+<div class="adesc">Workspaces are a primary policy boundary in the validated docs pack. The public admin SDK examples show workspace-level usage limits and request-per-minute ceilings, which is the most concrete isolation surface the supplied source pack validates.</div>
+</div>
+<div class="auth-card portkey-auth">
+<div class="aname">Usage &amp; Rate Policies</div>
+<div class="adesc">Enterprise policy docs add group-by dimensions and workspace-oriented governance. In practice, that gives Portkey a centralized policy plane even when the request path remains vendor-operated in the default hosted model.</div>
+</div>
+
+<div class="auth-card portkey-auth">
+<div class="aname">Guardrail Hooks + BYO Webhooks</div>
+<div class="adesc">Security controls can be attached through raw guardrail JSON or an external webhook contract. That makes Portkey's security story less about identity federation in the validated pack and more about config-bound request enforcement.</div>
+</div>
+<div class="auth-card portkey-auth">
+<div class="aname">Hybrid VPC Data Plane</div>
+<div class="adesc">Enterprise hybrid deployment moves the data-plane PEP into your VPC via Helm. The validated handbook says prompts and responses stay in your network in this mode while metrics and management continue to connect to Portkey's cloud.</div>
+</div>
+</div>
+<div class="code-wrap"><pre><span class="cm">// Portkey — workspace enforcement via Python admin SDK</span>
+<span class="cm">// Source: portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits</span>
+<span class="cm">// Verified fields: workspace_id, usage_limits, rate_limits</span>
+<span class="cm">// Verified: type, credit_limit, alert_threshold, periodic_reset, unit, value</span>
+portkey.admin.workspaces.update(
+  workspace_id=<span class="str">"ws_contractors_q1_2026"</span>,
+  usage_limits=[{
+    <span class="str">"type"</span>: <span class="str">"cost"</span>,
+    <span class="str">"credit_limit"</span>: <span class="num">50</span>,
+    <span class="str">"alert_threshold"</span>: <span class="num">40</span>,
+    <span class="str">"periodic_reset"</span>: <span class="str">"monthly"</span>
+  }],
+  rate_limits=[{
+    <span class="str">"type"</span>: <span class="str">"requests"</span>,
+    <span class="str">"unit"</span>: <span class="str">"rpm"</span>,
+    <span class="str">"value"</span>: <span class="num">20</span>
+  }]
+)
+
+<span class="cm">// Portkey raw guardrail for contractor traffic</span>
+<span class="cm">// Source: portkey.ai/docs/product/guardrails/creating-raw-guardrails-in-json</span>
+<span class="cm">// Verified fields: before_request_hooks, type, id, checks[].id, parameters.regex, deny, async</span>
+{
+  <span class="str">"before_request_hooks"</span>: [{
+    <span class="str">"type"</span>: <span class="str">"guardrail"</span>,
+    <span class="str">"id"</span>: <span class="str">"contractor-deny-guardrail"</span>,
+    <span class="str">"checks"</span>: [{
+      <span class="str">"id"</span>: <span class="str">"default.regexMatch"</span>,
+      <span class="str">"parameters"</span>: { <span class="str">"regex"</span>: <span class="str">"(?i)(credit[ -]?score|account[ -]?number)"</span> }
+    }],
+    <span class="str">"deny"</span>: <span class="kw">true</span>,
+    <span class="str">"async"</span>: <span class="kw">false</span>
+  }]
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits" target="_blank">enforce-workspace-budget-limts-and-rate-limits</a> · <a href="https://portkey.ai/docs/product/enterprise-offering/budget-policies" target="_blank">budget-policies</a> · <a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">ai-gateway/configs</a> · <a href="https://portkey.ai/docs/product/guardrails/creating-raw-guardrails-in-json" target="_blank">creating-raw-guardrails-in-json</a> · <a href="https://portkey.ai/docs/api-reference/inference-api/authentication" target="_blank">inference-api/authentication</a> · <a href="https://portkey.ai/docs/product/enterprise-offering/org-management/sso" target="_blank">org-management/sso</a> · <a href="https://portkey.ai/docs/product/enterprise-offering/secret-references" target="_blank">secret-references</a></div>
+<div class="callout info">
+<div class="callout-title">ℹ️ JWT Auth vs. SSO — Two Distinct Identity Surfaces</div>
+<p><strong>JWT Gateway Auth</strong> authenticates individual API gateway requests using a JWKS-validated JWT. <strong>OIDC/SAML SSO</strong> governs who can log in to the Portkey control-plane dashboard. <strong>Secret References</strong> are a separate credential-custody control, where the control plane stores only a reference and the data plane fetches the secret at runtime.</p>
+</div>
+<div class="callout info">
+<div class="callout-title">📌 Shared Responsibility — Portkey</div>
+<p><strong>Hosted Edge:</strong> vendor-operated PEP and PDP. <strong>Hybrid VPC:</strong> enforcement occurs at the customer-operated data plane (Helm pods in your network); management and policy configuration remain vendor-operated SaaS. Prompt and response payloads are documented to stay within your VPC in the hybrid model. Confirm exact runtime PDP boundaries for your plan with Portkey. (Full placement breakdown: see Control Placement table, §6.5.)</p>
+</div>
+<hr/>
+<!-- §5 TRUEFOUNDRY -->
+<div class="vendor-header tf">
+<span class="vendor-badge">TrueFoundry</span>
+<span class="vendor-title">§5 — K8s-Native Split-Plane: Workspace RBAC, In-Cluster PEP, Local Policy Evaluation</span>
+</div>
+<h3>Authentication Architecture</h3>
+<p>TrueFoundry's PEP is the stateless Hono-based gateway plane running in your Kubernetes cluster. The PDP is local: the gateway plane architecture page documents that the gateway performs in-memory checks for authentication, authorization, rate limits, and load balancing on the hot path, with no external dependency in the routing hot path for policy evaluation. Optional caching can introduce upstream calls, but that exception is explicitly called out separately in the docs. The platform architecture page also identifies the global authentication/licensing service and analytics service as distinct from the request path.</p>
+<p>Gateway requests authenticate with a bearer token in the <code>Authorization</code> header. TrueFoundry now documents that surface directly in the AI Gateway authentication page, alongside PAT vs. VAT usage, while gateway access-control and collaboration pages cover the separate runtime and platform permission layers.</p>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/authentication" target="_blank">ai-gateway/authentication</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/gateway-access-control" target="_blank">gateway-access-control</a> · <a href="https://www.truefoundry.com/docs/collaboration-and-access-control" target="_blank">collaboration-and-access-control</a> · <a href="https://www.truefoundry.com/docs/sso" target="_blank">sso</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/intro-to-llm-gateway" target="_blank">intro-to-llm-gateway</a></div>
+<div class="auth-grid">
+<div class="auth-card tf-auth">
+<div class="aname">API Key Governance</div>
+<div class="adesc">Gateway requests use bearer tokens. TrueFoundry documents two key types: Personal Access Tokens for users and Virtual Account Tokens for workloads. Virtual Account Tokens can be scoped to selected models at issuance time.</div>
+<div class="atag">ai-gateway/authentication</div>
+</div>
+<div class="auth-card tf-auth">
+<div class="aname">SSO + SCIM (Control Plane)</div>
+<div class="adesc">The platform documents OIDC and SAML v2 SSO for control-plane login, plus SCIM provisioning for SAML-based setups. This governs platform access, not per-request gateway bearer-token authentication.</div>
+<div class="atag">sso · collaboration-and-access-control</div>
+</div>
+<div class="auth-card tf-auth">
+<div class="aname">Platform + Gateway RBAC</div>
+<div class="adesc">Two documented RBAC layers: platform-level permissions for managing resources and AI Gateway access control for runtime model-endpoint access. This separation is important in larger organizations.</div>
+<div class="atag">collaboration-and-access-control · gateway-access-control</div>
+</div>
+<div class="auth-card tf-auth">
+<div class="aname">Workspace Isolation</div>
+<div class="adesc">Workspaces are the primary organizational boundary. Deployments, secrets, and gateway access all inherit workspace scoping, which becomes the natural isolation unit for teams and environments.</div>
+<div class="atag">key-concepts</div>
+</div>
+<div class="auth-card tf-auth">
+<div class="aname">Secret Groups</div>
+<div class="adesc">Provider credentials are managed through secret groups and FQNs so raw values do not need to appear in workload manifests. This keeps provider-key handling inside the platform's native secret surface.</div>
+<div class="atag">manage-secrets</div>
+</div>
+<div class="auth-card tf-auth">
+<div class="aname">Request Logging + OTEL Export</div>
+<div class="adesc">Request logs are handled through the tracing system, and traces can be exported to OTEL-compatible backends. In self-hosted deployments, the platform also supports S3-compatible blob storage for platform data and logs.</div>
+<div class="atag">request-logging · export-opentelemetry-data · deploy-gateway-plane</div>
+</div>
+</div>
+<h3>Subject-Scoped Policy: Guardrails and Metadata-Based Rate Limiting</h3>
+<p>Guardrail rules support a <code>subjects</code> condition inside <code>when</code> clauses — making content firewall policies identity-aware. Combined with first-match rule evaluation (documented in guardrails configuration), a platform team can enforce different PII masking and injection-detection policies per caller group in a single YAML config with no separate physical endpoints. This is documented at <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">guardrails-configuration</a>.</p>
+<p>The <code>x-tfy-metadata</code> request header (documented as stringified JSON of string key-value pairs in the headers page) carries caller context into the gateway policy engine. TrueFoundry's public AI Gateway Rate Limiting docs explicitly document <code>rate_limit_applies_per</code> as supporting <code>metadata.*</code> key dimensions, with <code>metadata.project_id</code> provided as a named example in both the migration guide and full rule examples at <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">ai-gateway/ratelimiting</a>. The supported values <code>['model']</code> and <code>['metadata.project_id']</code> used in the snippet below are taken verbatim from those public docs. Server-Timing response headers expose per-phase execution breakdown (authentication, guardrails, model call, logging) — documented in the headers page — enabling precise latency attribution for policy components.</p>
+<div class="code-wrap"><pre><span class="cm"># TrueFoundry — subject-scoped guardrails including MCP tool hooks</span>
+<span class="cm"># Source: www.truefoundry.com/docs/ai-gateway/guardrails-configuration</span>
+<span class="cm"># Source: www.truefoundry.com/docs/ai-gateway/guardrails-overview (four-hook model)</span>
+<span class="cm"># Verified: name, type (gateway-guardrails-config), rules[].id, when block</span>
+<span class="cm"># Verified: subjects.operator, subjects.conditions.in[]</span>
+<span class="cm"># Verified: llm_input_guardrails, llm_output_guardrails arrays</span>
+<span class="cm"># Verified: mcp_tool_pre_invoke_guardrails, mcp_tool_post_invoke_guardrails arrays</span>
+<span class="key">name</span>: <span class="str">identity-aware-guardrails</span>
+<span class="key">type</span>: <span class="str">gateway-guardrails-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">contractor-strict-policy</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        <span class="key">operator</span>: <span class="str">and</span>
+        <span class="key">conditions</span>:
+          <span class="key">in</span>:
+            - <span class="str">"team:external-contractors"</span>
+    <span class="key">llm_input_guardrails</span>:
+      - <span class="str">"finance-guardrails/pii-redact"</span>
+      - <span class="str">"finance-guardrails/prompt-injection-detect"</span>
+    <span class="key">llm_output_guardrails</span>:
+      - <span class="str">"finance-guardrails/secrets-detection"</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>: []
+    <span class="key">mcp_tool_post_invoke_guardrails</span>: []
+
+  - <span class="key">id</span>: <span class="str">production-svc-policy</span>
+    <span class="key">when</span>:
+      <span class="key">subjects</span>:
+        <span class="key">operator</span>: <span class="str">and</span>
+        <span class="key">conditions</span>:
+          <span class="key">in</span>: [<span class="str">"team:risk-platform"</span>]
+    <span class="key">llm_input_guardrails</span>: [<span class="str">"finance-guardrails/pii-redact"</span>]
+    <span class="key">llm_output_guardrails</span>: [<span class="str">"finance-guardrails/secrets-detection"</span>]
+    <span class="cm">    # MCP hooks documented as critical for agentic workflows</span>
+    <span class="cm">    # Source: www.truefoundry.com/docs/ai-gateway/guardrails-overview</span>
+    <span class="key">mcp_tool_pre_invoke_guardrails</span>: [<span class="str">"finance-guardrails/sql-injection-check"</span>]
+    <span class="key">mcp_tool_post_invoke_guardrails</span>: [<span class="str">"finance-guardrails/result-pii-redact"</span>]
+<span class="cm">---</span>
+<span class="cm"># Rate limiting with metadata-based per-entity scoping</span>
+<span class="cm"># Source: www.truefoundry.com/docs/ai-gateway/ratelimiting</span>
+<span class="cm"># Verified: name, type (gateway-rate-limiting-config), rules[].id, when: {}, limit_to, unit</span>
+<span class="cm"># rate_limit_applies_per: ['model'] and ['metadata.project_id'] are the exact documented values</span>
+<span class="cm"># from the ratelimiting handbook code excerpt</span>
+<span class="key">name</span>: <span class="str">metadata-scoped-rate-limits</span>
+<span class="key">type</span>: <span class="str">gateway-rate-limiting-config</span>
+<span class="key">rules</span>:
+  - <span class="key">id</span>: <span class="str">contractor-model-daily</span>
+    <span class="key">when</span>: {}
+    <span class="key">limit_to</span>: <span class="num">50000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_day</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'model'</span>]
+  - <span class="key">id</span>: <span class="str">risk-platform-project-hourly</span>
+    <span class="key">when</span>: {}
+    <span class="key">limit_to</span>: <span class="num">1000000</span>
+    <span class="key">unit</span>: <span class="str">tokens_per_hour</span>
+    <span class="key">rate_limit_applies_per</span>: [<span class="str">'metadata.project_id'</span>]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Source: <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">guardrails-configuration</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrails-overview</a> · <a href="https://www.truefoundry.com/docs/collaboration-and-access-control" target="_blank">collaboration-and-access-control</a> · <a href="https://www.truefoundry.com/docs/key-concepts" target="_blank">key-concepts</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">ratelimiting</a> · <a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">headers (x-tfy-metadata; Server-Timing)</a></div>
+<p>The simplified diagram below focuses on the boundary that matters most for security review: what stays on the request path, what is asynchronous, and what is outside the request path altogether.</p>
+<div class="svg-wrap">
+<svg viewbox="0 0 820 248" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="tfsimple" markerheight="6" markerwidth="8" orient="auto" refx="7" refy="3">
+<polygon fill="#FF5533" points="0 0,8 3,0 6"></polygon>
+</marker>
+<marker id="tfasync" markerheight="6" markerwidth="8" orient="auto" refx="7" refy="3">
+<polygon fill="#60a5fa" points="0 0,8 3,0 6"></polygon>
+</marker>
+</defs>
+<rect fill="#121826" height="248" width="820"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="13" font-weight="700" text-anchor="middle" x="410" y="18">TrueFoundry Request Path, Simplified</text>
+<rect fill="#1a2233" height="56" rx="8" stroke="#1e2d45" stroke-width="1.5" width="150" x="34" y="74"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="12" font-weight="700" text-anchor="middle" x="109" y="97">Application</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="109" y="114">user or service</text>
+<rect fill="#1e0d08" height="84" rx="8" stroke="#FF5533" stroke-width="1.8" width="250" x="270" y="62"></rect>
+<text fill="#FF5533" font-family="IBM Plex Sans,sans-serif" font-size="12" font-weight="700" text-anchor="middle" x="395" y="88">In-cluster AI Gateway</text>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="9.5" text-anchor="middle" x="395" y="106">PEP + local PDP</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="395" y="122">auth, authz, rate limits in memory</text>
+<rect fill="#0a1620" height="56" rx="8" stroke="#60a5fa" stroke-width="1.5" width="180" x="606" y="74"></rect>
+<text fill="#60a5fa" font-family="IBM Plex Sans,sans-serif" font-size="12" font-weight="700" text-anchor="middle" x="696" y="97">Model provider</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="696" y="114">request path continues here</text>
+<line marker-end="url(#tfsimple)" stroke="#FF5533" stroke-width="2.5" x1="184" x2="270" y1="102" y2="102"></line>
+<line marker-end="url(#tfsimple)" stroke="#FF5533" stroke-width="2.5" x1="520" x2="606" y1="102" y2="102"></line>
+<rect fill="#0a1220" height="38" rx="6" stroke="#1e2d45" stroke-width="1.2" width="266" x="262" y="180"></rect>
+<text fill="#60a5fa" font-family="IBM Plex Sans,sans-serif" font-size="8.8" text-anchor="middle" x="395" y="196">Async logs/metrics queue →</text>
+<text fill="#60a5fa" font-family="IBM Plex Sans,sans-serif" font-size="8.8" text-anchor="middle" x="395" y="208">tracing / storage / OTEL export</text>
+<line marker-end="url(#tfasync)" stroke="#60a5fa" stroke-dasharray="5,4" stroke-width="1.8" x1="395" x2="395" y1="146" y2="180"></line>
+<rect fill="#091510" height="42" rx="6" stroke="#50fa7b" stroke-width="1.2" width="270" x="34" y="24"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="169" y="42">Control plane is not in the</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="169" y="54">gateway request path</text>
+<rect fill="#0a1220" height="42" rx="6" stroke="#1e2d45" stroke-width="1.2" width="250" x="536" y="24"></rect>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="661" y="42">Global auth/licensing and analytics</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="661" y="54">are separate platform services</text>
+</svg>
+</div>
+<div class="img-caption">Simplified from the public gateway-plane and platform architecture docs: requests flow application → in-cluster gateway → provider; logs and metrics are asynchronous; global auth/licensing and analytics are described separately from the request path.</div>
+<div class="callout ok">
+<div class="callout-title">✅ Clear Request-Path Boundary</div>
+<p>TrueFoundry's public docs are unusually explicit here: the gateway plane says request execution avoids external calls unless cache is enabled, and the platform architecture separately identifies the global authentication/licensing service and analytics service. In practice, that means the control plane is not the component deciding every live gateway request.</p>
+</div>
+<div class="callout info">
+<div class="callout-title">📦 Logging, Storage, and Export Are Easier to Place In-Region</div>
+<p>The gateway-plane docs say logs and metrics are written asynchronously, request-logging docs route gateway logs through the tracing system, and OTEL export is documented for external observability backends. In self-hosted deployments, platform data and logs can use S3-compatible blob storage, which gives teams a straightforward path to keep operational data in their own region and storage account.</p>
+</div>
+<div class="callout warn">
+<div class="callout-title">⚠ mTLS — Operator-Dependent (K8s service mesh)</div>
+<p>TrueFoundry's AI gateway does not document native mTLS client authentication. Service-to-service mTLS remains an operator concern — typically solved with a K8s service mesh such as Istio or Linkerd.</p>
+</div>
+<hr/>
+<!-- §6 FEATURE MATRIX -->
+<div class="svg-wrap">
+<svg viewbox="0 0 820 322" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="cfa" markerheight="6" markerwidth="6" orient="auto" refx="5" refy="3"><polygon fill="#00D27B" points="0 0,6 3,0 6"></polygon></marker>
+<marker id="cfb" markerheight="6" markerwidth="6" orient="auto" refx="5" refy="3"><polygon fill="#00C2CB" points="0 0,6 3,0 6"></polygon></marker>
+<marker id="cfc" markerheight="6" markerwidth="6" orient="auto" refx="5" refy="3"><polygon fill="#5A67FF" points="0 0,6 3,0 6"></polygon></marker>
+<marker id="cfd" markerheight="6" markerwidth="6" orient="auto" refx="5" refy="3"><polygon fill="#FF5533" points="0 0,6 3,0 6"></polygon></marker>
+</defs>
+<rect fill="#121826" height="322" width="820"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="13" font-weight="700" text-anchor="middle" x="410" y="18">The Content Firewall: Guardrails &amp; MCP Governance</text>
+<line stroke="#1e2d45" stroke-width="1" x1="410" x2="410" y1="30" y2="306"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="18" x2="802" y1="174" y2="174"></line>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="11" font-weight="700" x="40" y="44">Kong</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="8.5" x="40" y="58">Semantic Topic Guardrails (AI Semantic Prompt Guard)</text>
+<rect fill="#001e13" height="86" rx="4" stroke="#1e2d45" stroke-width="1" width="170" x="28" y="66"></rect>
+<circle cx="60" cy="114" fill="#60a5fa" fill-opacity=".7" r="4"></circle>
+<circle cx="72" cy="104" fill="#60a5fa" fill-opacity=".7" r="4"></circle>
+<circle cx="55" cy="96" fill="#60a5fa" fill-opacity=".7" r="4"></circle>
+<circle cx="80" cy="119" fill="#60a5fa" fill-opacity=".7" r="4"></circle>
+<circle cx="90" cy="99" fill="#60a5fa" fill-opacity=".7" r="4"></circle>
+<circle cx="68" cy="124" fill="#60a5fa" fill-opacity=".7" r="4"></circle>
+<circle cx="140" cy="82" fill="#ffa726" fill-opacity=".8" r="4"></circle>
+<circle cx="155" cy="89" fill="#ffa726" fill-opacity=".8" r="4"></circle>
+<circle cx="148" cy="74" fill="#ffa726" fill-opacity=".8" r="4"></circle>
+<circle cx="162" cy="99" fill="#ffa726" fill-opacity=".8" r="4"></circle>
+<circle cx="170" cy="82" fill="#ff4757" fill-opacity=".8" r="4"></circle>
+<path d="M108,134 C115,114 118,94 125,76" fill="none" stroke="#00D27B" stroke-width="2"></path>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="7.5" x="32" y="152">Benign →</text>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="7.5" x="137" y="152">⚠ Paraphrased</text>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="7.8" x="40" y="164">Semantic detection can catch paraphrased attacks—</text>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="7.8" x="40" y="174">not only regex matches. (Implementation varies.)</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8" x="210" y="84">Guardrail</text>
+<text fill="#00D27B" font-family="IBM Plex Mono,monospace" font-size="8" x="210" y="95">Boundary</text>
+<text fill="#00C2CB" font-family="IBM Plex Sans,sans-serif" font-size="11" font-weight="700" x="430" y="44">LiteLLM</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="8.5" x="430" y="58">Zero-Egress PII Redaction (Presidio in Private VPC)</text>
+<rect fill="#001d1e" height="94" rx="4" stroke="#60a5fa" stroke-dasharray="5,3" stroke-width="1" width="370" x="420" y="66"></rect>
+<text fill="#60a5fa" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="700" text-anchor="middle" x="487" y="82">Private VPC (Zero-Egress)</text>
+<rect fill="#080c12" height="28" rx="3" stroke="#1e2d45" stroke-width="1" width="76" x="426" y="88"></rect>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="464" y="101">Prompt w/</text>
+<text fill="#ff4757" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="464" y="111">PII</text>
+<line marker-end="url(#cfb)" stroke="#00C2CB" stroke-width="1.5" x1="502" x2="520" y1="102" y2="102"></line>
+<rect fill="#0a1620" height="32" rx="3" stroke="#00C2CB" stroke-width="1.2" width="76" x="522" y="86"></rect>
+<text fill="#00C2CB" font-family="IBM Plex Mono,monospace" font-size="8" font-weight="700" text-anchor="middle" x="560" y="100">Microsoft</text>
+<text fill="#00C2CB" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="560" y="111">Presidio</text>
+<line marker-end="url(#cfb)" stroke="#00C2CB" stroke-width="1.5" x1="598" x2="616" y1="102" y2="102"></line>
+<rect fill="#080c12" height="32" rx="3" stroke="#1e2d45" stroke-width="1" width="82" x="618" y="86"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="659" y="100">Redacted</text>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="659" y="111">Prompt</text>
+<line marker-end="url(#cfb)" stroke="#50fa7b" stroke-width="1.5" x1="700" x2="718" y1="102" y2="102"></line>
+<rect fill="#091510" height="26" rx="3" stroke="#50fa7b" stroke-width="1.2" width="26" x="720" y="90"></rect>
+<text fill="#50fa7b" font-size="12" text-anchor="middle" x="733" y="108">🔒</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="7.8" text-anchor="middle" x="595" y="146">Self-hosted Presidio keeps prompts in-VPC with no third-party transit</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="7.8" text-anchor="middle" x="595" y="156">assuming egress is restricted.</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="7.2" text-anchor="middle" x="595" y="167">Source: proxy/guardrails/quick_start (Presidio integration)</text>
+<text fill="#5A67FF" font-family="IBM Plex Sans,sans-serif" font-size="11" font-weight="700" x="40" y="192">Portkey</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="8.5" x="40" y="206">BYO Guardrails Architecture (before_request_hooks webhook)</text>
+<rect fill="#0a0c24" height="28" rx="3" stroke="#5A67FF" stroke-width="1" width="68" x="28" y="214"></rect>
+<text fill="#5A67FF" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="62" y="230">Portkey GW</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="62" y="241">Request Flow</text>
+<line marker-end="url(#cfc)" stroke="#5A67FF" stroke-width="1.5" x1="96" x2="112" y1="228" y2="228"></line>
+<rect fill="#0a0c24" height="44" rx="3" stroke="#ffa726" stroke-dasharray="4,2" stroke-width="1.2" width="90" x="114" y="210"></rect>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="7.5" font-weight="700" text-anchor="middle" x="159" y="225">Customer Webhook</text>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="159" y="236">(PDP)</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="159" y="247">Custom logic</text>
+<line marker-end="url(#cfc)" stroke="#5A67FF" stroke-width="1.5" x1="204" x2="220" y1="232" y2="232"></line>
+<polygon fill="#5A67FF" fill-opacity=".3" points="240,222 256,232 240,242 224,232" stroke="#5A67FF" stroke-width="1.5"></polygon>
+<text fill="#e2e8f0" font-size="9" font-weight="700" text-anchor="middle" x="240" y="237">?</text>
+<line marker-end="url(#cfa)" stroke="#50fa7b" stroke-width="1.5" x1="256" x2="290" y1="227" y2="218"></line>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="8" x="310" y="216">ALLOW → Model API</text>
+<line marker-end="url(#cfd)" stroke="#ff4757" stroke-width="1.5" x1="256" x2="290" y1="237" y2="250"></line>
+<text fill="#ff4757" font-family="IBM Plex Mono,monospace" font-size="8" x="310" y="256">BLOCK → Error Response</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="7.8" text-anchor="middle" x="190" y="286">Config-first attachment: deny + async fields documented at bring-your-own-guardrails.</text>
+<text fill="#FF5533" font-family="IBM Plex Sans,sans-serif" font-size="11" font-weight="700" x="430" y="192">TrueFoundry</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="8.5" x="430" y="206">mcp_tool_pre_invoke hook (PEP: local intercept / mutate / evaluate)</text>
+<circle cx="448" cy="236" fill="#1e0d08" r="12" stroke="#FF5533" stroke-width="1.5"></circle>
+<text fill="#FF5533" font-size="11" text-anchor="middle" x="448" y="241">🤖</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="448" y="257">Agent</text>
+<line marker-end="url(#cfd)" stroke="#FF5533" stroke-width="1.5" x1="460" x2="498" y1="236" y2="236"></line>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="479" y="228">Tool Call</text>
+<rect fill="#1e0d08" height="44" rx="4" stroke="#FF5533" stroke-width="2" width="100" x="500" y="214"></rect>
+<text fill="#FF5533" font-family="IBM Plex Sans,sans-serif" font-size="8" font-weight="700" text-anchor="middle" x="550" y="230">Intercept</text>
+<text fill="#FF5533" font-family="IBM Plex Sans,sans-serif" font-size="8" text-anchor="middle" x="550" y="241">Mutate</text>
+<text fill="#FF5533" font-family="IBM Plex Sans,sans-serif" font-size="8" text-anchor="middle" x="550" y="252">Evaluate</text>
+<line marker-end="url(#cfa)" stroke="#50fa7b" stroke-width="1.5" x1="600" x2="638" y1="228" y2="228"></line>
+<rect fill="#091510" height="30" rx="3" stroke="#50fa7b" stroke-width="1" width="96" x="640" y="214"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="688" y="232">✓ DB / Tool</text>
+<line marker-end="url(#cfd)" stroke="#ff4757" stroke-width="1.5" x1="550" x2="550" y1="258" y2="280"></line>
+<text fill="#ff4757" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="550" y="297">✗ Blocked / Error</text>
+<text fill="#7a8899" font-family="IBM Plex Sans,sans-serif" font-size="7.6" text-anchor="middle" x="666" y="289">Documented at guardrails-overview as a critical control for agentic workflows.</text>
+</svg>
+</div>
+<div class="img-caption">Content Firewall comparison across all four vendors. Each architecture is derived from documented features: Kong AI Semantic Prompt Guard, LiteLLM Presidio integration, Portkey BYO Guardrails webhook contract, and TrueFoundry four-hook MCP guardrail model. All config patterns are illustrative of documented behavior. Original diagram.</div>
+<h2>§6 — Security Feature Matrix</h2>
+<p>"Native" = implemented in the gateway product. "Operator-dependent" = provided by deployment environment (ingress controller, service mesh, Vault sidecar, etc.). ❌ = not documented natively and not a documented integration point.</p>
+<div class="matrix-wrap matrix-feature-wrap">
+<table class="feature-matrix-table">
+<thead>
+<tr>
+<th>Security Capability</th>
+<th style="color:var(--tf)">TrueFoundry</th>
+<th style="color:var(--litellm)">LiteLLM</th>
+<th style="color:var(--kong)">Kong AI GW</th>
+<th style="color:var(--portkey)">Portkey</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>API Key / Virtual Key auth</strong></td>
+<td><span class="check">✅</span> Native. Bearer-token auth is documented in gateway request headers, and API-key issuance is part of the validated docs pack. <em>headers; generating-truefoundry-api-keys</em></td>
+<td><span class="check">✅</span> Native. Virtual keys; team + budget + model-allowlist scope. <em>proxy/virtual_keys</em></td>
+<td><span class="check">✅</span> Native. <code>key-auth</code> plugin; Consumer-mapped; consumer label on AI metrics v3.11+. <em>key-auth plugin; audit-log-reference</em></td>
+<td><span class="check">✅</span> Native. API keys with default config; workspace-scoped. <em>ai-gateway/configs</em></td>
+</tr>
+<tr>
+<td><strong>JWT / OIDC / SSO</strong></td>
+<td>⚠ Split surface. Gateway runtime auth uses bearer-token PAT/VAT credentials. Separately, the platform control plane documents OIDC / SAML SSO, and SCIM provisioning is available for SAML setups. These are different surfaces and should not be conflated.</td>
+<td><span class="check">✅</span> Native. <code>enable_jwt_auth</code>; multi-provider JWKs via env var; K8s ServiceAccount <code>team_alias_jwt_field</code>. Verify tier against your deployed version. <em>proxy/token_auth</em></td>
+<td><span class="check">✅</span> Native. <code>jwt</code> plugin (OSS, local PDP); <code>openid-connect</code> with Consumer auto-mapping (Enterprise, remote PDP). <em>plugin catalog</em></td>
+<td><span class="check">✅</span> Native (Enterprise). JWT Auth for gateway API requests plus OIDC + SAML 2.0 SSO for control-plane dashboard login. Secret References are documented separately for external secret-manager backed credential retrieval. <em>inference-api/authentication; org-management/sso; secret-references</em></td>
+</tr>
+<tr>
+<td><strong>OAuth2 Token Introspection</strong></td>
+<td><span class="cross">❌</span> Not documented in the reviewed public gateway docs. Verify with vendor for current roadmap/tier.</td>
+<td><span class="partial">⚠</span> Enterprise only; token info endpoint-based. <em>proxy/oauth2</em></td>
+<td><span class="partial">⚠</span> General Kong OAuth2 plugins documented; AI-gateway-specific OAuth2 docs not confirmed in reviewed materials. Verify with vendor.</td>
+<td><span class="cross">❌</span> Not documented natively.</td>
+</tr>
+<tr>
+<td><strong>mTLS client authentication</strong></td>
+<td><span class="partial">⚠</span> Operator-dependent (K8s service mesh / ingress). Not documented as a native gateway toggle.</td>
+<td><span class="partial">⚠</span> Operator-dependent (ingress / service mesh). Not in proxy docs. <em>No proxy config surface for mTLS</em></td>
+<td><span class="check">✅</span> Native. <code>mtls-auth</code> plugin; CA-store managed; cert subject → Consumer; local PDP. Enterprise. <em>plugin catalog</em></td>
+<td><span class="partial">⚠</span> Operator-dependent via ingress controller in hybrid deployment. Not documented natively.</td>
+</tr>
+<tr>
+<td><strong>K8s Workload Identity</strong></td>
+<td><span class="partial">⚠</span> In-cluster deployment and workload-oriented API-key usage are documented, but a dedicated K8s workload-identity page is not part of the validated pack. <em>platform/gateway-plane-architecture; deploy-gateway-plane; generating-truefoundry-api-keys</em></td>
+<td><span class="check">✅</span> Native. K8s ServiceAccount JWT; namespace → team alias via <code>team_alias_jwt_field: "kubernetes\.io.namespace"</code>. <em>proxy/token_auth</em></td>
+<td><span class="partial">⚠</span> Possible via <code>openid-connect</code> + K8s OIDC provider; no AI-gateway-specific workload identity docs confirmed in reviewed materials.</td>
+<td><span class="cross">❌</span> Not documented natively.</td>
+</tr>
+<tr>
+<td><strong>RBAC / Team isolation</strong></td>
+<td><span class="check">✅</span> Native. Collaboration/access control plus workspace scoping are documented, and gateway guardrail rules add subject-aware policy on top. <em>collaboration-and-access-control; key-concepts; guardrails-configuration</em></td>
+<td><span class="check">✅</span> Native. Team budgets; per-key model allowlist; per-team router overrides. <em>proxy/users; keys_teams_router_settings</em></td>
+<td><span class="check">✅</span> Native. Consumer Groups with group-scoped plugin policies. <em>rate-limiting-advanced; prompt-guard; plugin catalog</em></td>
+<td><span class="check">✅</span> Native. Workspace isolation + enterprise policy engine (group-by: user, config, provider, wildcard). <em>enterprise-offering/budget-policies</em></td>
+</tr>
+<tr>
+<td><strong>Model endpoint ACL</strong></td>
+<td><span class="partial">⚠</span> The validated pack documents subject-aware gateway rules, routing controls, and metadata-scoped policy, but not a standalone model-endpoint ACL page. This edition avoids a stronger claim than the supplied sources support. <em>guardrails-configuration; load-balancing-overview; headers</em></td>
+<td><span class="check">✅</span> Native. <code>models</code> allowlist per virtual key. <em>proxy/virtual_keys</em></td>
+<td><span class="check">✅</span> Native. <code>acl</code> plugin scopes Routes to Consumer Groups. <em>plugin catalog</em></td>
+<td><span class="check">✅</span> Native. Config-scoped targets restrict provider/model slugs per key. <em>ai-gateway/configs</em></td>
+</tr>
+<tr>
+<td><strong>Vault / Secrets management</strong></td>
+<td><span class="check">✅</span> Native. Secret groups with FQNs; keys not in manifests. <em>manage-secrets</em></td>
+<td><span class="partial">⚠</span> Operator-dependent. <code>os.environ/VAR</code> pattern; no native Vault integration. Requires external sidecar or K8s secret injection. <em>proxy/config_settings</em></td>
+<td>✅ Native. Kong Vaults keep secrets out of plaintext config, and the Vault docs explicitly list AI Proxy / AI Proxy Advanced auth fields as referenceable secret fields.</td>
+<td>✅ Native (Enterprise). Secret References store only a reference in the control plane; the data plane fetches the secret at runtime from AWS Secrets Manager, Azure Key Vault, or HashiCorp Vault and caches it for 5 minutes.</td>
+</tr>
+<tr>
+<td><strong>Request metadata for policy scoping</strong></td>
+<td><span class="check">✅</span> Native. <code>X-TFY-METADATA</code> plus documented <code>rate_limit_applies_per</code> support for <code>metadata.*</code> dimensions. <em>headers; ratelimiting</em></td>
+<td><span class="check">✅</span> Native. Team/user/org attributes from JWT claims populate <code>UserAPIKeyAuth</code>. Metadata on virtual key object. <em>proxy/token_auth; proxy/virtual_keys</em></td>
+<td><span class="partial">⚠</span> Route/header-based conditions via standard plugins. No LLM request-parameter metadata conditions documented natively in AI plugins.</td>
+<td><span class="check">✅</span> Native. MongoDB-style operators on <code>params</code>, <code>metadata</code>, and URL path in conditional routing config. <em>conditional-routing</em></td>
+</tr>
+<tr>
+<td><strong>MCP / Agentic tool AuthZ</strong></td>
+<td><span class="check">✅</span> Native. MCP pre-tool and post-tool hooks are documented as part of the four-hook guardrail model for agentic workflows. <em>guardrails-overview</em></td>
+<td><span class="partial">⚠</span> Access groups documented to bundle MCP servers (AI Hub, newer feature). <em>proxy/access_groups; proxy/ai_hub</em></td>
+<td><span class="check">✅</span> Native. AI MCP Proxy adapts MCP→HTTP so Kong auth + governance plugins govern tool calls. <em>mcp/; plugins/ai-mcp-proxy</em></td>
+<td><span class="partial">⚠</span> MCP listed in feature list; governance documentation limited in reviewed public docs.</td>
+</tr>
+<tr>
+<td><strong>Content firewall (PII, injection, secrets)</strong></td>
+<td><span class="check">✅</span> Native. Built-in PII/PHI + secrets detection, Azure integrations, and four-hook guardrails across LLM I/O and MCP tool steps. <em>guardrails-overview; tfy-pii; secrets-detection</em></td>
+<td><span class="check">✅</span> Native. Presidio, AIM, Aporia, Lakera integrations; pre_call / during_call / post_call phases. <em>proxy/guardrails/quick_start</em></td>
+<td><span class="check">✅</span> Native. AI PII Sanitizer, AI Prompt Guard, AI Semantic Prompt Guard, Azure Content Safety, AWS Guardrails. <em>respective plugin pages</em></td>
+<td><span class="check">✅</span> Native. PII redaction (Pro tier); regex guardrails; BYO webhook content firewall. <em>guardrails; pii-redaction; bring-your-own-guardrails</em></td>
+</tr>
+<tr>
+<td><strong>Audit logging / OTel</strong></td>
+<td><span class="check">✅</span> Native. Async log queue, tracing-backed request logs, response headers for applied configs, and OTEL trace export. <em>request-logging; headers; export-opentelemetry-data</em></td>
+<td><span class="check">✅</span> Native. <code>success_callback</code>/<code>failure_callback</code>; <code>x-litellm-call-id</code> as correlation key; OTel via <code>callbacks: ["otel"]</code>. <em>proxy/logging; proxy/config_settings</em></td>
+<td><span class="check">✅</span> Native. Structured AI audit logs via standard Kong logging infra; consumer label on AI metrics (v3.11+); Gen AI OTel attributes. <em>ai-audit-log-reference; monitor-ai-llm-metrics; llm-open-telemetry</em></td>
+<td><span class="check">✅</span> Native. Logs with gateway-state column per request; OTel-compliant traces with W3C trace context. <em>observability/logs; observability/traces</em></td>
+</tr>
+<tr>
+<td><strong>PEP location</strong></td>
+<td>In-cluster K8s pods (customer infra; stateless)</td>
+<td>Self-hosted container (customer infra)</td>
+<td>Customer-operated data plane (always); Konnect CP optional SaaS</td>
+<td>Vendor SaaS (hosted edge) or customer VPC Helm pods (hybrid)</td>
+</tr>
+<tr>
+<td><strong>PDP for policy evaluation</strong></td>
+<td>Local: in-memory checks documented for auth, authz, rate limits, and load balancing. No external dependency in routing hot path unless cache is enabled.</td>
+<td>Local: Redis/memory + DB for key resolution. No remote call on hot path for pre-issued keys.</td>
+<td>Local: Lua/C plugin evaluation in data plane process. No external IdP call for key-auth or mTLS.</td>
+<td>Vendor-operated (hosted edge); hybrid keeps the data-plane PEP in customer VPC but vendor management remains involved.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- §6.5 CONTROL PLACEMENT -->
+<h2>§6.5 — Control Placement: Where Is the Decision Enforced?</h2>
+<p>Having a security feature documented does not mean it is enforced at your preferred boundary. This section answers the three questions that matter for data residency and compliance reviews.</p>
+<div class="svg-wrap">
+<svg viewbox="0 0 820 250" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#121826" height="250" width="820"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Sans,sans-serif" font-size="12.5" font-weight="700" text-anchor="middle" x="410" y="16">Diagnostic: Control Placement &amp; Data Residency</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="410" y="29">True data sovereignty is determined not by feature lists, but by the precise location of the PDP during request execution.</text>
+<rect fill="#1a2233" height="24" width="784" x="18" y="37"></rect>
+<text fill="#e2e8f0" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="700" text-anchor="middle" x="234" y="53">Where is the PEP?</text>
+<text fill="#e2e8f0" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="700" text-anchor="middle" x="451" y="53">PDP dependencies on hot path?</text>
+<text fill="#e2e8f0" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="700" text-anchor="middle" x="679" y="53">What is stored where?</text>
+<line stroke="#1e2d45" stroke-width="1" x1="122" x2="122" y1="37" y2="246"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="346" x2="346" y1="37" y2="246"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="556" x2="556" y1="37" y2="246"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="18" x2="802" y1="61" y2="61"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="18" x2="802" y1="109" y2="109"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="18" x2="802" y1="157" y2="157"></line>
+<line stroke="#1e2d45" stroke-width="1" x1="18" x2="802" y1="205" y2="205"></line>
+<rect fill="none" height="209" rx="2" stroke="#1e2d45" stroke-width="1" width="784" x="18" y="37"></rect>
+<text fill="#00C2CB" font-family="IBM Plex Sans,sans-serif" font-size="11" font-weight="700" text-anchor="middle" x="70" y="81">LiteLLM</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="70" y="95">Python container</text>
+<rect fill="#091510" height="36" rx="3" width="208" x="130" y="65"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="234" y="80">Self-hosted container</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="234" y="94">(customer infrastructure)</text>
+<rect fill="#091510" height="36" rx="3" width="194" x="354" y="65"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="451" y="80">Local cache</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="451" y="94">(Redis/memory, no vendor call)</text>
+<rect fill="#0f1820" height="36" rx="3" width="230" x="564" y="65"></rect>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="679" y="80">Keys in Vault or env vars</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="679" y="94">(operator-managed sidecar)</text>
+<text fill="#00D27B" font-family="IBM Plex Sans,sans-serif" font-size="11" font-weight="700" text-anchor="middle" x="70" y="129">Kong</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="70" y="143">Lua/C data plane</text>
+<rect fill="#091510" height="36" rx="3" width="208" x="130" y="113"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="234" y="128">Customer data plane</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="234" y="142">(always customer-operated)</text>
+<rect fill="#091510" height="36" rx="3" width="194" x="354" y="113"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="451" y="128">Local Lua evaluation</text>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="451" y="142">(OIDC: remote IdP on hot path)</text>
+<rect fill="#091510" height="36" rx="3" width="230" x="564" y="113"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="679" y="128">Keys in external Vault</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="679" y="142">(HashiCorp / AWS SM / GCP SM)</text>
+<text fill="#5A67FF" font-family="IBM Plex Sans,sans-serif" font-size="11" font-weight="700" text-anchor="middle" x="70" y="177">Portkey</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="70" y="191">SaaS / Hybrid VPC</text>
+<rect fill="#1a1200" height="36" rx="3" width="208" x="130" y="161"></rect>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="234" y="176">SaaS-edge (vendor)</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="234" y="190">Hybrid VPC option available</text>
+<rect fill="#1a1200" height="36" rx="3" width="194" x="354" y="161"></rect>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="451" y="176">Cloud PDP (vendor)</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="451" y="190">(management remains SaaS)</text>
+<rect fill="#1a1200" height="36" rx="3" width="230" x="564" y="161"></rect>
+<text fill="#ffa726" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="679" y="176">Configs in Portkey Cloud</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="679" y="190">Secret Refs fetch from your Vault</text>
+<text fill="#FF5533" font-family="IBM Plex Sans,sans-serif" font-size="10" font-weight="700" text-anchor="middle" x="70" y="220">TrueFoundry</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="70" y="234">K8s in-cluster</text>
+<rect fill="#091510" height="36" rx="3" width="208" x="130" y="209"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="234" y="224">In-cluster K8s pod</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="234" y="238">(stateless, customer infra)</text>
+<rect fill="#091510" height="36" rx="3" width="194" x="354" y="209"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="451" y="224">Local in-memory evaluation</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="451" y="238">(no external dep on hot path)</text>
+<rect fill="#091510" height="36" rx="3" width="230" x="564" y="209"></rect>
+<text fill="#50fa7b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="679" y="224">Keys in in-cluster secret groups</text>
+<text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="679" y="238">(TrueFoundry secret groups / FQNs)</text>
+</svg>
+</div>
+<div class="img-caption">Control placement diagnostic across all four vendors. Green = customer-controlled local evaluation; orange = vendor-operated or external dependency on the hot path. Original diagram.</div>
+<div class="matrix-wrap">
+<table>
+<thead>
+<tr>
+<th>Vendor</th>
+<th>Where is the PEP?</th>
+<th>Where is the PDP?</th>
+<th>What crosses the vendor boundary?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong style="color:var(--tf)">TrueFoundry</strong></td>
+<td class="pep-k8s">In-cluster K8s pods (stateless, customer infrastructure). No vendor component in the request path.</td>
+<td>Local: in-memory checks for auth, rate limits, load balancing, and authorization. No external dependency in routing hot path unless cache is enabled.</td>
+<td>Prompt/response payloads stay inside the cluster on the request path. Logs and traces are handled asynchronously. Global auth/licensing and analytics are documented separately from the request path. Self-hosted deployments can use customer-controlled S3-compatible storage and OTEL exports.</td>
+</tr>
+<tr>
+<td><strong style="color:var(--litellm)">LiteLLM</strong></td>
+<td class="pep-self">Self-hosted Python proxy container in your infra</td>
+<td>Local for pre-issued keys: Redis or in-memory + database lookup inside proxy/adjacent services. No remote IdP call on hot path for virtual keys. OIDC/JWT validation is local using configured JWKs. Custom auth hooks can introduce remote dependencies if you add them.</td>
+<td>Provider credentials typically injected via env vars / K8s secrets. If you expose the proxy publicly, TLS termination and mTLS are your responsibility at ingress or LB. Logs and OTEL exporter destination are operator-chosen.</td>
+</tr>
+<tr>
+<td><strong style="color:var(--kong)">Kong AI Gateway</strong></td>
+<td class="pep-vpc">Kong data plane proxy in customer infrastructure (always customer-operated, even when Konnect CP is used)</td>
+<td>For key-auth, JWT, ACL, rate limiting, and mTLS auth: local plugin evaluation in data plane. For OIDC / identity federation: the plugin may call a remote IdP depending on configuration and session strategy.</td>
+<td>Prompts and responses remain in your network path through Kong. If Konnect is used, config and telemetry management cross to Kong control plane; actual request traffic stays in your data plane. Vault references help keep raw secrets out of declarative config.</td>
+</tr>
+<tr>
+<td><strong style="color:var(--portkey)">Portkey</strong></td>
+<td class="pep-saas"><strong>Hosted edge:</strong> vendor SaaS. <strong>Hybrid VPC:</strong> customer Helm pods in your network.</td>
+<td><strong>Hosted edge:</strong> vendor-operated PDP. <strong>Hybrid VPC:</strong> customer-operated data-plane enforcement with vendor-operated management/configuration plane.</td>
+<td><strong>Hosted edge:</strong> prompts and responses transit Portkey infrastructure. <strong>Hybrid VPC:</strong> prompts and responses are documented to stay in your VPC while metrics and management still connect to Portkey. This validated-link edition keeps the credential-handling claim conservative and anchors it to configs plus Model Catalog indirection.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr/>
+<!-- §7 VERDICT -->
+<h2>§7 — Editorial Verdict</h2>
+<p>The following assessments represent editorial judgment based on documented capabilities. "Well-suited for" is the authors' characterization, not a vendor claim.</p>
+<div class="verdict-grid">
+<div class="verdict-card tf">
+<div class="verdict-label">TrueFoundry</div>
+<div class="verdict-name">Strongest Boundary Clarity</div>
+<div class="verdict-text">Best fit for teams that want the request path, policy path, and data boundary to stay inside customer infrastructure. The docs are unusually explicit about what is and is not on the hot path.</div>
+<div class="verdict-use"><strong>Well-suited for:</strong> Regulated teams, K8s-native platforms, and agentic workloads that need clear residency and governance boundaries.</div>
+</div>
+<div class="verdict-card litellm">
+<div class="verdict-label">LiteLLM</div>
+<div class="verdict-name">Fastest Identity Wiring</div>
+<div class="verdict-text">Strong choice when you want virtual keys, OIDC/JWT, and workload-identity-style patterns quickly without adopting a heavier gateway stack.</div>
+<div class="verdict-use"><strong>Well-suited for:</strong> Teams needing fast multi-identity rollout with budget-aware isolation.</div>
+</div>
+<div class="verdict-card kong">
+<div class="verdict-label">Kong AI Gateway</div>
+<div class="verdict-name">Broadest Native Gateway Surface</div>
+<div class="verdict-text">Still the most complete option for enterprises that specifically value native gateway plugins, especially documented mTLS and mature policy composition.</div>
+<div class="verdict-use"><strong>Well-suited for:</strong> Enterprises with Kong already in place or teams that require native gateway-layer mTLS.</div>
+</div>
+<div class="verdict-card portkey">
+<div class="verdict-label">Portkey</div>
+<div class="verdict-name">Turnkey Managed Governance</div>
+<div class="verdict-text">Compelling when teams want workspace controls, spend governance, and a managed gateway experience, with hybrid deployment as the step-up option.</div>
+<div class="verdict-use"><strong>Well-suited for:</strong> Product teams comfortable with a managed policy plane and focused on fast rollout.</div>
+</div>
+</div>
+<h3>Positioning Map — PEP Ownership vs. Documented AuthN/AuthZ Depth</h3>
+<div class="svg-wrap"><svg font-family="IBM Plex Sans,system-ui,sans-serif" viewbox="0 0 900 400" xmlns="http://www.w3.org/2000/svg"><rect fill="#121826" height="400" width="900"></rect><text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="11" text-anchor="middle" transform="rotate(-90,14,194)" x="14" y="194">AuthN / AuthZ Depth</text><line stroke="#1e2d45" stroke-width="1.2" x1="62" x2="62" y1="20" y2="330"></line><line stroke="#1e2d45" stroke-width="1.2" x1="62" x2="868" y1="330" y2="330"></line><line stroke="#1e2d45" stroke-dasharray="5,5" stroke-width="1" x1="62" x2="868" y1="175" y2="175"></line><line stroke="#1e2d45" stroke-dasharray="5,5" stroke-width="1" x1="465" x2="465" y1="20" y2="330"></line><text fill="#7a8899" font-family="IBM Plex Mono,monospace" font-size="12" text-anchor="middle" x="465" y="360">Vendor-Operated PEP -- Customer-Operated PEP</text><text fill="#222e42" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="263" y="38">VENDOR PEP / HIGH DEPTH</text><text fill="#222e42" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="666" y="38">CUSTOMER PEP / HIGH DEPTH</text><text fill="#222e42" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="263" y="324">VENDOR PEP / LOWER DEPTH</text><text fill="#222e42" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="666" y="324">CUSTOMER PEP / LOWER DEPTH</text><circle cx="200" cy="122" fill="#5a67ff" fill-opacity=".14" r="54" stroke="#5a67ff" stroke-width="1.8"></circle><text fill="#5a67ff" font-size="14" font-weight="700" text-anchor="middle" x="200" y="114">Portkey</text><text fill="#5a67ff" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="200" y="131">SaaS PEP · JWT auth</text><text fill="#5a67ff" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="200" y="145">OIDC/SAML SSO (CP)</text><circle cx="440" cy="134" fill="#00c2cb" fill-opacity=".14" r="52" stroke="#00c2cb" stroke-width="1.8"></circle><text fill="#00c2cb" font-size="14" font-weight="700" text-anchor="middle" x="440" y="126">LiteLLM</text><text fill="#00c2cb" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="440" y="143">Customer PEP · OIDC/JWT</text><text fill="#00c2cb" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="440" y="157">K8s ServiceAccount</text><circle cx="648" cy="66" fill="#00d27b" fill-opacity=".14" r="56" stroke="#00d27b" stroke-width="1.8"></circle><text fill="#00d27b" font-size="14" font-weight="700" text-anchor="middle" x="648" y="58">Kong</text><text fill="#00d27b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="648" y="75">Customer DP · native mTLS</text><text fill="#00d27b" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="648" y="89">OIDC (Ent) · Vault refs</text><circle cx="778" cy="144" fill="#ff5533" fill-opacity=".14" r="52" stroke="#ff5533" stroke-width="1.8"></circle><text fill="#ff5533" font-size="14" font-weight="700" text-anchor="middle" x="778" y="136">TrueFoundry</text><text fill="#ff5533" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="778" y="153">In-cluster K8s PEP</text><text fill="#ff5533" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="778" y="167">RBAC · local PDP</text></svg></div>
+<p style="font-size:.78rem;color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace;margin-top:-.4rem;">Within the four vendors evaluated here, Kong is the only one with documented native gateway-layer mTLS; others rely on ingress or service mesh. Portkey is placed above midline here for its documented JWT gateway auth, OIDC/SAML control-plane SSO, secret-reference support, and hybrid VPC option. Bubble positions are editorial assessments — March 2026.</p>
+<hr/>
+<!-- §8 REFERENCES -->
+<h2>§8 — References</h2>
+<ol class="ref-list"><li><a href="https://docs.litellm.ai/docs/proxy/virtual_keys" target="_blank">LiteLLM — Virtual Keys</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/token_auth" target="_blank">LiteLLM — OIDC / JWT Auth (team_alias_jwt_field, multi-provider JWKs)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/oauth2" target="_blank">LiteLLM — OAuth2 Auth (Enterprise)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/custom_auth" target="_blank">LiteLLM — Custom Auth Hook (UserAPIKeyAuth fields)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/users" target="_blank">LiteLLM — Budgets &amp; Rate Limits (team_id, max_budget)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings" target="_blank">LiteLLM — Router Settings for Keys and Teams</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/architecture" target="_blank">LiteLLM — Proxy Architecture (Life of a Request, PDP sequence)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">LiteLLM — Logging (x-litellm-call-id)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Settings Reference (os.environ/ pattern)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/access_groups" target="_blank">LiteLLM — Access Groups (MCP + agent bundling)</a></li>
+<li><a href="https://docs.litellm.ai/docs/proxy/ai_hub" target="_blank">LiteLLM — AI Hub</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/" target="_blank">Kong — AI Gateway Landing Page</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/ai-audit-log-reference/" target="_blank">Kong — AI Audit Log Reference (consumer label v3.11+)</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-proxy-advanced/" target="_blank">Kong — AI Proxy Advanced Plugin ({vault://...} syntax)</a></li>
+<li><a href="https://developer.konghq.com/gateway/entities/vault/" target="_blank">Kong — Vaults Entity (referenceable secret fields incl. AI Proxy / AI Proxy Advanced)</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-rate-limiting-advanced/examples/llm-provider-rate-limiting/" target="_blank">Kong — AI Rate Limiting Advanced Example (llm_providers, limit[], window_size[])</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-prompt-guard/" target="_blank">Kong — AI Prompt Guard Plugin (deny_patterns best-practices)</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-semantic-prompt-guard/" target="_blank">Kong — AI Semantic Prompt Guard Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-sanitizer/" target="_blank">Kong — AI PII Sanitizer Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-aws-guardrails/" target="_blank">Kong — AI AWS Guardrails Plugin</a></li>
+<li><a href="https://developer.konghq.com/plugins/ai-mcp-proxy/" target="_blank">Kong — AI MCP Proxy Plugin</a></li>
+<li><a href="https://developer.konghq.com/mcp/govern-mcp-traffic/" target="_blank">Kong — Govern MCP Traffic</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/monitor-ai-llm-metrics/" target="_blank">Kong — Monitor AI LLM Metrics (consumer label v3.11+)</a></li>
+<li><a href="https://developer.konghq.com/ai-gateway/llm-open-telemetry/" target="_blank">Kong — Gen AI OTel Attributes Reference</a></li>
+<li><a href="https://developer.konghq.com/plugins/compatibility/" target="_blank">Kong — Plugin Compatibility Reference</a></li>
+<li><a href="https://portkey.ai/docs/api-reference/inference-api/authentication" target="_blank">Portkey — Authentication (API key auth; JWT-based authentication)</a></li>
+<li><a href="https://portkey.ai/docs/product/enterprise-offering/org-management/sso" target="_blank">Portkey — SSO (OIDC + SAML 2.0 for control-plane login)</a></li>
+<li><a href="https://portkey.ai/docs/product/enterprise-offering/secret-references" target="_blank">Portkey — Secret References (external secret-manager backed credential retrieval)</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway/configs" target="_blank">Portkey — Configs (default config on API key; x-portkey-config header)</a></li>
+<li><a href="https://portkey.ai/docs/product/guardrails/creating-raw-guardrails-in-json" target="_blank">Portkey — Creating Raw Guardrails (before_request_hooks field names)</a></li>
+<li><a href="https://portkey.ai/docs/product/guardrails/pii-redaction" target="_blank">Portkey — PII Redaction</a></li>
+<li><a href="https://portkey.ai/docs/integrations/guardrails/bring-your-own-guardrails" target="_blank">Portkey — Bring Your Own Guardrails (webhook contract)</a></li>
+<li><a href="https://portkey.ai/docs/product/observability/logs" target="_blank">Portkey — Logs (gateway state per request)</a></li>
+<li><a href="https://portkey.ai/docs/product/observability/traces" target="_blank">Portkey — Tracing (OTel, W3C trace context)</a></li>
+<li><a href="https://portkey.ai/docs/enterprise/hybrid2" target="_blank">Portkey — Deploy in Your Infrastructure (Hybrid VPC; PEP/management plane boundaries)</a></li>
+<li><a href="https://portkey.ai/docs/product/enterprise-offering/budget-policies" target="_blank">Portkey — Usage &amp; Rate Limit Policies (Enterprise; group-by dimensions)</a></li>
+<li><a href="https://portkey.ai/docs/product/administration/enforce-workspace-budget-limts-and-rate-limits" target="_blank">Portkey — Enforce Workspace Budget &amp; Rate Limits (SDK field names)</a></li>
+<li><a href="https://portkey.ai/docs/product/ai-gateway/conditional-routing" target="_blank">Portkey — Conditional Routing (params/metadata operators)</a></li>
+<li><a href="https://www.truefoundry.com/docs/generating-truefoundry-api-keys" target="_blank">TrueFoundry — Generating API Keys</a></li>
+<li><a href="https://www.truefoundry.com/docs/collaboration-and-access-control" target="_blank">TrueFoundry — Collaboration and Access Control</a></li>
+<li><a href="https://www.truefoundry.com/docs/key-concepts" target="_blank">TrueFoundry — Key Concepts</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/intro-to-llm-gateway" target="_blank">TrueFoundry — AI Gateway Overview</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/quick-start" target="_blank">TrueFoundry — AI Gateway Quick Start</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry — Guardrails Overview (four-hook model; MCP pre/post-tool)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-configuration" target="_blank">TrueFoundry — Guardrails Configuration (subjects; when; first-match semantics)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/ratelimiting" target="_blank">TrueFoundry — Rate Limiting (rate_limit_applies_per: model, metadata.project_id)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/headers" target="_blank">TrueFoundry — Headers (X-TFY-METADATA; x-tfy-applied-configurations; Server-Timing)</a></li>
+<li><a href="https://www.truefoundry.com/docs/manage-secrets" target="_blank">TrueFoundry — Secret Management (secret groups; FQNs)</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry — Gateway Plane Architecture (local PDP; no external dep in routing hot path; caching exception)</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/deploy-gateway-plane" target="_blank">TrueFoundry — Deploy Gateway Plane</a></li>
+<li><a href="https://www.truefoundry.com/docs/platform/architecture" target="_blank">TrueFoundry — Platform Architecture (globally hosted services explicitly identified)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/export-opentelemetry-data" target="_blank">TrueFoundry — Export OpenTelemetry Data</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/tfy-pii" target="_blank">TrueFoundry — PII/PHI Detection</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/secrets-detection" target="_blank">TrueFoundry — Secrets Detection (zero external dependencies)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/authentication" target="_blank">TrueFoundry — AI Gateway Authentication (PAT / VAT bearer-token auth)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/gateway-access-control" target="_blank">TrueFoundry — Gateway Access Control (provider-account permissions)</a></li>
+<li><a href="https://www.truefoundry.com/docs/sso" target="_blank">TrueFoundry — SSO Overview (OIDC / SAML + SCIM for SAML setups)</a></li>
+<li><a href="https://www.truefoundry.com/docs/ai-gateway/request-logging" target="_blank">TrueFoundry — Request Logging (tracing-backed request logs)</a></li></ol>
+<hr/>
+<p style="font-size:.74rem;color:var(--muted);text-align:center;font-family:'IBM Plex Mono',monospace;line-height:1.8;">
+  AI Gateway Series · Blog 15 of 15  ·  March 2026  ·  All vendor names are trademarks of their respective owners.<br/>
+  Configuration field names sourced from published vendor documentation; validate against your deployed version before use.<br/>
+  Editorial verdicts represent the authors' judgment and are not vendor endorsements or guarantees.
+</p>
+<script>
+(function(){
+  function flashCopied(btn){btn.textContent='✓ copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='copy';btn.classList.remove('copied');},1800);}
+  function fallbackCopy(text){const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:-9999px;left:-9999px';document.body.appendChild(ta);ta.focus();ta.select();let ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(ta);return ok;}
+  async function copyText(text){if(window.isSecureContext&&navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(text);return true;}catch(e){}}return fallbackCopy(text);}
+  function attach(btn,pre){if(btn.dataset.copyBound==='1')return;btn.dataset.copyBound='1';btn.type='button';btn.addEventListener('click',async()=>{const ok=await copyText(pre.innerText);if(ok)flashCopied(btn);else{btn.textContent='copy failed';setTimeout(()=>{btn.textContent='copy';},1800);}});}
+  document.querySelectorAll('pre').forEach(pre=>{
+    let wrap=pre.parentElement&&pre.parentElement.classList.contains('code-wrap')?pre.parentElement:null;
+    if(!wrap){wrap=document.createElement('div');wrap.className='code-wrap';pre.parentNode.insertBefore(wrap,pre);wrap.appendChild(pre);}
+    let btn=wrap.querySelector('.copy-btn');
+    if(!btn){btn=document.createElement('button');btn.className='copy-btn';btn.textContent='copy';wrap.appendChild(btn);}
+    attach(btn,pre);
+  });
+})();
+</script>
+</body>
+</html>
