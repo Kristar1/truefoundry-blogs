@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="Azure regions and sovereign clouds (Government, China-21Vianet) and the federated self-hosted gateway vs TrueFoundry's SaaS / VPC / fully self-hosted / air-gapped installation paths — with five concrete deployment scenarios where topology decides the program."/>
+<title>Deployment, Data Residency &amp; Sovereignty for AI Platforms: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement I · Foundations</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 3 of 12</span>
+</div>
+
+<h1>Deployment, Data Residency &amp; Sovereignty for AI Platforms: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 30 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Platform Architecture · Compliance</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for the self-hosted gateway overview (including the documented "fail static" design and the heartbeat / config-check cadence), the self-hosted gateway settings reference (sovereign-cloud configuration), the gateways comparison table (rate-limit synchronization caveat), the workspace gateway VNet documentation, the EU Data Boundary commitment, Azure Government, Azure China-21Vianet, and Azure Stack HCI. The TrueFoundry side is grounded in the deployment-overview page, the install-truefoundry guide, the forward-proxy documentation, and the platform-architecture page. Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog assumes the architectural posture established in <a href="01-truefoundry-vs-azure-architecture-control-planes-runtime-boundaries.html">Blog 1</a> and the identity model of <a href="02-truefoundry-vs-azure-identity-multi-tenancy-zero-trust.html">Blog 2</a>.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Deployment topology is not a feature dimension. It is the structural property that determines what regulatory regimes the AI platform can be operated under and how the platform behaves when external network paths fail. The two products optimize for different deployment shapes. <strong>Azure optimizes for breadth of regulated regions through sovereign clouds</strong> — Government, China-21Vianet, and the EU Data Boundary commitment are first-class. <strong>TrueFoundry optimizes for depth of customer-controlled installation</strong> — fully self-hosted with a documented air-gapped install path that requires no external runtime dependency. Both are legitimate architectures. The question for any specific workload is which regulatory shape and which network-availability assumption fits.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A regulated workload that becomes a deployment question</div>
+<p>At a regional German hospital network, a radiology AI program is six weeks from go-live. The workload reads de-identified DICOM imaging, runs inference with a fine-tuned vision-language model, and produces structured findings that flow back into the radiology information system. Under DSGVO and the institution's interpretation of the BSI's KRITIS guidelines for healthcare-critical infrastructure, the data must remain in Germany, must not transit any cloud region outside the EU, and — per a stricter reading the institution's compliance team adopted after the 2024 KRITIS amendments — must operate without outbound internet egress on the inference path. The hospital's existing Kubernetes estate runs in two on-premises datacenters. The compliance team's verdict is unambiguous: <em>the AI gateway must run inside our existing clusters, with no runtime dependency on any vendor-operated cloud.</em></p>
+<p>The platform team brings two candidates to the architecture review. The first is Azure: APIM with a self-hosted gateway deployed into the hospital's K8s clusters, paired with Azure OpenAI in Sweden Central (within the EU Data Boundary), plus Azure AI Content Safety and Application Insights. The architects walk the team through the design carefully. The self-hosted gateway, they explain, is a Linux-based Docker container that runs inside the customer's K8s; it pulls configuration from the cloud APIM service every ten seconds and reports a heartbeat every minute; it is designed to <em>fail static</em>, continuing to serve traffic with the last-known-good configuration when connectivity to Azure is interrupted. The compliance team's question lands sharp: <em>"so the gateway is in our cluster, but it still needs to call Azure?"</em> The answer is yes — every ten seconds for config, every minute for health, plus telemetry to Azure Monitor if enabled. The architects offer the configuration-backup option, which lets a self-hosted gateway resume after a restart from a persistent volume containing the last-downloaded config — but the steady-state design assumes connectivity. For a workload that must operate <em>without outbound internet on the data path</em>, the answer is qualified at best.</p>
+<p>The second candidate is TrueFoundry, fully self-hosted. The architects walk the same review: the control plane installs on the hospital's K8s, the gateway plane installs on the same clusters, NATS handles config sync inside the cluster, all four planes run inside the hospital's network boundary. The compliance team asks the analogous question: <em>"and what does it need to call out to?"</em> The answer is: in the air-gapped install path, nothing on the data path. The platform documents a forward-proxy pattern (a Squid configuration is included as the canonical example) for the package-pull and update channels, but the inference request path itself — gateway pod receiving a request, validating identity, applying guardrails, forwarding to the locally-deployed inference service, returning a response — has no outbound dependency. The compliance team's eyes narrow only briefly. The Azure architects, to their credit, do not push back. The deployment-topology axis decided the architecture review.</p>
+<p>The hospital chooses TrueFoundry. The Azure proposal was technically credible; a self-hosted gateway with configuration backup is a real and supported deployment shape. But "fail static" is a degraded-mode property, not a steady-state operating posture. For a workload whose compliance interpretation requires <em>no outbound traffic</em> as the steady state, the architectures simply optimize for different things.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Azure deployment is region-anchored and cloud-federated.</strong> Sovereign clouds (Government, China-21Vianet) are first-class but distinct Azure clouds with separate Entra tenants and partial service catalogs. The EU Data Boundary commits to keeping certain customer data inside EU/EFTA but is a residency commitment, not a network-topology guarantee. The self-hosted gateway runs in customer K8s with documented "fail static" behavior — but pulls config from the cloud APIM service every 10 seconds and heartbeats every minute as the steady-state design.</li>
+    <li><strong>TrueFoundry deployment is topology-flexible.</strong> Four documented paths: SaaS, customer cloud (split: control plane SaaS, gateway+compute on customer K8s), fully self-hosted (all four planes on customer infrastructure), and air-gapped install with documented forward-proxy patterns.</li>
+    <li><strong>The decisive question is rarely "which regions are supported."</strong> It is "what is the smallest set of network egress and external dependencies required for the platform to run?" Different answers for different regulatory shapes.</li>
+    <li><strong>Honest framing.</strong> The Azure self-hosted gateway is a credible solution for hybrid scenarios. The architectural fact that matters is its <em>federation model</em> with the cloud APIM service. For workloads that accept that federation, it works well; for workloads whose compliance interpretation rejects steady-state outbound traffic, it does not.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when sovereign-cloud reach is a hard requirement (US Federal under FedRAMP High / DoD IL5, China onshore under 21Vianet), when the rest of the workload already runs on Azure, or when the EU Data Boundary commitment is a sufficient residency posture for the regulatory regime.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when the deployment must be inside customer infrastructure with a documented dependency surface — VPC, on-prem K8s, or air-gapped — or when the org's compliance posture prefers physical control over the runtime to vendor-issued residency commitments. Especially decisive when forward-proxy egress patterns are part of the security architecture.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Why deployment is structural</div>
+    <div class="qp-desc">Deployment topology is the foundations dimension that is hardest to refactor after the fact. The right time to choose is before the first model is live; getting it wrong blocks the program at compliance review.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Why deployment is Foundations' third axis</a></li>
+    <li><a href="#azure">§2 — Azure: regions, sovereign clouds, and the federated self-hosted gateway</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: SaaS, VPC, fully self-hosted, air-gapped</a></li>
+    <li><a href="#scenarios">§4 — Five deployment scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — Why deployment is Foundations' third axis</h2>
+
+<p class="intro-lead">Deployment topology determines what compliance regimes the platform can be operated under, what failure modes are routine versus exceptional, and how the platform behaves when external network paths are degraded. It is the foundations dimension that is hardest to refactor after the fact: changing region in Azure can require redeploying every dependent service; moving from SaaS to self-hosted in either platform requires re-establishing identity, secrets, and network paths. The right time to choose is before the first model is live.</p>
+
+<p>The most common framing mistake is to compare deployment by counting regions. Azure has dozens; TrueFoundry runs on customer K8s anywhere. That checkmark comparison is correct but misses the operational point. The relevant question is what each platform requires from the network on the steady-state request path, what external services it depends on at runtime, and what the residency commitment actually means under realistic regulatory scrutiny. Those answers determine whether the platform clears compliance review for a given workload — not the count of available regions.</p>
+
+<p>There are three sub-questions that compose the deployment axis, and most evaluations conflate them:</p>
+
+<ul>
+<li><strong>Where can the gateway and runtime physically execute?</strong> A region in a managed cloud, a customer-operated Kubernetes cluster, or both?</li>
+<li><strong>What external services does the runtime depend on at request time?</strong> A vendor-operated control plane reachable over the internet, a managed identity service in the same cloud, or only services inside the customer's own boundary?</li>
+<li><strong>What is the residency commitment, and is it a vendor commitment or a structural property?</strong> A vendor commitment ("we will not store this data outside region X") is a contract; a structural property ("the runtime is physically inside region X with no path out") is enforced by the architecture itself. Different regulatory regimes accept these differently.</li>
+</ul>
+
+<p>The most consequential of the three is the second. A customer-K8s deployment that depends on vendor-cloud reachability for steady-state operation is structurally different from a customer-K8s deployment that runs without that dependency, even if both are described as "self-hosted" in marketing material. The Azure self-hosted gateway is the former; it is well-engineered and supports a documented "fail static" mode, but the steady-state design assumes connectivity to the cloud APIM service every 10 seconds for configuration updates and every minute for heartbeat reporting. TrueFoundry's fully self-hosted install is the latter; the control plane runs inside the customer's cluster, NATS handles config distribution inside the cluster, and the inference path has no external dependency.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>"Fail static" is a real and useful property. A self-hosted gateway that survives a 30-minute Azure connectivity blip without dropping requests is a credible engineering choice — and it is what most hybrid workloads actually need. The argument is not that Azure's self-hosted gateway is poorly designed; it is that <em>federation with a cloud control plane is its steady-state design</em>. For a workload whose compliance interpretation accepts that federation, the design is appropriate. For a workload whose interpretation requires no outbound traffic on the data path as the routine state, federation is the wrong shape regardless of how well it degrades.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks the Azure deployment surface — regions, sovereign clouds, the EU Data Boundary, and the self-hosted gateway's federation model — with the documented connectivity cadence and a working Helm composition for restricted-network deployment. §3 walks the TrueFoundry deployment surface — SaaS, customer-cloud-split, fully self-hosted, air-gapped — with a working install pattern that includes the forward-proxy configuration. §4 is the heart of the blog: five concrete deployment scenarios shown side by side, including the radiology workload from the opening, a US Federal classified workload, a multi-region SaaS firm, a Chinese onshore deployment, and a multi-cloud financial-services posture. §5 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: regions, sovereign clouds, and the federated self-hosted gateway</span></div>
+
+<p>Azure's deployment surface for AI is a layered set of options. Each layer has documented strengths and documented limitations. Understanding the composition requires walking each layer in turn — region selection, sovereign cloud reach, the EU Data Boundary commitment, the gateway flavors, and the federation model that ties self-hosted gateways back to the cloud APIM service.</p>
+
+<h3>Layer 1 — Azure regions and AI service availability</h3>
+<p>Azure is available in dozens of regions globally, with the standard option of choosing a region per resource. For AI workloads, the practical concern is that not every region has Azure OpenAI capacity, not every region has the same model availability, and quota allocation is region-specific. A team that wants <code>gpt-4o</code> at production capacity in Switzerland North needs to verify both the model availability for that region and the deployment-type tier (Standard, Provisioned Throughput, Global Standard, or Data Zone Standard) available there. AI Foundry's catalog is increasingly available in more regions but the specific GA status varies by feature. None of this is unusual for a managed cloud; the discipline it requires is part of the operating model.</p>
+
+<p>For multi-region production workloads, APIM's <a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-deploy-multi-region" target="_blank">multi-region deployment</a> in the Premium tier replicates the gateway across regions with a shared configuration. Front Door or Application Gateway in front of multiple APIM instances handles geo-routing. The pattern is mature and widely deployed.</p>
+
+<h3>Layer 2 — The EU Data Boundary commitment</h3>
+<p>The <a href="https://learn.microsoft.com/en-us/privacy/eudb/eu-data-boundary-learn" target="_blank">EU Data Boundary</a> is Microsoft's commitment that customer data and pseudonymized personal data for in-scope services remain within EU/EFTA. For GDPR programs that rely on Microsoft as a sub-processor, this is a meaningful contractual commitment with documented service scope. The boundary applies to a specific list of services (Azure core, Microsoft 365, Dynamics 365, Power Platform) with periodic updates as new services are added.</p>
+
+<div class="callout info">
+  <div class="callout-title">The shape of the commitment</div>
+  <p>The EU Data Boundary is a <strong>residency commitment</strong>, not a network-topology guarantee. Microsoft commits that the relevant data does not leave the boundary; the customer cannot, by inspecting the architecture from the outside, prove that no data ever crosses. For most regulatory regimes this is sufficient — the contractual commitment plus Microsoft's audit posture satisfies the auditor. For regimes that require structural proof rather than commitment, this is the layer where the difference shows up.</p>
+</div>
+
+<h3>Layer 3 — Sovereign clouds: Azure Government, Azure China-21Vianet</h3>
+<p>For US federal workloads, <a href="https://learn.microsoft.com/en-us/azure/azure-government/" target="_blank">Azure Government</a> is a separate, isolated Azure cloud with FedRAMP High and DoD IL5 attestations. For China onshore workloads, <a href="https://learn.microsoft.com/en-us/azure/china/" target="_blank">Azure China-21Vianet</a> is a distinct Azure cloud operated by 21Vianet under Chinese regulation. Both are mature, but both are <em>separate Azure clouds</em> with the consequences this implies:</p>
+
+<ul>
+<li><strong>Separate Entra tenants.</strong> A workload that spans a sovereign cloud and the commercial cloud cannot share an Entra tenant; identity must be federated explicitly.</li>
+<li><strong>Separate ARM endpoints.</strong> The management plane URLs differ; existing tooling that assumes <code>management.azure.com</code> needs configuration to point at the sovereign endpoint.</li>
+<li><strong>Partial service catalogs.</strong> Some Azure services are not yet in Azure Government; AI service availability lags the commercial cloud, sometimes by several quarters. The team must verify the specific AI services they need are available before committing.</li>
+<li><strong>Separate operational tooling.</strong> Azure portals, CLI configurations, and many third-party tools require sovereign-cloud awareness; a workload that spans both has two operational surfaces to maintain.</li>
+</ul>
+
+<h3>Layer 4 — APIM gateway flavors and the federation model</h3>
+<p>The <a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-gateways-overview" target="_blank">APIM gateways comparison</a> documents five flavors. For deployment-topology purposes, the two that matter are the workspace gateway (region-anchored, Azure-managed) and the self-hosted gateway (customer-managed, federated). Architecturally, the self-hosted gateway is the most consequential because it is the path teams reach for when they need to run gateway logic inside their own infrastructure.</p>
+
+<p>The self-hosted gateway is a Linux-based Docker container that the customer deploys to Kubernetes (AKS, Azure Arc-enabled K8s, or any K8s). Each self-hosted gateway is associated with a Gateway resource in cloud APIM and federated with the cloud control plane. The connectivity cadence is documented:</p>
+
+<ul>
+<li><strong>Heartbeat every minute</strong> from the gateway to the cloud APIM management plane.</li>
+<li><strong>Configuration check every 10 seconds</strong>, applying any updates that have been published.</li>
+<li><strong>Telemetry to Azure Monitor / Application Insights</strong> if configured, with delivery semantics documented as best-effort (Application Insights uses an in-memory buffer without delivery guarantees per Microsoft's gateway comparison page).</li>
+</ul>
+
+<p>When connectivity to Azure is lost, the gateway is designed to <strong>fail static</strong>: it cannot receive new configuration updates, report its status, or upload telemetry, but it continues serving traffic with the last known-good configuration. With the configuration-backup option enabled, the gateway also persists the last-downloaded configuration to a volume, so it can resume after a restart even without connectivity. This is genuinely useful — a 30-minute Azure connectivity blip does not cause a customer outage.</p>
+
+<div class="callout warn">
+  <div class="callout-title">A specific architectural caveat — rate-limit synchronization</div>
+  <p>Per Microsoft's <a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-gateways-overview" target="_blank">gateway comparison documentation</a>: rate-limit counts in a self-hosted gateway can be synchronized locally among gateway instances inside one cluster (via Helm chart configuration), but <em>they do not synchronize with other gateway resources configured in the same APIM instance, including the managed gateway in the cloud</em>. For a workload that splits traffic across the cloud managed gateway and a self-hosted gateway in customer K8s, the rate-limit counters live in two separate worlds. This is not a defect — it is a documented architectural property — but it shapes how rate-limit policies must be designed in hybrid topologies.</p>
+</div>
+
+<h3>The Azure deployment topology diagram</h3>
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure deployment topology with self-hosted gateway federation">
+<defs>
+  <linearGradient id="bgAzD3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="azD3sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAzD3" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+  <marker id="arAzD3Warn" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#F4C04F"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgAzD3)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure deployment topology — three shapes, with federation cadence</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">The self-hosted gateway is in the customer cluster — but federated with cloud APIM via the documented connectivity cadence below.</text>
+
+<!-- Shape A: Managed APIM in commercial cloud -->
+<rect x="40" y="100" width="380" height="200" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azD3sh)"/>
+<text x="60" y="126" fill="#7CC2FF" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">A — Azure commercial cloud (managed)</text>
+<text x="60" y="150" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">APIM service + workspace gateways + AOAI</text>
+<text x="60" y="172" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Managed by Azure in chosen region(s)</text>
+<text x="60" y="196" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ EU Data Boundary commitment applies</text>
+<text x="60" y="214" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Multi-region in Premium tier</text>
+<text x="60" y="232" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Workspace gateway region-locked</text>
+<text x="60" y="266" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ identity = Entra commercial tenant</text>
+<text x="60" y="282" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ workspace gateway: no MI auth (Blog 1)</text>
+
+<!-- Shape B: Sovereign cloud -->
+<rect x="440" y="100" width="380" height="200" rx="14" fill="#0d1830" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azD3sh)"/>
+<text x="460" y="126" fill="#7CC2FF" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">B — Sovereign cloud</text>
+<text x="460" y="150" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Azure Government / Azure China-21Vianet</text>
+<text x="460" y="172" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Distinct Azure cloud entirely</text>
+<text x="460" y="196" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ FedRAMP High / DoD IL5 (Government)</text>
+<text x="460" y="214" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ China onshore (21Vianet)</text>
+<text x="460" y="232" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Distinct ARM endpoints + tenant</text>
+<text x="460" y="266" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ AI service availability lags commercial</text>
+<text x="460" y="282" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ separate ops surface to maintain</text>
+
+<!-- Shape C: Self-hosted gateway federated -->
+<rect x="840" y="100" width="400" height="200" rx="14" fill="#0a1f2e" stroke="#7CC2FF" stroke-width="2" filter="url(#azD3sh)"/>
+<text x="860" y="126" fill="#7CC2FF" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">C — Self-hosted gateway (federated)</text>
+<text x="860" y="150" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">APIM container in customer K8s</text>
+<text x="860" y="172" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">AKS · Azure Arc · any K8s</text>
+<text x="860" y="196" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Linux Docker container</text>
+<text x="860" y="214" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ "Fail static" with config backup</text>
+<text x="860" y="232" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Available in Premium / Developer</text>
+<text x="860" y="266" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ rate-limits don't sync to cloud gateway</text>
+<text x="860" y="282" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ requires path to cloud APIM (see below)</text>
+
+<!-- The federation cadence panel -->
+<rect x="40" y="340" width="1200" height="220" rx="14" fill="#0a1220" stroke="#1e3a5f" stroke-width="1.6"/>
+<text x="60" y="368" fill="#60a5fa" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">FEDERATION CADENCE — what self-hosted gateway requires from Azure</text>
+
+<rect x="60" y="384" width="240" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.4"/>
+<text x="180" y="408" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Heartbeat</text>
+<text x="180" y="426" text-anchor="middle" fill="#7CC2FF" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">every 1 min</text>
+<text x="180" y="444" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">→ APIM management plane</text>
+
+<rect x="320" y="384" width="240" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.4"/>
+<text x="440" y="408" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Config check</text>
+<text x="440" y="426" text-anchor="middle" fill="#7CC2FF" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">every 10 sec</text>
+<text x="440" y="444" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">→ APIM config endpoint</text>
+
+<rect x="580" y="384" width="240" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.4"/>
+<text x="700" y="408" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Telemetry</text>
+<text x="700" y="426" text-anchor="middle" fill="#7CC2FF" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">if enabled</text>
+<text x="700" y="444" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">→ Azure Monitor / App Insights</text>
+
+<rect x="840" y="384" width="380" height="80" rx="10" fill="#1a1200" stroke="#F4C04F" stroke-width="1.6"/>
+<text x="1030" y="408" text-anchor="middle" fill="#F4C04F" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">All over TCP/IP port 443</text>
+<text x="1030" y="426" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Sans, sans-serif">Outbound from cluster to Azure</text>
+<text x="1030" y="444" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Sans, sans-serif">required as steady state</text>
+
+<text x="60" y="494" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif"><tspan fill="#F4C04F" font-weight="700">Fail-static behavior:</tspan> when connectivity is lost, gateway continues serving with last-known-good config.</text>
+<text x="60" y="514" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">With configuration-backup volume, gateway can also resume after restart from cached config.</text>
+<text x="60" y="534" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">This is a degraded-mode property. The steady-state design assumes connectivity. For workloads where steady-state must be air-gapped, this is the wrong shape.</text>
+</svg>
+</div>
+<div class="img-caption">Azure deployment shapes for AI workloads, with the self-hosted gateway's federation cadence shown explicitly. Steady-state outbound traffic to Azure is the design assumption; "fail static" is the degraded-mode property.</div>
+
+<h3>What the operator writes — Helm install with restricted-network configuration</h3>
+
+<p>The shape below shows a self-hosted gateway deployed to a K8s cluster behind a corporate forward proxy, with configuration backup enabled and Azure Monitor disabled (the customer can choose to enable telemetry or to suppress it for residency reasons):</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative Helm values for self-hosted APIM gateway in restricted-network K8s
+# Source: Microsoft Learn — self-hosted gateway settings reference + Helm chart docs
+config:
+  service:
+    endpoint: "contoso-apim.configuration.azure-api.net"
+  auth:
+    # Token issued from cloud APIM, rotated periodically
+    key: "GatewayKey contoso-prod-gw&xxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Forward proxy config — required when cluster has no direct internet egress
+env:
+  - name: HTTPS_PROXY
+    value: "http://proxy.internal.contoso-hospital.de:3128"
+  - name: NO_PROXY
+    value: ".internal.contoso-hospital.de,localhost,.svc.cluster.local"
+
+# Configuration backup — gateway persists last-downloaded config to PVC
+configurationBackup:
+  enabled: true
+  storageClass: "hospital-rbd"
+  size: 50Mi
+
+# Telemetry disabled for residency reasons (no outbound to Azure Monitor)
+telemetry:
+  azureMonitor:
+    enabled: false
+  applicationInsights:
+    enabled: false
+
+# Local Syslog instead — telemetry stays inside the hospital network
+extraEnv:
+  - name: telemetry.logs.std
+    value: "text"
+  - name: telemetry.logs.local.localsyslog.endpoint
+    value: "/dev/log"
+
+resources:
+  requests: { cpu: 500m, memory: 512Mi }
+  limits:   { cpu: 2000m, memory: 2Gi }
+
+replicaCount: 3</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative composition based on the <a href="https://learn.microsoft.com/en-us/azure/api-management/self-hosted-gateway-overview" target="_blank">self-hosted gateway overview</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/self-hosted-gateway-settings-reference" target="_blank">settings reference</a>, and <a href="https://learn.microsoft.com/en-us/azure/api-management/how-to-deploy-self-hosted-gateway-kubernetes-helm" target="_blank">Helm deployment guide</a>. The cloud APIM endpoint must remain reachable for steady-state config sync; the configuration-backup volume preserves last-known-good config for restart after disconnection. Local syslog routing keeps telemetry inside the cluster.</div>
+
+<p>Read this Helm composition as a <em>federation contract</em>. The gateway pod itself is in the hospital's cluster, but its operating model is "subscriber to cloud APIM." The forward-proxy entry, the configuration-backup volume, and the telemetry suppression are all operator choices to <em>contain</em> the federation — to limit what the federation costs in egress and what it leaks in telemetry — but the federation itself is structural. For the radiology workload from the opening scenario, this is the architectural fact that ended the Azure proposal: even a well-configured self-hosted gateway is a federated component, not a self-contained one.</p>
+
+<div class="callout info">
+  <div class="callout-title">When this is the right shape</div>
+  <p>For most hybrid AI workloads — a multi-cloud financial-services firm, a retail company that wants gateway logic close to backends in multiple regions, a SaaS company that needs to operate gateways inside customer VPCs — the self-hosted gateway's federation model is exactly right. The customer gets gateway execution close to the workload, with one cloud APIM service as the management surface. "Fail static" handles the routine connectivity blips. Configuration backup handles restart-after-disconnection. The architecture is genuinely well-engineered for the scenarios it targets. The compliance-shape question is what determines whether this is one of those scenarios.</p>
+</div>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: SaaS, customer cloud, fully self-hosted, air-gapped</span></div>
+
+<p>TrueFoundry's <a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">deployment overview</a> documents four installation paths arranged along an axis of customer control. Each path makes different trade-offs between time-to-value and the dependency surface on TrueFoundry's cloud. The differentiator that matters most for regulated workloads is the rightmost path on that axis: a fully self-hosted control plane with documented air-gapped operation.</p>
+
+<h3>The four paths</h3>
+
+<p>The paths share the four-plane architecture from <a href="01-truefoundry-vs-azure-architecture-control-planes-runtime-boundaries.html">Blog 1</a> — control, gateway, compute, data — and differ in which planes execute where:</p>
+
+<ol>
+<li><strong>SaaS.</strong> All four planes operated by TrueFoundry. The customer creates an account, points clients at the SaaS endpoint, and starts deploying. This is the fastest path to first model call. Customer data flows through TrueFoundry's cloud; the platform is appropriate for non-regulated workloads, internal tools, and proof-of-concept work.</li>
+<li><strong>Customer cloud (split).</strong> Control plane in TrueFoundry SaaS; gateway plane and compute plane installed on customer Kubernetes clusters. Application traffic — user prompts, model responses, tool calls — stays in customer infrastructure; only configuration metadata and aggregated telemetry flow back to the SaaS control plane. This is the most common enterprise install.</li>
+<li><strong>Fully self-hosted.</strong> All four planes installed on customer infrastructure. The control plane runs in the customer's K8s, the gateway and compute planes alongside it (or on adjacent clusters), the data plane points at customer-operated databases. TrueFoundry provides install bundles, Helm charts, and operational runbooks; the customer operates the platform end-to-end, with TrueFoundry providing support and updates through documented channels.</li>
+<li><strong>Air-gapped.</strong> Fully self-hosted with explicit forward-proxy configuration and a documented dependency surface for package pulls, image registry access, and update channels. The platform supports operation behind a corporate proxy with documented Squid configuration as a canonical example. The inference request path itself has no outbound dependency.</li>
+</ol>
+
+<h3>The architectural property that distinguishes "fully self-hosted" from "self-hosted gateway"</h3>
+
+<p>This is worth being precise about, because the marketing terminology overlaps and the architectural fact is what matters for compliance review. Both products advertise customer-Kubernetes deployment. The structural difference is which planes live inside the customer boundary:</p>
+
+<ul>
+<li>In Azure's self-hosted gateway model, the <em>gateway plane</em> (one of the four planes from Blog 1's framing) runs in the customer cluster. The control plane — the management API that holds configuration, the workspace metadata, the policy definitions — remains in cloud APIM. The gateway federates with the cloud control plane via the documented connectivity cadence.</li>
+<li>In TrueFoundry's fully self-hosted install, <em>all four planes</em> run inside the customer's infrastructure. The control plane is part of the install bundle. Configuration is held in a customer-operated database, distributed via NATS inside the cluster, and consumed by the gateway pods on the same cluster. There is no federation contract with TrueFoundry's cloud; the platform runs as a self-contained system.</li>
+</ul>
+
+<p>The implication for the radiology scenario is direct: in TrueFoundry's air-gapped install, the inference path enters the gateway pod, validates JWT against cached SSO public keys (Blog 2), runs guardrails, forwards to a self-hosted vLLM service in the same cluster, and returns. No external service is called. The compliance team's "what does it need to call out to" question has a clean answer: nothing on the data path.</p>
+
+<h3>What the operator writes — air-gapped install with forward proxy</h3>
+
+<p>The shape below shows a fully self-hosted control-plane install configured for an air-gapped environment. The customer has pre-loaded TrueFoundry's container images into a private registry; the install uses an internal CNI; outbound HTTPS for the install itself goes through the corporate forward proxy, but the runtime data path does not:</p>
+
+<div class="code-wrap"><div class="code-lang">Bash</div><pre># Illustrative TrueFoundry self-hosted install with forward proxy
+# Source: TrueFoundry deployment-overview + forward-proxy documentation
+
+# Step 1 — pre-stage images in private registry
+# (This step is the air-gap-friendly pattern; in connected environments,
+# the install pulls from TrueFoundry's public registry.)
+for img in $(cat tfy-image-manifest.txt); do
+  docker pull "$img"
+  docker tag "$img" "registry.contoso-hospital.de/tfy/${img#*/}"
+  docker push "registry.contoso-hospital.de/tfy/${img#*/}"
+done
+
+# Step 2 — install control plane
+helm install truefoundry truefoundry/control-plane \
+  --namespace truefoundry --create-namespace \
+  --values values-airgapped.yaml \
+  --set image.registry=registry.contoso-hospital.de/tfy \
+  --set proxy.http=http://corp-proxy.contoso-hospital.de:3128 \
+  --set proxy.https=http://corp-proxy.contoso-hospital.de:3128 \
+  --set proxy.noProxy="cluster.local,.svc,127.0.0.1,10.0.0.0/8" \
+  --set imagePullSecrets[0].name=tfy-private-registry \
+  --set telemetry.outbound.enabled=false
+
+# Step 3 — install gateway plane on the same or adjacent cluster
+helm install truefoundry-gateway truefoundry/gateway \
+  --namespace truefoundry-gateway --create-namespace \
+  --values values-airgapped-gateway.yaml \
+  --set controlPlane.endpoint=https://truefoundry.contoso-hospital.de \
+  --set image.registry=registry.contoso-hospital.de/tfy
+
+# Step 4 — verify no outbound from inference path
+# (smoke test: request through gateway, observe network policies block
+# any connection attempt to non-cluster-local destinations)
+kubectl apply -f network-policies/inference-path-deny-egress.yaml</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative install pattern based on the <a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">deployment overview</a>, <a href="https://www.truefoundry.com/docs/platform/forward-proxy" target="_blank">forward-proxy documentation</a>, and <a href="https://www.truefoundry.com/docs/platform/install-truefoundry" target="_blank">install guide</a>. The Squid forward-proxy pattern referenced in the docs is one tested example; any allowlisting proxy works. Network policies enforcing data-path egress denial are a customer responsibility; the platform documents which destinations the runtime needs (the answer is "intra-cluster only" for the air-gapped install).</div>
+
+<h3>The TrueFoundry deployment topology diagram</h3>
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry deployment topology — four installation paths">
+<defs>
+  <linearGradient id="bgTfD3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tfD3sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+</defs>
+<rect x="10" y="10" width="1260" height="560" rx="22" fill="url(#bgTfD3)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry deployment paths — increasing customer control →</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Each path documents what stays inside the customer's boundary and what does not. Air-gapped is fully isolated on the data path.</text>
+
+<!-- Path 1: SaaS -->
+<rect x="40" y="100" width="290" height="380" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.6" filter="url(#tfD3sh)"/>
+<text x="60" y="128" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">1 — SaaS</text>
+<text x="60" y="156" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">All planes hosted by TF</text>
+<text x="60" y="180" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Control · Gateway · Compute · Data</text>
+<text x="60" y="200" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">all in TrueFoundry cloud</text>
+<text x="60" y="240" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ fastest start (minutes)</text>
+<text x="60" y="258" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ no customer infra required</text>
+<text x="60" y="276" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ TF-operated upgrades</text>
+<text x="60" y="316" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ AI traffic transits TF cloud</text>
+<text x="60" y="334" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ data residency = TF SaaS region</text>
+<text x="60" y="406" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Best fit:</text>
+<text x="60" y="424" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">PoCs · internal tools · non-reg</text>
+
+<!-- Path 2: Customer cloud split -->
+<rect x="346" y="100" width="290" height="380" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.6" filter="url(#tfD3sh)"/>
+<text x="366" y="128" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">2 — Customer cloud (split)</text>
+<text x="366" y="156" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Control: SaaS</text>
+<text x="366" y="174" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Gateway + Compute: customer K8s</text>
+<text x="366" y="194" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Data: customer-managed</text>
+<text x="366" y="240" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ AI traffic stays in customer K8s</text>
+<text x="366" y="258" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ TF operates control plane</text>
+<text x="366" y="276" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ no admin UI customer-side</text>
+<text x="366" y="316" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ config metadata to TF SaaS</text>
+<text x="366" y="334" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ aggregated telemetry to TF</text>
+<text x="366" y="406" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Best fit:</text>
+<text x="366" y="424" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">most enterprise · standard reg</text>
+
+<!-- Path 3: Fully self-hosted -->
+<rect x="652" y="100" width="290" height="380" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.6" filter="url(#tfD3sh)"/>
+<text x="672" y="128" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">3 — Fully self-hosted</text>
+<text x="672" y="156" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">All four planes on customer infra</text>
+<text x="672" y="180" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Control · Gateway · Compute · Data</text>
+<text x="672" y="200" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">all inside customer boundary</text>
+<text x="672" y="240" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ control plane in customer K8s</text>
+<text x="672" y="258" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ no SaaS dependency</text>
+<text x="672" y="276" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ supports updates pull pattern</text>
+<text x="672" y="316" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ customer operates platform</text>
+<text x="672" y="334" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ updates require pull cadence</text>
+<text x="672" y="406" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Best fit:</text>
+<text x="672" y="424" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">regulated · sovereign · finserv</text>
+
+<!-- Path 4: Air-gapped -->
+<rect x="958" y="100" width="282" height="380" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="2.5" filter="url(#tfD3sh)"/>
+<text x="978" y="128" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">4 — Air-gapped</text>
+<text x="978" y="156" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Self-hosted + forward proxy</text>
+<text x="978" y="180" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">No outbound on inference path</text>
+<text x="978" y="200" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Documented dependency surface</text>
+<text x="978" y="240" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ HTTP_PROXY support docs</text>
+<text x="978" y="258" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Squid pattern documented</text>
+<text x="978" y="276" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ private registry images</text>
+<text x="978" y="316" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ outbound is allowlisted</text>
+<text x="978" y="334" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">⚠ updates via internal pipeline</text>
+<text x="978" y="406" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Best fit:</text>
+<text x="978" y="424" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">defense · classified · KRITIS</text>
+
+<!-- Bottom annotation -->
+<text x="40" y="528" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">As customer control increases, vendor-cloud dependency decreases. The architecture is the same across paths;</text>
+<text x="40" y="548" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">paths 1-2 trade some control for managed-service simplicity, paths 3-4 trade some simplicity for full control.</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry deployment paths arranged from left to right by increasing customer control over the runtime. Path 4 (air-gapped) is the topology with no outbound dependency on the inference path.</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>One install bundle, four paths.</strong> The same Helm chart can produce all four shapes with different values files; teams can start on path 1 (SaaS) and migrate to path 3 (fully self-hosted) as compliance requirements solidify. (2) <strong>Documented dependency surface.</strong> The air-gapped path has explicit documentation for what the install requires (forward proxy, private registry) versus what the runtime requires (intra-cluster only). (3) <strong>Same operating model across paths.</strong> Workspaces, virtual models, identity, and observability work the same way regardless of where the planes execute. The team that learns the platform on path 2 can operate path 4 without retraining.</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Five deployment scenarios compared</h2>
+
+<p>The most useful way to compare these deployment models is to walk concrete regulatory and operational scenarios and identify what each platform requires to clear the workload. The five scenarios below are realistic patterns drawn from common compliance and architecture review postmortems. Each is shown side by side under both products. None is biased toward either platform by construction; the goal is to show what each architecture's path looks like for the workload shape.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">EU healthcare under DSGVO + KRITIS, on-prem K8s, no outbound on inference path</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The radiology workload from the opening scenario. Data must stay in Germany. The institution's compliance interpretation requires no outbound internet egress on the inference path as the steady state, not just under failure.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Self-hosted gateway in customer EU K8s, paired with cloud APIM in EU North or West Europe. <strong>Steady-state outbound to Azure is required</strong> for config sync (every 10s) and heartbeat (every 1m). EU Data Boundary applies but is a residency commitment, not an air-gap. Configuration backup mitigates short outages but the steady-state design is federated. Azure Stack HCI is a more aggressive option but introduces significant operational complexity. <em>Verdict: qualified. The Azure architecture is hybrid-cloud-friendly but not air-gap-friendly.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Fully self-hosted or air-gapped install on customer EU K8s. No vendor cloud control plane required. Forward-proxy pattern documented for install and update channels; the inference data path itself is intra-cluster. <em>Verdict: clean fit. The compliance team's "what does it call out to" question has a one-word answer: nothing.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">US federal classified workload, FedRAMP High required</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A federal agency needs to deploy an AI assistant for analyst workflows on classified data. FedRAMP High is the floor; DoD IL5 is the ceiling. The workload runs in an environment with strict audit and supply-chain attestations.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p><strong>Azure Government</strong> is the natural fit. FedRAMP High and DoD IL5 attestations are first-party. Azure OpenAI is available in Azure Government with a documented (and sometimes lagging) AI service catalog. The agency's existing Entra Government tenant is the identity surface. APIM, AOAI, AI Foundry, and the supporting services have established patterns inside the Government cloud. <em>Verdict: this is exactly what Azure Government is designed for. Best-in-class fit.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Fully self-hosted install on customer K8s estate that is itself FedRAMP-attested. The compliance attestations belong to the customer's environment, not to TrueFoundry as a vendor. Workable when the agency operates K8s with the appropriate boundary controls; less institutional than Azure Government's first-party FedRAMP story. <em>Verdict: viable for agencies that operate their own attested K8s estate. For agencies that prefer vendor-attested cloud, Azure is the cleaner answer.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Multi-region SaaS firm with consolidated platform team</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A B2B SaaS company runs production AI in three regions — US East, EU West, APAC — with one platform team and a desire for a single AI gateway operating model across regions. Standard residency requirements per region; no air-gap requirements.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>APIM Premium with multi-region deployment. One APIM service replicated across regions with shared configuration; Azure Front Door in front for geo-routing. Mature and widely deployed. The platform team operates one APIM instance with region-specific gateway pods. AOAI deployments per region with capacity allocation tuned to regional demand. <em>Verdict: this is exactly what APIM Premium multi-region is designed for. Best-in-class fit.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Customer-cloud-split install with gateway pods deployed to a K8s cluster per region. All gateway pods subscribe to the same NATS config stream from the control plane. The application's virtual model abstraction (Blog 4) is region-aware — the same virtual model name resolves to the regional model deployment. <em>Verdict: clean fit. Both architectures handle this well; the operational model is different but the outcome is similar.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 4</span><span class="blast-title">China onshore production for a multinational</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A consumer electronics multinational operates AI features for Chinese customers and must keep that workload onshore in China under PIPL and data-localization requirements.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p><strong>Azure China-21Vianet</strong> is the natural fit. A distinct Azure cloud operated by 21Vianet under Chinese regulation. Mature service catalog (with the documented partial-availability for newer AI services). The team operates a separate Azure tenant in China-21Vianet alongside their commercial Azure tenant for non-China workloads. <em>Verdict: best-in-class for China onshore; no other AI gateway vendor has a comparable first-party offering.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Self-hosted on customer K8s in a Chinese cloud (Aliyun, Tencent Cloud, or Azure China). The platform itself runs anywhere; the regulatory relationship is between the customer and the underlying cloud provider in China. Workable but the cloud-provider relationship is the customer's problem to maintain. <em>Verdict: viable but not differentiated. Azure's first-party China-21Vianet relationship is a meaningful advantage here.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 5</span><span class="blast-title">Multi-cloud financial-services posture, regulator prefers customer-controlled runtime</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A global investment bank runs workloads on AWS (primary), Azure (secondary), and GCP (specific data analytics workloads). Their regulator requires that critical AI inference run on infrastructure they directly control, with no vendor-cloud dependency. The platform team wants one operating model across all three clouds.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Self-hosted gateway federated with cloud APIM in Azure. Works for the Azure portion of the workload. For AWS and GCP workloads, the self-hosted gateway can run on customer K8s in those clouds — but it still federates with the Azure-resident APIM control plane. The bank ends up with a cross-cloud dependency on Azure regardless of which cloud the workload actually runs on. <em>Verdict: workable but produces an Azure-anchored operating model that contradicts the multi-cloud posture.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Fully self-hosted install on customer K8s in each cloud. Same Helm chart, same operating model. Each cloud's workload has its own self-contained TrueFoundry control plane (or one centralized control plane in the bank's primary K8s estate, with gateway and compute planes per cloud). No cross-cloud vendor dependency. <em>Verdict: this is the architecture's strongest fit pattern. The cloud-agnostic install is the value proposition.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The deployment comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>Deployment property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>Sovereign-cloud reach</strong></td><td><span class="check">✅</span> Azure Government, Azure China-21Vianet are first-party.</td><td><span class="cross">✕</span> No first-party sovereign offering.</td><td>Decisive for US federal and China onshore programs.</td></tr>
+<tr><td><strong>EU Data Boundary commitment</strong></td><td><span class="check">✅</span> First-party Microsoft commitment with documented scope.</td><td><span class="partial">◐</span> Customer's EU K8s estate; commitment is structural, not vendor.</td><td>For GDPR programs that rely on Microsoft as sub-processor.</td></tr>
+<tr><td><strong>Customer-K8s gateway execution</strong></td><td><span class="check">✅</span> Self-hosted gateway in any K8s.</td><td><span class="check">✅</span> Gateway plane installs on customer K8s.</td><td>Both work; the federation question is what differs.</td></tr>
+<tr><td><strong>Customer-K8s control plane</strong></td><td><span class="cross">✕</span> Control plane stays in cloud APIM.</td><td><span class="check">✅</span> Fully self-hosted: control plane in customer K8s.</td><td>Affects whether platform updates pull or push, and whether outbound is steady-state required.</td></tr>
+<tr><td><strong>Air-gapped operation</strong></td><td><span class="partial">◐</span> Self-hosted gateway "fail static" supports temporary disconnection. Azure Stack HCI possible but complex.</td><td><span class="check">✅</span> First-class air-gapped install with documented forward-proxy patterns.</td><td>Decisive for defense, classified, KRITIS, and strict-interpretation healthcare workloads.</td></tr>
+<tr><td><strong>Steady-state outbound on data path</strong></td><td><span class="partial">◐</span> Self-hosted gateway requires path to cloud APIM as steady state.</td><td><span class="check">✅</span> Fully self-hosted install has no external runtime dependency.</td><td>The fundamental compliance-shape question.</td></tr>
+<tr><td><strong>Multi-region single platform</strong></td><td><span class="check">✅</span> APIM Premium multi-region deployment is mature.</td><td><span class="check">✅</span> Multi-cluster install across regions with shared NATS stream.</td><td>Both work; operating model differs.</td></tr>
+<tr><td><strong>Multi-cloud single operating model</strong></td><td><span class="partial">◐</span> Self-hosted gateway in non-Azure clouds federates back to Azure APIM.</td><td><span class="check">✅</span> Same install on any K8s; no cross-cloud anchor.</td><td>For multi-cloud postures that don't want to anchor on one vendor.</td></tr>
+<tr><td><strong>Rate-limit synchronization across hybrid topology</strong></td><td><span class="partial">◐</span> Per-cluster sync only; doesn't sync across self-hosted and cloud gateway.</td><td><span class="check">✅</span> NATS aggregator broadcasts cross-pod (Blog 6).</td><td>Documented architectural property; affects hybrid policy design.</td></tr>
+<tr><td><strong>Disconnected operation duration</strong></td><td><span class="partial">◐</span> Documented "fail static" with config backup; not designed for indefinite disconnection.</td><td><span class="check">✅</span> Fully self-hosted has no expectation of vendor connectivity.</td><td>Distinguishes degraded-mode survival from steady-state operation.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">Sovereign-cloud reach is genuinely best-in-class. Azure Government's FedRAMP High and DoD IL5 attestations are first-party Microsoft commitments with no equivalent from any other AI gateway vendor. Azure China-21Vianet is the only mature path to AI workloads onshore in China for non-Chinese vendors. The EU Data Boundary commitment is a meaningful contractual posture for GDPR programs that accept vendor commitment as their compliance basis. The mature multi-region story through APIM Premium is real and widely deployed. For workloads whose regulatory regime accepts federated architectures, Azure's deployment surface is comprehensive.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> sovereign cloud is a hard requirement (US federal, China onshore), the existing Azure footprint is large enough that adding AI workloads is a small marginal cost, the regulatory regime accepts vendor-commitment-based residency, or the workload is multi-region commercial cloud rather than air-gapped.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">Air-gapped install with documented forward-proxy patterns is the topology Azure does not have a clean answer for. Fully self-hosted control plane removes the vendor-cloud dependency from the steady-state architecture, not just from the failure-mode architecture. The platform runs on customer K8s anywhere — which means it inherits whatever regulatory attestations the customer's K8s estate already has, and operates uniformly across clouds without anchoring to one. For defense, classified, KRITIS, multi-cloud financial-services, and strict-interpretation healthcare workloads, this structural property is decisive in a way that "fail static" connectivity behavior is not.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> air-gapped operation is required as steady state (not just as a failure mode), the org's compliance posture prefers structural control over the runtime to vendor-issued residency commitments, the workload spans multiple clouds and the platform must run consistently across them, or the regulatory interpretation forbids steady-state outbound dependencies on the data path.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that these architectures optimize for different regulatory shapes. Azure optimizes for the breadth of sovereign-cloud regulatory regimes — US federal, China onshore, EU residency commitments — where the customer accepts a vendor-managed control plane in exchange for first-party attestations and operational simplicity. TrueFoundry optimizes for "the platform runs inside our boundary, on our infrastructure, with the network paths we control" — where the customer prefers structural control even if it means the platform inherits regulatory attestations from the customer's own estate rather than from the vendor.</p>
+
+<p>The question for any specific workload is not which architecture is universally better. It is whether the regulatory regime accepts a federated architecture (Azure's strength) or requires a self-contained one (TrueFoundry's strength). For most enterprise AI workloads, either answer works. For the workloads at the edges — sovereign clouds at one edge, air-gapped install at the other — the architectures are differentiated cleanly, and the editorial verdict is each platform wins the edge it's designed for.</p>
+
+<p>The next blog (<a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html">Routing, Load Balancing &amp; Failover</a>) opens Movement II — the hot path. Where can each platform actually steer traffic, and what does the application code bind to when routing strategy changes?</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/self-hosted-gateway-overview" target="_blank">Microsoft Learn — Self-hosted gateway overview (heartbeat / config-check cadence, fail-static design)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/self-hosted-gateway-settings-reference" target="_blank">Microsoft Learn — Self-hosted gateway container settings reference (sovereign-cloud configuration)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/self-hosted-gateway-authentication-options" target="_blank">Microsoft Learn — Self-hosted gateway authentication options</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/self-hosted-gateway-support-policies" target="_blank">Microsoft Learn — Self-hosted gateway support policies</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/how-to-deploy-self-hosted-gateway-kubernetes-helm" target="_blank">Microsoft Learn — Deploy self-hosted gateway to Kubernetes with Helm</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-gateways-overview" target="_blank">Microsoft Learn — API Management gateways comparison (rate-limit synchronization caveat)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-deploy-multi-region" target="_blank">Microsoft Learn — Multi-region deployment for APIM Premium</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/virtual-network-workspaces-resources" target="_blank">Microsoft Learn — Workspace gateway VNet requirements</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-government/" target="_blank">Microsoft Learn — Azure Government documentation</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/china/" target="_blank">Microsoft Learn — Azure China-21Vianet documentation</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/privacy/eudb/eu-data-boundary-learn" target="_blank">Microsoft Learn — EU Data Boundary</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure-stack/hci/overview" target="_blank">Microsoft Learn — Azure Stack HCI overview</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/well-architected/service-guides/azure-api-management" target="_blank">Microsoft Learn — Architecture best practices for Azure API Management</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/deployment-overview" target="_blank">TrueFoundry Docs — Deployment overview (four installation paths)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/install-truefoundry" target="_blank">TrueFoundry Docs — Install TrueFoundry</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/forward-proxy" target="_blank">TrueFoundry Docs — Forward-proxy configuration (Squid pattern)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/architecture" target="_blank">TrueFoundry Docs — Platform architecture</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry Docs — Gateway plane architecture</a></li>
+  <li><a href="https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/" target="_blank">Kubernetes — Namespaces (the substrate of TrueFoundry workspaces)</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 3 of 12 · April 2026 · <a href="02-truefoundry-vs-azure-identity-multi-tenancy-zero-trust.html">← Blog 2 — Identity</a> · <a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html">Blog 4 — Routing →</a>
+</p>
+</body>
+</html>
