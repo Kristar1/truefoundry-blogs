@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="A technical comparison of identity, multi-tenancy, and zero-trust models for AI platforms — TrueFoundry's Kubernetes namespace boundaries versus Azure's RBAC composition across Entra, APIM workspaces, resource groups, and Key Vault — with four blast-radius scenarios under realistic breach and failure modes."/>
+<title>Identity, Multi-Tenancy &amp; Zero-Trust: TrueFoundry vs Azure</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+    --azure:#0078D4; --tf:#FF5533;
+    --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+    --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+    --card:#0f1522;
+  }
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html { scroll-behavior:smooth; }
+  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+  code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+  h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+  h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+  h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+  h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+  p { margin-bottom:1rem; color:var(--ink); }
+  strong { color:var(--text); }
+  a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+  ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+  li { margin-bottom:.4rem; color:var(--ink); }
+
+  .series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+  .tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+  .tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+  .series-dots { display:flex; gap:.3rem; align-items:center; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+  .meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+  .meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+
+  .methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+  .methodology strong { color:#60a5fa; }
+  .intro-lead { font-size:1.05rem; color:#d3dfec; }
+
+  .callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+  .callout.info { border-color:#60a5fa; background:#0a1220; }
+  .callout.warn { border-color:var(--warn); background:#1a1200; }
+  .callout.ok { border-color:var(--ok); background:#091510; }
+  .callout.danger { border-color:var(--danger); background:#1a0a0a; }
+  .callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+  .callout.info .callout-title { color:#60a5fa; }
+  .callout.warn .callout-title { color:var(--warn); }
+  .callout.ok .callout-title { color:var(--ok); }
+  .callout.danger .callout-title { color:var(--danger); }
+
+  .scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+  .scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+
+  .quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+  .qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+  .qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+  .qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+  .qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+  .c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+  .c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+  .c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+
+  .toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+  .toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+  .toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+  .toc li { margin-bottom:0; }
+  .toc a { color:var(--muted); }
+  .toc a:hover { color:#60a5fa; text-decoration:none; }
+
+  .vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+  .vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+  .vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+  .vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+  .vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+  .vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+  .vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+  .vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+  .vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+
+  .svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+  .svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+  .img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+
+  .code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+  .code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+  .code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+  .copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+  .copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+  .copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+  .source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+  .source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+
+  .matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+  table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+  thead tr { background:var(--surface2); }
+  th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+  td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+  tr:hover td { background:var(--surface); }
+  .check { color:var(--ok); }
+  .cross { color:var(--danger); }
+  .partial { color:var(--warn); }
+
+  .blast-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem 1.3rem; margin:1.1rem 0; position:relative; }
+  .blast-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:12px 0 0 12px; background:var(--danger); }
+  .blast-head { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:.7rem; }
+  .blast-num { background:var(--danger); color:#0b0e17; font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; padding:.18rem .55rem; border-radius:4px; }
+  .blast-title { font-weight:700; font-size:1.05rem; }
+  .blast-side { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:.7rem; }
+  .blast-side > div { background:#0a0f1a; border:1px solid var(--border); border-radius:10px; padding:.85rem 1rem; min-width:0; }
+  .blast-side .blast-az { border-left:3px solid var(--azure); }
+  .blast-side .blast-tf { border-left:3px solid var(--tf); }
+  .blast-side h4 { font-size:.75rem; font-family:'IBM Plex Mono',monospace; letter-spacing:.07em; text-transform:uppercase; margin-top:0; margin-bottom:.4rem; }
+  .blast-side .blast-az h4 { color:#7CC2FF; }
+  .blast-side .blast-tf h4 { color:#FFB39C; }
+  .blast-side p { font-size:.84rem; line-height:1.6; color:var(--muted); margin-bottom:0; }
+  .blast-side strong { color:var(--text); }
+
+  .verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+  .verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+  .verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+  .verdict-card.azure::before { background:var(--azure); }
+  .verdict-card.tf::before { background:var(--tf); }
+  .verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+  .verdict-card.azure .verdict-label { color:var(--azure); }
+  .verdict-card.tf .verdict-label { color:var(--tf); }
+  .verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+  .verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+  .verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+  .verdict-use strong { color:#a5f3fc; }
+
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+  .mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+  .mini-card h4 { margin-top:0; }
+  .bullet-tight li { margin-bottom:.2rem; }
+
+  .ref-list { font-size:.84rem; }
+  .ref-list li { margin-bottom:.4rem; color:var(--muted); }
+
+  hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+  @media (max-width:760px) {
+    body { padding:1.2rem 1rem 4rem; }
+    h1 { font-size:1.9rem; }
+    .toc ol, .two-col, .blast-side { grid-template-columns:1fr; }
+    table { min-width:620px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement I · Foundations</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 2 of 12</span>
+</div>
+
+<h1>Identity, Multi-Tenancy &amp; Zero-Trust for AI Platforms: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 30 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Platform Security · AI Infrastructure</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for <code>validate-azure-ad-token</code>, <code>authentication-managed-identity</code>, the APIM RBAC overview (built-in service and workspace roles), the workspace breaking-changes notice, and the Azure RBAC overview (additive role evaluation, propagation timing). The TrueFoundry side is grounded in the gateway-plane-architecture page, the platform key-concepts page, the access-control documentation, and the virtual-accounts and secret-groups pages. Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog assumes the architectural posture established in <a href="01-truefoundry-vs-azure-architecture-control-planes-runtime-boundaries.html">Blog 1</a>.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Identity is not just <em>who can call the AI</em>. It is the structural property that determines what happens when a credential is stolen, when a service principal is misconfigured, or when an internal actor exceeds their intended scope. The headline difference between the two products is that <strong>TrueFoundry workspaces are physical Kubernetes namespace boundaries</strong> while <strong>Azure tenancy is a logical RBAC composition</strong> across Entra, APIM workspaces, and Azure resource groups. Different blast-radius properties under failure and breach. Section 4 of this blog walks four concrete scenarios where the difference is operationally decisive.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">A breach that becomes an architecture question</div>
+  <p>At 03:14 on a Saturday, a security analyst at a healthcare insurer notices unusual activity in the audit log: a service principal belonging to the <em>claims-triage</em> AI team is making API calls outside its expected scope. The principal was assigned <code>API Management Service Contributor</code> at the resource-group level four months ago — at the time, the security review team flagged that the scope was wider than necessary, but the alternative (nine custom roles across nine resource groups) was operationally untenable for a small platform team.</p>
+  <p>Now, with the principal's credentials likely compromised through a leaked CI variable, the on-call team has to answer one question: <strong>what is the maximum set of changes this credential could have made before we noticed?</strong> Walking the Azure RBAC graph: the principal can edit policies on every API in every workspace in that resource group. It can rotate Key Vault secrets that APIM references through managed identity. It can attach new backends, including ones pointing outside the tenant. It can enable diagnostic-setting changes. And because RBAC is additive and permissions take up to an hour to propagate, even after the credential is revoked the team still has to wait through the propagation window before they can be confident the revocation has reached every cached token issuer.</p>
+  <p>The fix takes 36 hours of cleanup. The architecture lesson lands later: had each AI team's runtime been isolated at a Kubernetes namespace boundary instead of being a shared resource group with overlapping APIM service-level RBAC, the same compromise would have been bounded to one team's namespace. That is the comparison this blog is about.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Azure identity is a multi-service composition.</strong> Entra issues tokens; APIM validates them via <code>validate-azure-ad-token</code>; managed identity authenticates to backends; Key Vault holds secrets referenced by managed identity; RBAC at service and workspace scopes is enforced additively across Entra, ARM, and the APIM data plane. Each piece is well-engineered. The seams are documented but real.</li>
+    <li><strong>TrueFoundry identity is one model with physical isolation.</strong> Workspaces are Kubernetes namespaces. The gateway pod caches the SSO issuer's public keys; the user-to-model authorization map is held in-memory and refreshed via NATS. Workspace-scoped secret groups and virtual accounts handle service-to-service auth.</li>
+    <li><strong>The blast-radius question is the difference that matters.</strong> A logical RBAC composition is harder to bound than a physical namespace boundary when the credential or scope is wrong. Both architectures can be operated safely; the operational discipline cost is not the same.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when the security organization has Entra centrality as a non-negotiable, when managed identity to Azure AI services is core to the audit story, and when the platform team is large enough to operate the dual-scope RBAC composition (service + workspace) with discipline.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when blast-radius bounding is decisive — regulated data, multi-team AI platform, customer-controlled clusters — and the security review prefers physical boundaries to logical RBAC composition. Especially strong when workspace = K8s namespace simplifies the breach response runbook.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Why blast-radius is the lens</div>
+    <div class="qp-desc">Identity comparisons that compare auth mechanisms feature-by-feature miss the operational point. The right question is what the worst-case incident looks like under each model. Section 4 walks four breach scenarios in concrete detail.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Why identity is Movement I's second axis</a></li>
+    <li><a href="#azure">§2 — Azure: a multi-service identity composition</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: namespace-physical tenancy</a></li>
+    <li><a href="#blast">§4 — Blast-radius under breach: four scenarios</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+
+<section id="why">
+<h2>§1 — Why identity is Movement I's second axis</h2>
+
+<p class="intro-lead">Identity sits in Movement I (Foundations) for the same reason architecture does: it determines what every later blog is allowed to assume. Routing decisions in Blog 4 assume an authentication model. FinOps attribution in Blog 6 assumes a tenancy model. MCP tool governance in Blog 11 assumes a service-identity model. If the identity layer is uncertain, the rest of the comparison reads as feature lists rather than as a coherent platform.</p>
+
+<p>The most common framing of an identity comparison is to walk auth mechanisms — JWT validation, mTLS, API keys, managed identity — and tally checkmarks. That framing produces an answer like "both products support most modern auth standards," which is true but misses the operationally consequential point. The question that survives a security review is not <em>which mechanisms are supported</em>. It is <em>what is the maximum damage a compromised credential can do, and how easily can the response be bounded?</em></p>
+
+<p>That question has a structural answer for both products, and the answers are different. Azure's answer is a logical composition: Entra controls who can request a token, APIM controls what that token can do at the gateway tier, ARM controls what the token's bearer can do as a control-plane operator, and Key Vault controls what backend secrets the runtime can access. Each layer is well-engineered, and Microsoft has invested heavily in making them compose cleanly through documented patterns. The cost of the composition is that the maximum-damage answer requires <em>walking the graph</em> at incident time — across Entra logs, ARM activity logs, APIM diagnostic logs, Key Vault access logs, and any custom application telemetry.</p>
+
+<p>TrueFoundry's answer is a physical boundary. Workspaces are Kubernetes namespaces. A compromised credential at the workspace level cannot, by construction, modify resources in another namespace. A compromised platform-admin credential is a different and serious problem (and addressed in §3), but the routine breach scenarios that drive most security incident response runbooks have a structural upper bound at the namespace edge.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>Physical isolation does not eliminate breach risk. A K8s namespace boundary protects against most credential-scope mistakes but is not a substitute for cluster-level security hygiene, image-scanning policies, secret-rotation discipline, or network segmentation. The argument is that <em>workspace-level breaches are easier to bound and reason about</em> in a namespace-based model than in a multi-service RBAC composition — not that the namespace model is inherently more secure. Both products can be operated to a high security bar; the runbook complexity is what differs.</p>
+</div>
+
+<p>The rest of the blog does three things. §2 walks the Azure identity composition in working detail, including the dual-scope RBAC requirement and the four documented service- and workspace-level role types, with a working APIM XML example. §3 walks the TrueFoundry model — the in-memory authorization map, namespace-as-workspace, virtual accounts, and secret groups — with a working YAML example. §4 is the heart of the blog: four concrete blast-radius scenarios shown side by side. §5 ends with the editorial verdict.</p>
+</section>
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: a multi-service identity composition</span></div>
+
+<p>Azure identity for AI workloads composes several services. The composition is documented well and operates predictably when set up carefully — but it is a composition, and the structural fact of the composition is what produces the seam tax that this blog measures.</p>
+
+<h3>The four layers of Azure identity for AI</h3>
+
+<p>For an AI request flowing through APIM into Azure OpenAI (or any Azure AI service), four identity layers are relevant:</p>
+
+<ol>
+  <li><strong>Caller identity (Entra ID).</strong> The application or user obtains an Entra-issued JWT. APIM validates it through the <a href="https://learn.microsoft.com/en-us/azure/api-management/validate-azure-ad-token-policy" target="_blank"><code>validate-azure-ad-token</code></a> policy with <code>tenant-id</code>, <code>client-application-ids</code>, <code>audiences</code>, and optional <code>required-claims</code>.</li>
+  <li><strong>Backend identity (managed identity).</strong> APIM authenticates outbound to Azure OpenAI or Azure AI services using the <a href="https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy" target="_blank"><code>authentication-managed-identity</code></a> policy. The managed identity is either system-assigned (the APIM service's own identity) or user-assigned (a separately created identity that may be reused across services).</li>
+  <li><strong>Secret identity (Key Vault).</strong> Named values, certificates, and any other gateway-managed secrets are stored in Azure Key Vault and referenced by APIM through that same managed identity. This is a clean pattern — secrets never appear in policy XML — but it means the managed identity must be granted access to Key Vault separately, and that grant lives in Key Vault's RBAC, not APIM's.</li>
+  <li><strong>Operator identity (ARM RBAC).</strong> Platform engineers who edit APIM configurations, register backends, or rotate policies do so through Azure RBAC at service, workspace, or sub-resource scopes. <a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-role-based-access-control" target="_blank">Microsoft's RBAC overview for APIM</a> documents three built-in service-level roles plus four workspace-level roles.</li>
+</ol>
+
+<h3>The dual-scope rule</h3>
+
+<p>The dimension that matters most for blast-radius reasoning is the role-composition rule. From Microsoft Learn: <em>"A workspace collaborator must be assigned both a workspace-scoped role and a service-scoped role."</em> The three service-level roles are:</p>
+
+<ul>
+  <li><code>API Management Service Contributor</code> — full management of the APIM service.</li>
+  <li><code>API Management Service Reader</code> — read access to APIM resources, including subscription keys.</li>
+  <li><code>API Management Service Operator</code> — restart and similar operational actions.</li>
+</ul>
+
+<p>The workspace-level roles include:</p>
+
+<ul>
+  <li><code>API Management Workspace Contributor</code> — manages the workspace; can view but not modify members.</li>
+  <li><code>API Management Workspace Reader</code> — read-only at workspace scope.</li>
+  <li><code>API Management Service Workspace API Developer</code> — read access plus read/write on API-editing entities at workspace scope.</li>
+  <li><code>API Management Service Workspace API Product Manager</code> — read access plus read/write on API-publishing entities.</li>
+</ul>
+
+<p>And custom roles can be created when none of the built-ins fit. Each role lists ARM-level <code>Microsoft.ApiManagement/...</code> actions that are permitted; the additive evaluation model means a user with both <code>Reader</code> at one scope and <code>Contributor</code> at a wider scope effectively has Contributor.</p>
+
+<div class="callout info">
+  <div class="callout-title">Why the dual-scope rule produces operational complexity</div>
+  <p>If you want a developer to edit APIs in <em>only</em> the AI workspace, you cannot just assign <code>Workspace API Developer</code>. You must also assign a service-level role — typically <code>API Management Service Reader</code> — at the APIM service scope, which gives that developer read access to <em>all</em> APIs in the entire APIM instance, including ones outside their workspace. That is not a bug; it is a documented requirement. But it means the smallest blast radius an AI workspace developer can structurally have is "their workspace's writes plus all of APIM's reads." For platform teams that share an APIM instance across multiple programs, this is the seam to watch.</p>
+</div>
+
+<h3>The Azure identity composition diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure identity composition: four layers across five services">
+  <defs>
+    <linearGradient id="bgAzId" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07101D"/>
+      <stop offset="100%" stop-color="#07172A"/>
+    </linearGradient>
+    <filter id="azIdSh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <marker id="arAzId" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/>
+    </marker>
+    <marker id="arAzIdWarn" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#F4C04F"/>
+    </marker>
+  </defs>
+  <rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgAzId)" stroke="#22314C" stroke-width="2"/>
+  <text x="40" y="56" fill="#E8EEF8" font-size="22" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure identity composition: four layers across five services</text>
+  <text x="40" y="84" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Each layer is well-engineered. The composition produces the seam tax measured in Section 4.</text>
+
+  <!-- Layer 1: Caller identity -->
+  <text x="40" y="124" fill="#F4C04F" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">LAYER 1 — CALLER IDENTITY</text>
+  <rect x="40" y="138" width="178" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="129" y="164" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application</text>
+  <text x="129" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">obtains JWT</text>
+  <text x="129" y="200" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">from Entra</text>
+
+  <rect x="240" y="138" width="178" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="329" y="164" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">Microsoft Entra</text>
+  <text x="329" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">tenant · audiences</text>
+  <text x="329" y="200" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">issuer · client app IDs</text>
+
+  <rect x="440" y="138" width="178" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="2" filter="url(#azIdSh)"/>
+  <text x="529" y="164" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">APIM gateway</text>
+  <text x="529" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">validate-azure-ad-token</text>
+  <text x="529" y="200" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">policy at inbound</text>
+
+  <line x1="218" y1="177" x2="240" y2="177" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAzId)"/>
+  <line x1="418" y1="177" x2="440" y2="177" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAzId)"/>
+
+  <!-- Layer 2: Backend identity -->
+  <text x="40" y="252" fill="#F4C04F" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">LAYER 2 — BACKEND IDENTITY (managed identity)</text>
+  <rect x="40" y="266" width="178" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="129" y="292" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">APIM service</text>
+  <text x="129" y="312" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">system-assigned or</text>
+  <text x="129" y="328" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">user-assigned identity</text>
+
+  <rect x="240" y="266" width="178" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="329" y="292" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">authentication-managed-</text>
+  <text x="329" y="308" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">identity policy</text>
+  <text x="329" y="328" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">at backend send</text>
+
+  <rect x="440" y="266" width="178" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="2" filter="url(#azIdSh)"/>
+  <text x="529" y="292" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">Azure OpenAI</text>
+  <text x="529" y="312" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">RBAC at AOAI:</text>
+  <text x="529" y="328" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Cognitive Services User</text>
+
+  <line x1="218" y1="305" x2="240" y2="305" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAzId)"/>
+  <line x1="418" y1="305" x2="440" y2="305" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAzId)"/>
+
+  <!-- Layer 3: Secret identity -->
+  <text x="660" y="252" fill="#F4C04F" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">LAYER 3 — SECRET IDENTITY</text>
+  <rect x="660" y="266" width="178" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="749" y="292" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">Key Vault</text>
+  <text x="749" y="312" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">named values · certs</text>
+  <text x="749" y="328" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">referenced by APIM</text>
+
+  <rect x="860" y="266" width="178" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="949" y="292" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">Key Vault RBAC</text>
+  <text x="949" y="312" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">grant on managed</text>
+  <text x="949" y="328" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">identity required</text>
+
+  <rect x="1060" y="266" width="180" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="1150" y="292" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">Workspace gateway</text>
+  <text x="1150" y="308" text-anchor="middle" fill="#F4C04F" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">⚠ no managed identity</text>
+  <text x="1150" y="324" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">support currently</text>
+
+  <line x1="838" y1="305" x2="860" y2="305" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAzId)"/>
+  <line x1="1038" y1="305" x2="1060" y2="305" stroke="#F4C04F" stroke-width="2" marker-end="url(#arAzIdWarn)" stroke-dasharray="4 4"/>
+
+  <!-- Layer 4: Operator identity -->
+  <text x="40" y="394" fill="#F4C04F" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">LAYER 4 — OPERATOR IDENTITY (ARM RBAC, dual-scope)</text>
+
+  <rect x="40" y="408" width="280" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="180" y="432" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">Service-scoped role</text>
+  <text x="180" y="450" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Service Contributor / Reader / Operator</text>
+  <text x="180" y="466" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">covers entire APIM service or RG</text>
+
+  <rect x="340" y="408" width="280" height="78" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="480" y="432" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="600" font-family="IBM Plex Sans, sans-serif">Workspace-scoped role</text>
+  <text x="480" y="450" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Workspace Contributor / Reader,</text>
+  <text x="480" y="466" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">API Developer, Product Manager</text>
+
+  <rect x="640" y="408" width="280" height="78" rx="10" fill="#0f1726" stroke="#F4C04F" stroke-width="1.6" filter="url(#azIdSh)"/>
+  <text x="780" y="432" text-anchor="middle" fill="#F4C04F" font-size="14" font-weight="700" font-family="IBM Plex Mono, monospace">Both required</text>
+  <text x="780" y="450" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Workspace collaborator must have</text>
+  <text x="780" y="466" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">a role at each scope to operate</text>
+
+  <line x1="320" y1="447" x2="340" y2="447" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAzId)"/>
+  <line x1="620" y1="447" x2="640" y2="447" stroke="#F4C04F" stroke-width="2" marker-end="url(#arAzIdWarn)"/>
+
+  <text x="940" y="442" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">RBAC is additive.</text>
+  <text x="940" y="460" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">Propagation up to ~1 hour.</text>
+
+  <text x="40" y="540" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">Layers 1–3 are runtime identity. Layer 4 is operator identity. Each is documented; the composition is the customer's mental model to maintain.</text>
+  <text x="40" y="562" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">Workspace gateway managed-identity gap (Layer 3) is a current limitation per Microsoft's March 2025 breaking-changes announcement.</text>
+</svg>
+</div>
+<div class="img-caption">Azure identity composes Entra (caller), managed identity (backend), Key Vault (secret), and ARM RBAC (operator) across five services. Each layer is well-engineered; the composition is what the customer maintains.</div>
+
+<h3>The full APIM inbound chain a serious AI deployment writes</h3>
+
+<p>The XML below is the canonical shape for the inbound chain on an AI API in APIM. It composes <code>validate-azure-ad-token</code> (Layer 1), <code>set-backend-service</code> with managed identity (Layers 2–3), and the operator-side concerns (audit, diagnostics) that the platform team writes once and reuses:</p>
+
+<div class="code-wrap"><div class="code-lang">XML</div><pre>&lt;!-- Illustrative APIM inbound chain showing all four identity layers --&gt;
+&lt;policies&gt;
+  &lt;inbound&gt;
+    &lt;base /&gt;
+    &lt;!-- LAYER 1: caller identity from Entra --&gt;
+    &lt;validate-azure-ad-token tenant-id=&quot;{{aad-tenant-id}}&quot;
+                             header-name=&quot;Authorization&quot;
+                             failed-validation-httpcode=&quot;401&quot;&gt;
+      &lt;client-application-ids&gt;
+        &lt;application-id&gt;{{ai-coding-assistant-app-id}}&lt;/application-id&gt;
+        &lt;application-id&gt;{{ai-claims-triage-app-id}}&lt;/application-id&gt;
+      &lt;/client-application-ids&gt;
+      &lt;audiences&gt;
+        &lt;audience&gt;api://contoso-ai-gateway&lt;/audience&gt;
+      &lt;/audiences&gt;
+      &lt;required-claims&gt;
+        &lt;!-- Caller must have a role claim including ai-user --&gt;
+        &lt;claim name=&quot;roles&quot; match=&quot;any&quot;&gt;
+          &lt;value&gt;ai-user&lt;/value&gt;
+          &lt;value&gt;ai-admin&lt;/value&gt;
+        &lt;/claim&gt;
+      &lt;/required-claims&gt;
+    &lt;/validate-azure-ad-token&gt;
+
+    &lt;!-- Capture the calling app id for downstream attribution --&gt;
+    &lt;set-variable name=&quot;callerAppId&quot;
+                  value=&quot;@(((Jwt)context.Variables[&amp;quot;jwt&amp;quot;]).Claims[&amp;quot;appid&amp;quot;].FirstOrDefault())&quot; /&gt;
+
+    &lt;!-- LAYER 2-3: backend selection + managed identity to AOAI --&gt;
+    &lt;set-backend-service backend-id=&quot;aoai-claims-primary&quot; /&gt;
+    &lt;authentication-managed-identity resource=&quot;https://cognitiveservices.azure.com/&quot;
+                                     output-token-variable-name=&quot;managed-identity-token&quot; /&gt;
+  &lt;/inbound&gt;
+  &lt;backend&gt;&lt;forward-request /&gt;&lt;/backend&gt;
+  &lt;outbound&gt;
+    &lt;base /&gt;
+    &lt;!-- LAYER 4: operator-visible audit dimension --&gt;
+    &lt;llm-emit-token-metric namespace=&quot;Contoso/AI&quot;&gt;
+      &lt;dimension name=&quot;caller-app&quot; value=&quot;@((string)context.Variables[&amp;quot;callerAppId&amp;quot;])&quot; /&gt;
+      &lt;dimension name=&quot;workspace&quot; value=&quot;claims-triage&quot; /&gt;
+    &lt;/llm-emit-token-metric&gt;
+  &lt;/outbound&gt;
+&lt;/policies&gt;</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/api-management/validate-azure-ad-token-policy" target="_blank">validate-azure-ad-token</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy" target="_blank">authentication-managed-identity</a>, and <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-emit-token-metric-policy" target="_blank">llm-emit-token-metric</a>. The <code>required-claims</code> + <code>set-variable</code> pattern is the standard idiom for downstream attribution. Workspace gateways do not currently support <code>authentication-managed-identity</code> per <a href="https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/workspaces-breaking-changes-march-2025" target="_blank">the March 2025 breaking changes announcement</a>.</div>
+
+<p>Read this XML as a series of identity transitions. The inbound JWT proves Layer 1. The <code>set-backend-service</code> + <code>authentication-managed-identity</code> pair pins Layer 2 to the gateway's managed identity. The named values <code>{{aad-tenant-id}}</code>, <code>{{ai-coding-assistant-app-id}}</code>, and <code>{{ai-claims-triage-app-id}}</code> resolve through Layer 3 (Key Vault). And the policy itself is editable only by holders of the appropriate Layer 4 ARM RBAC roles. The four-layer composition is concrete here, not abstract.</p>
+
+<div class="callout warn">
+  <div class="callout-title">A specific operational caveat</div>
+  <p>Microsoft's RBAC overview documents that role-assignment changes can take "up to one hour" to propagate to cached tokens across the stack. In a routine breach response — where a credential is revoked and the team needs to be confident the revocation has reached every cached identity issuer — that propagation window is part of the runbook. It is not a security flaw, but it is a fact about the architecture that incident-response time-to-clean is bounded below by token-cache TTLs across multiple services.</p>
+</div>
+</section>
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: namespace-physical tenancy with one identity model</span></div>
+
+<p>TrueFoundry's identity model is consolidated. The <a href="https://www.truefoundry.com/docs/platform/key-concepts" target="_blank">platform key-concepts page</a> and the <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway-plane-architecture page</a> together describe a system where every identity question — caller, backend, secret, operator — resolves through one control plane and lands at one physical boundary: the workspace, which is a Kubernetes namespace.</p>
+
+<h3>Workspace = Kubernetes namespace</h3>
+
+<p>This is the most consequential single fact in the comparison. A TrueFoundry workspace is not a logical scope composed across Entra and ARM RBAC and APIM workspace roles. It is a Kubernetes namespace. Every deployment, every async-service, every secret group, every model-serving pod, every gateway-routed request that names that workspace lands inside that namespace. The K8s API server enforces the namespace boundary at every operation. There is no "service-scoped role" that incidentally grants read access across all workspaces; namespace boundaries are enforced by the cluster.</p>
+
+<p>This produces a clean breach-response runbook. If a credential scoped to a workspace is compromised, the maximum damage is bounded by what that namespace contains. There is no walk across nine logs to determine the maximum-damage answer; the answer is the contents of one namespace.</p>
+
+<h3>The hot-path identity flow inside the gateway pod</h3>
+
+<p>Inside the gateway plane, identity is in-memory. The relevant facts from the gateway-plane-architecture documentation:</p>
+
+<ol>
+  <li>The gateway pod fetches the SSO issuer's public keys when it learns the issuer URL from the control plane, and caches them in-memory.</li>
+  <li>JWT verification happens against those cached keys with no external network call on the request path.</li>
+  <li>The user-to-model authorization map (which users can call which virtual models, with which budget caps and rate limits) is held in-memory inside each gateway pod.</li>
+  <li>Authorization-map updates are propagated via NATS — the control plane publishes a delta, every gateway pod consumes it asynchronously and refreshes its in-memory view.</li>
+  <li>If NATS is unreachable, gateway pods continue serving with the last-known-good authorization map. The HTTP fallback to the control plane backend resyncs when NATS recovers.</li>
+</ol>
+
+<p>For the operator, this is operationally identical to "fast and consistent JWT validation with deterministic latency." For the security reviewer, the consequential property is that <strong>the gateway has no external identity-service dependency on the request path</strong>. There is no Entra discovery cache to age out, no managed-identity token to refresh, no Key Vault round-trip if the secret rotated overnight.</p>
+
+<h3>Service-to-service identity: virtual accounts and secret groups</h3>
+
+<p>The two primitives that handle non-user identity are <strong>virtual accounts</strong> and <strong>secret groups</strong>:</p>
+
+<ul>
+  <li><strong>Virtual accounts</strong> are TrueFoundry-issued credentials that represent a service or external system. They are scoped to one or more workspaces, can be limited to specific virtual models, and are revocable from the control plane. The pattern is comparable to an Entra service principal in scope and usage, but the credential lives in the TrueFoundry control plane and the scope it grants is workspace-scoped at the K8s namespace level.</li>
+  <li><strong>Secret groups</strong> are workspace-scoped collections of secrets (provider keys, third-party credentials) that can be referenced by the services and gateway routes inside that workspace. Secret groups can be backed by external secret stores — Azure Key Vault, AWS Secrets Manager, GCP Secret Manager — through the platform's secret-integration documentation, but the consumption surface is one referenceable identifier inside one workspace.</li>
+</ul>
+
+<h3>The TrueFoundry identity diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry identity model: one control plane, namespace-physical workspaces">
+  <defs>
+    <linearGradient id="bgTfId" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a0a05"/>
+      <stop offset="100%" stop-color="#0c0608"/>
+    </linearGradient>
+    <linearGradient id="paneBgTfId" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f0d08"/>
+      <stop offset="100%" stop-color="#13070b"/>
+    </linearGradient>
+    <filter id="tfIdSh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+    <marker id="arTfId" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/>
+    </marker>
+  </defs>
+  <rect x="10" y="10" width="1260" height="560" rx="22" fill="url(#bgTfId)" stroke="#5a2418" stroke-width="2"/>
+  <text x="40" y="56" fill="#FFE0D0" font-size="22" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry identity: one control plane, namespace-physical workspaces</text>
+  <text x="40" y="84" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">All identity questions resolve through one control plane. Workspace boundaries are enforced by the Kubernetes API server at every operation.</text>
+
+  <!-- Control plane band -->
+  <rect x="40" y="120" width="1200" height="76" rx="12" fill="url(#paneBgTfId)" stroke="#FF5533" stroke-width="2" filter="url(#tfIdSh)"/>
+  <text x="60" y="146" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">CONTROL PLANE — IDENTITY SOURCE</text>
+  <text x="60" y="170" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">SSO config (Entra, Okta, Auth0…) · workspace memberships · virtual accounts · secret groups · model authorization map</text>
+  <text x="60" y="188" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">One source of truth. Replicated to gateway pods via NATS. HTTP fallback to control-plane backend on NATS unavailability.</text>
+
+  <!-- Gateway plane band -->
+  <rect x="40" y="216" width="586" height="160" rx="12" fill="url(#paneBgTfId)" stroke="#FF5533" stroke-width="2" filter="url(#tfIdSh)"/>
+  <text x="60" y="242" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">GATEWAY POD — IN-MEMORY HOT PATH</text>
+  <text x="60" y="266" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Cached JWT public keys (fetched once per issuer)</text>
+  <text x="60" y="286" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">In-memory user → model authorization map</text>
+  <text x="60" y="306" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">In-memory rate-limit and budget counters</text>
+  <text x="60" y="326" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">No external identity service call on the request path</text>
+  <text x="60" y="346" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">~250 RPS / pod · scales horizontally</text>
+  <text x="60" y="364" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Async log/metric emission via NATS</text>
+
+  <line x1="333" y1="196" x2="333" y2="216" stroke="#FF8866" stroke-width="2" marker-end="url(#arTfId)"/>
+  <text x="343" y="210" fill="#FFB39C" font-size="10" font-family="IBM Plex Mono, monospace">NATS sync</text>
+
+  <!-- Workspaces (K8s namespaces) -->
+  <rect x="650" y="216" width="590" height="160" rx="12" fill="none" stroke="#F4C04F" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="666" y="238" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">CUSTOMER KUBERNETES CLUSTER</text>
+
+  <rect x="666" y="252" width="180" height="108" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tfIdSh)"/>
+  <text x="756" y="276" text-anchor="middle" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">workspace: claims</text>
+  <text x="756" y="292" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">k8s ns: tfy-claims</text>
+  <text x="756" y="316" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">services · jobs</text>
+  <text x="756" y="332" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">async-services</text>
+  <text x="756" y="348" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">secret group · virtual acct</text>
+
+  <rect x="858" y="252" width="180" height="108" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tfIdSh)"/>
+  <text x="948" y="276" text-anchor="middle" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">workspace: coding</text>
+  <text x="948" y="292" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">k8s ns: tfy-coding</text>
+  <text x="948" y="316" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">services · jobs</text>
+  <text x="948" y="332" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">async-services</text>
+  <text x="948" y="348" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">secret group · virtual acct</text>
+
+  <rect x="1050" y="252" width="180" height="108" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tfIdSh)"/>
+  <text x="1140" y="276" text-anchor="middle" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">workspace: rag</text>
+  <text x="1140" y="292" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">k8s ns: tfy-rag</text>
+  <text x="1140" y="316" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">services · jobs</text>
+  <text x="1140" y="332" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">async-services</text>
+  <text x="1140" y="348" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">secret group · virtual acct</text>
+
+  <line x1="626" y1="296" x2="666" y2="296" stroke="#FF8866" stroke-width="2" marker-end="url(#arTfId)"/>
+  <line x1="626" y1="296" x2="858" y2="296" stroke="#FF8866" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#arTfId)" opacity="0.6"/>
+
+  <!-- Boundary annotation -->
+  <rect x="40" y="404" width="1200" height="106" rx="12" fill="#0a0f1a" stroke="#5a2418" stroke-width="1.6"/>
+  <text x="60" y="430" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PHYSICAL TENANCY BOUNDARY</text>
+  <text x="60" y="454" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Each workspace is a Kubernetes namespace. K8s API server enforces the boundary at every operation.</text>
+  <text x="60" y="476" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">A credential scoped to one workspace cannot, by construction, modify resources in another. Namespace = blast-radius bound.</text>
+  <text x="60" y="498" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">A platform-admin credential is a different and more serious problem; the routine breach scenarios are the ones bounded here.</text>
+
+  <text x="40" y="552" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">External secret stores (Key Vault, AWS Secrets Manager, GCP Secret Manager) plug into secret groups · per-workspace</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry identity: SSO and authorization map flow from one control plane through NATS to in-memory gateway state. Workspaces are Kubernetes namespaces, with the boundary enforced by the K8s API server.</div>
+
+<h3>What the operator writes</h3>
+
+<p>Workspace + virtual account + secret group declarations are the unit. The shape below is illustrative and consistent with the TrueFoundry access-control documentation:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative workspace + virtual account + secret group bundle
+type: workspace
+name: claims-triage
+namespace: tfy-claims      # the K8s namespace this workspace owns
+description: Claims-triage AI team workspace
+
+# Membership: maps SSO identities (Entra, Okta, Auth0…) to roles
+members:
+  - subject: group:claims-ai-team@contoso.com
+    role: workspace-admin
+  - subject: user:alice.stewart@contoso.com
+    role: workspace-developer
+  - subject: user:bob.lee@contoso.com
+    role: workspace-viewer
+
+# Virtual account: revocable credential for a CI service or external caller
+virtual_accounts:
+  - name: claims-ci-deployer
+    role: workspace-developer
+    allowed_models: [claims-triage-prod, claims-triage-staging]
+    rate_limit: { requests_per_minute: 100 }
+
+# Secret group: workspace-scoped credentials, optionally backed by an external store
+secret_groups:
+  - name: provider-keys
+    secrets:
+      - name: openai-api-key
+        source: { kind: azure-key-vault, vault: prod-vault, key: openai-key }
+      - name: anthropic-api-key
+        source: { kind: literal, value_ref: env:ANTHROPIC_API_KEY }</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative shape aligned to TrueFoundry docs for <a href="https://www.truefoundry.com/docs/platform/key-concepts" target="_blank">key concepts</a> (workspaces and namespaces), <a href="https://www.truefoundry.com/docs/platform/access-control" target="_blank">access control</a>, and <a href="https://www.truefoundry.com/docs/platform/manage-secrets" target="_blank">secret management</a>. The single declaration produces (1) a K8s namespace, (2) RBAC bindings inside that namespace, (3) a virtual-account credential redeemable at the gateway, and (4) a secret group whose secrets are referenceable from any deployment in the workspace.</div>
+
+<p>Read this YAML as one unit: it produces the namespace, the RBAC inside it, the credentials that can be used from outside the platform, and the secrets that flow into the runtime — all from one declaration applied through one IaC entry point. There is no separate Entra app registration, no separate Key Vault grant on a managed identity, no separate APIM workspace-scoped role assignment. The composition is the platform's responsibility, not the customer's.</p>
+</section>
+
+<section id="blast">
+<h2>§4 — Blast-radius under breach: four concrete scenarios</h2>
+
+<p>The most useful way to compare these identity models is to walk concrete breach scenarios and identify the worst-case damage, the response runbook, and the time-to-clean. The four scenarios below are realistic patterns drawn from common incident-response postmortems. Each is shown side-by-side under both products. None of the scenarios is biased toward either product by construction; the goal is to show what each architecture's worst case actually is.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num">SCENARIO 1</span><span class="blast-title">Compromised app-team service principal / virtual account</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A service principal (Azure) or virtual account (TrueFoundry) belonging to the AI-coding-assistant team is compromised through a leaked CI variable. The attacker has whatever scope the principal was granted, plus whatever propagation window is required to revoke it.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure — worst case</h4>
+      <p>If the principal had <strong><code>API Management Service Contributor</code> at resource-group scope</strong> (a common pattern when fine-grained role design is operationally untenable), the attacker can edit policies on every API in every workspace in that RG, attach new backends, modify Key Vault references, and change diagnostic settings. The dual-scope rule means that even a workspace-only role couples to a service-level role granting at-minimum read across the entire APIM instance. <em>Time-to-clean</em>: revoke principal credentials in Entra (immediate), wait for ARM token cache propagation (up to ~1 hour per Microsoft RBAC docs), audit policy changes across multiple workspaces.</p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry — worst case</h4>
+      <p>If the virtual account had <code>workspace-developer</code> in the <code>claims-triage</code> workspace, the attacker can deploy services, modify routes, and consume budgets <strong>only inside the <code>tfy-claims</code> Kubernetes namespace</strong>. The K8s API server enforces the boundary; cross-workspace operations fail at the API server, not at a logical RBAC check. <em>Time-to-clean</em>: revoke virtual account in the control plane (effective at next NATS sync to gateway pods, seconds to ~1 minute); audit changes in one namespace.</p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num">SCENARIO 2</span><span class="blast-title">Stolen developer JWT in transit</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A developer's JWT is stolen through a network capture (the developer was on an unsecured network and triggered a request from a desktop tool). The token has the developer's normal scope and a TTL of one hour.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure — worst case</h4>
+      <p>The token is valid for its remaining TTL across every Azure resource the developer can access — APIM data plane, ARM control plane, Key Vault, Azure Monitor. <em>Time-to-clean</em>: invalidate the developer's session in Entra (continuous-access-evaluation can speed this up if configured), revoke the access token. Without CAE, Azure RBAC's documented propagation window means the token may continue to authenticate for up to its TTL on cached endpoints. The attacker can use the token across the full breadth of the developer's role assignments while it remains valid.</p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry — worst case</h4>
+      <p>The token authenticates against gateway pods that hold the SSO issuer's public keys in-memory. Revoking the developer in the control plane invalidates the user-to-model authorization map at next NATS sync; gateway pods deny new requests for that user immediately. The attacker can use the token for the remaining TTL <em>only against the gateway data path</em> — control-plane operations require the control-plane authorization layer, which honors the revocation immediately. <em>Time-to-clean</em>: revoke in control plane, wait one NATS sync (seconds), confirm via gateway logs.</p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num">SCENARIO 3</span><span class="blast-title">Authorized but rogue insider with workspace-level write</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A platform-engineering team member is leaving the organization on bad terms. They have legitimate write access to one workspace (Azure: APIM workspace + service-level read; TrueFoundry: workspace-admin role). They want to maximize damage during their notice period.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure — worst case</h4>
+      <p>Within their workspace, they can edit any policy, attach any backend, modify any product, and rotate any policy fragment. The dual-scope rule's service-level read means they can also enumerate all APIs and configurations across the entire APIM instance, which they can save and exfiltrate. They cannot directly modify other workspaces but they have substantial reconnaissance value across the whole instance. <em>Mitigation</em>: rely on Azure Monitor alerts on policy changes, JIT access patterns, and approval workflows.</p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry — worst case</h4>
+      <p>Within their workspace (one K8s namespace), they have admin rights — they can modify deployments, change routes, edit secrets in the workspace's secret group, exfiltrate workspace-local data. They <strong>cannot</strong> enumerate or read configurations from other workspaces; the namespace boundary prevents it. The blast radius is structurally bounded to one namespace. <em>Mitigation</em>: deployment-validation policies (Blog 12) plus the standard K8s-level controls (audit logs, OPA/Cedar policies on apply-time changes).</p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num">SCENARIO 4</span><span class="blast-title">Failed identity rotation: provider key leaked</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A provider API key (OpenAI, Anthropic) is accidentally committed to a public repository and detected hours later. The key needs to be rotated immediately, and every running service that uses it needs to pick up the new key with minimal downtime and zero exposure window of the old key continuing to work.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure — worst case</h4>
+      <p>Update the named value in Key Vault. APIM's named-value cache must refresh — the documented refresh interval is several minutes. During the cache window, requests through APIM continue using the old (compromised) key. <em>Time-to-clean</em>: provider-side key revocation (immediate at provider), APIM named-value refresh (minutes), workspace gateway impact: <strong>workspace gateways do not currently support Key Vault named values via managed identity</strong>, so AI APIs in workspaces cannot use the same secret-rotation pattern and rely on a different mechanism with its own propagation timing.</p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry — worst case</h4>
+      <p>Update the secret in the workspace's secret group (or in the upstream Key Vault if backed by one). The control plane publishes the change via NATS; gateway pods refresh in-memory secrets at next sync. The provider-side revocation is the bottleneck for clean exposure-window closure, not the platform's propagation model. <em>Time-to-clean</em>: provider-side revocation + control-plane secret update + one NATS sync (seconds).</p>
+    </div>
+  </div>
+</div>
+
+<h3>The blast-radius comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+  <thead><tr><th>Identity property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Tenancy boundary</strong></td>
+      <td><span class="partial">◐</span> Logical: Entra tenant + APIM workspace + resource group + RBAC composed.</td>
+      <td><span class="check">✅</span> Physical: workspace = K8s namespace, enforced by the K8s API server.</td>
+      <td>Determines whether breach response can rely on a single boundary or must walk a graph.</td>
+    </tr>
+    <tr>
+      <td><strong>Caller auth on hot path</strong></td>
+      <td><span class="check">✅</span> <code>validate-azure-ad-token</code> with cached Entra discovery.</td>
+      <td><span class="check">✅</span> Cached SSO public keys, in-memory JWT verification.</td>
+      <td>Both products do JWT validation in-process; Azure has a richer claims-vocabulary surface.</td>
+    </tr>
+    <tr>
+      <td><strong>Backend auth model</strong></td>
+      <td><span class="check">✅</span> Managed identity to Azure AI services is a major Azure strength.</td>
+      <td><span class="partial">◐</span> Provider keys via secret groups; not Azure-managed-identity-native.</td>
+      <td>Managed identity removes raw keys from the runtime; TF removes them from app code via secret groups but the credential model is still key-based.</td>
+    </tr>
+    <tr>
+      <td><strong>Operator RBAC composition</strong></td>
+      <td><span class="partial">◐</span> Dual-scope rule (workspace + service); 3 service roles + 4 workspace roles + custom.</td>
+      <td><span class="check">✅</span> Single workspace role surface; namespace-bound by construction.</td>
+      <td>Determines whether scope decisions require composing multiple role assignments correctly.</td>
+    </tr>
+    <tr>
+      <td><strong>Revocation propagation</strong></td>
+      <td><span class="partial">◐</span> Up to ~1 hour for cached permissions per Microsoft RBAC docs.</td>
+      <td><span class="check">✅</span> NATS sync — seconds at typical scale.</td>
+      <td>Time-to-clean in routine breach response is bounded below by this number.</td>
+    </tr>
+    <tr>
+      <td><strong>Secret rotation propagation</strong></td>
+      <td><span class="partial">◐</span> Key Vault refresh interval at APIM (minutes); workspace-gateway gap.</td>
+      <td><span class="check">✅</span> Control-plane → NATS → gateway pods (seconds).</td>
+      <td>Determines exposure window after a leaked credential is revoked at the provider.</td>
+    </tr>
+    <tr>
+      <td><strong>Per-workspace blast radius</strong></td>
+      <td><span class="partial">◐</span> Workspace + minimum service-level read = "this workspace plus full instance read."</td>
+      <td><span class="check">✅</span> Workspace = namespace; out-of-workspace operations fail at K8s API server.</td>
+      <td>Determines what a routine credential compromise can structurally do.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">The composition is well-engineered, mature, and deeply integrated with the rest of the Microsoft ecosystem. <code>validate-azure-ad-token</code> with cached discovery is a credible JWT path; managed identity to Azure AI services is best-in-class for removing provider keys from the runtime; Key Vault-backed named values are an institutional secret-management pattern. The seam tax is real but the right organization can amortize it well.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> Entra centrality is non-negotiable, your security org thinks in Azure RBAC + ARM scopes natively, your platform team has the operational discipline to maintain the dual-scope role composition, and your AI workloads benefit from the managed-identity-to-Azure-AI-services audit story.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">The physical-tenancy model dramatically simplifies the breach-response runbook and the security-review conversation. Workspace = K8s namespace is a property the security team can reason about with one mental model. NATS-driven revocation propagation eliminates the multi-service propagation window that drives time-to-clean in Azure incidents. Virtual accounts and secret groups produce one-declaration identity scopes.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> blast-radius bounding is decisive (regulated data, customer-controlled clusters, multi-team AI platform), your security review prefers physical boundaries to logical RBAC composition, or the operational simplicity of one identity model — rather than four cooperating ones — is itself the value.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that the two architectures optimize for different security postures. Azure optimizes for a security organization that already operates well across Entra, ARM RBAC, and Azure-native audit; the AI workload inherits that discipline. TrueFoundry optimizes for a security organization that wants one model with a physical boundary and is willing to accept Kubernetes as the substrate that enforces it. Neither model is universally better; the question is which one matches your incident-response runbook.</p>
+
+<p>The next blog (<a href="03-truefoundry-vs-azure-deployment-data-residency-sovereignty.html">Deployment, Data Residency &amp; Sovereignty</a>) walks the deployment-topology axis — the third Foundations dimension. Where can each platform actually run, including in regulated, sovereign, and air-gapped environments?</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/validate-azure-ad-token-policy" target="_blank">Microsoft Learn — validate-azure-ad-token policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy" target="_blank">Microsoft Learn — authentication-managed-identity policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-role-based-access-control" target="_blank">Microsoft Learn — RBAC in Azure API Management (built-in service and workspace roles)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/workspaces-overview" target="_blank">Microsoft Learn — Workspaces in Azure API Management</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/workspaces-breaking-changes-march-2025" target="_blank">Microsoft Learn — Workspace breaking changes (March 2025): managed-identity limitations</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/role-based-access-control/overview" target="_blank">Microsoft Learn — Azure RBAC overview (additive evaluation, propagation timing)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/integration" target="_blank">Microsoft Learn — Built-in roles for Integration (APIM workspace role IDs)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/key-vault/general/secure-your-key-vault" target="_blank">Microsoft Learn — Secure your Key Vault (RBAC and access policies)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens" target="_blank">Microsoft Learn — Microsoft identity platform access tokens</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/key-concepts" target="_blank">TrueFoundry Docs — Key Concepts (workspaces and Kubernetes namespaces)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/access-control" target="_blank">TrueFoundry Docs — Access Control</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry Docs — Gateway Plane Architecture (in-memory hot path, JWT cache, NATS)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/auth-introduction" target="_blank">TrueFoundry Docs — Gateway Authentication</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/virtual-accounts" target="_blank">TrueFoundry Docs — Virtual Accounts</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/manage-secrets" target="_blank">TrueFoundry Docs — Secret Management (workspace-scoped secret groups)</a></li>
+  <li><a href="https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/" target="_blank">Kubernetes — Namespaces (the substrate of TrueFoundry workspaces)</a></li>
+</ol>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Movement I — Foundations · Blog 2 of 12 · April 2026 · <a href="01-truefoundry-vs-azure-architecture-control-planes-runtime-boundaries.html">← Blog 1 — Architecture</a> · <a href="03-truefoundry-vs-azure-deployment-data-residency-sovereignty.html">Blog 3 — Deployment →</a>
+</p>
+</section>
+
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try {
+        await navigator.clipboard.writeText(pre.innerText);
+        btn.textContent = 'copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200);
+      } catch (e) {
+        btn.textContent = 'failed';
+        setTimeout(() => { btn.textContent = 'copy'; }, 1200);
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
