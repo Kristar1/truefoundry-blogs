@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="A technical comparison of TrueFoundry and the Azure platform stack on architecture, control planes, and runtime boundaries — split-plane Kubernetes-native AI platform versus a constellation of cooperating Azure services (API Management, AI Foundry, Azure OpenAI, Foundry Agent Service, Azure ML, Entra, Monitor, Key Vault, AKS)."/>
+<title>Architecture &amp; Control Planes for AI Platforms: TrueFoundry vs Azure</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+  :root {
+    --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+    --azure:#0078D4; --tf:#FF5533;
+    --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+    --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+    --card:#0f1522;
+  }
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html { scroll-behavior:smooth; }
+  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+  code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+  h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+  h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+  h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+  h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+  p { margin-bottom:1rem; color:var(--ink); }
+  strong { color:var(--text); }
+  a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+  ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+  li { margin-bottom:.4rem; color:var(--ink); }
+
+  .series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+  .tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+  .tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+  .series-dots { display:flex; gap:.3rem; align-items:center; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+  .meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+  .meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+
+  .methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+  .methodology strong { color:#60a5fa; }
+  .intro-lead { font-size:1.05rem; color:#d3dfec; }
+
+  .callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+  .callout.info { border-color:#60a5fa; background:#0a1220; }
+  .callout.warn { border-color:var(--warn); background:#1a1200; }
+  .callout.ok { border-color:var(--ok); background:#091510; }
+  .callout.danger { border-color:var(--danger); background:#1a0a0a; }
+  .callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+  .callout.info .callout-title { color:#60a5fa; }
+  .callout.warn .callout-title { color:var(--warn); }
+  .callout.ok .callout-title { color:var(--ok); }
+  .callout.danger .callout-title { color:var(--danger); }
+
+  .scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+  .scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+
+  .quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+  .qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+  .qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+  .qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+  .qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+  .c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+  .c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+  .c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+
+  .toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+  .toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+  .toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+  .toc li { margin-bottom:0; }
+  .toc a { color:var(--muted); }
+  .toc a:hover { color:#60a5fa; text-decoration:none; }
+
+  .vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+  .vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+  .vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+  .vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+  .vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+  .vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+  .vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+  .vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+  .vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+
+  .svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+  .svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+  .img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+
+  .code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+  .code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+  .code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+  .copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+  .copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+  .copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+  .source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+  .source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+
+  .matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+  table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+  thead tr { background:var(--surface2); }
+  th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+  td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+  tr:hover td { background:var(--surface); }
+  .check { color:var(--ok); }
+  .cross { color:var(--danger); }
+  .partial { color:var(--warn); }
+
+  .verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+  .verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+  .verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+  .verdict-card.azure::before { background:var(--azure); }
+  .verdict-card.tf::before { background:var(--tf); }
+  .verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+  .verdict-card.azure .verdict-label { color:var(--azure); }
+  .verdict-card.tf .verdict-label { color:var(--tf); }
+  .verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+  .verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+  .verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+  .verdict-use strong { color:#a5f3fc; }
+
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+  .mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+  .mini-card h4 { margin-top:0; }
+  .bullet-tight li { margin-bottom:.2rem; }
+
+  .ref-list { font-size:.84rem; }
+  .ref-list li { margin-bottom:.4rem; color:var(--muted); }
+
+  hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+  @media (max-width:760px) {
+    body { padding:1.2rem 1rem 4rem; }
+    h1 { font-size:1.9rem; }
+    .toc ol, .two-col { grid-template-columns:1fr; }
+    table { min-width:620px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement I · Foundations</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 1 of 12</span>
+</div>
+
+<h1>Architecture &amp; Control Planes for AI Platforms: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 32 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Platform Architecture · AI Infrastructure</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> This blog is grounded in current Microsoft Learn pages for API Management gateways, workspaces, the AI gateway capabilities surface, the well-architected guide for APIM, and the announced workspace gateway limitations. The TrueFoundry side is grounded in the platform architecture page, the gateway-plane-architecture page, the deployment-overview, and the AI Gateway introduction. Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">If you have not read Blog 0</div>
+  <p>This blog argues that architecture is the <em>first serious comparison axis</em> because the structural choice — split-plane platform versus constellation of cooperating services — cascades into every later dimension. The framing thesis from Blog 0 is assumed. If you skip it, the editorial verdict will read as opinionated rather than derived.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+  <div class="scenario-title">A production incident that becomes an architecture question</div>
+  <p>At 14:32 on a Tuesday, the AI coding-assistant team at a large financial-services firm starts paging itself. Latency on the assistant's autocomplete endpoint has tripled. The on-call engineer pulls up Application Insights, sees a clean dashboard, and assumes Azure OpenAI is the problem. It isn't. Over the next ninety minutes, triage walks through five separate Azure surfaces:</p>
+  <ul>
+    <li>Azure Monitor for the gateway-side request count, which looks normal.</li>
+    <li>The APIM portal to inspect <code>llm-token-limit</code> rejections — none.</li>
+    <li>The Azure AI Foundry portal to check the model deployment quota — fine.</li>
+    <li>Key Vault audit logs to see whether a secret rotated overnight — yes, one did.</li>
+    <li>Entra sign-in logs to confirm the workspace gateway's managed identity is still valid — and finally, the failure: the workspace where this team's APIs live <em>does not support service-level managed identity for the <code>authentication-managed-identity</code> policy</em>, so the gateway is silently retrying provider auth on every request, adding ~600 ms of latency per call.</li>
+  </ul>
+  <p>The fix is small. The architecture lesson is not. The team did not have a feature gap or a pricing problem. They had a <em>seam</em> problem — five well-engineered services with subtle compatibility differences between them, where the failure mode required walking the seam to diagnose. That is the comparison this blog is about.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li>Azure is a <strong>constellation</strong> of services that compose into an AI platform: APIM, AI Foundry, Azure OpenAI, Foundry Agent Service, Azure ML, Entra, Key Vault, Monitor, Content Safety, AKS. Each is excellent in isolation. The integration tax shows up at the seams.</li>
+    <li>TrueFoundry is <strong>one platform</strong> with four planes — control, gateway, compute, data — designed top-to-bottom. The gateway plane is built on the <a href="https://hono.dev/" target="_blank">Hono framework</a> with an in-memory hot path, NATS-based config sync, and ~250 RPS per pod on 1 vCPU + 1 GB.</li>
+    <li>The choice is not "which gateway is better." It is <em>which architecture matches your operating model</em>. Constellations are right when each surface is operated by a different team and the integration tax is amortized across many programs. Single platforms are right when the AI engineering team owns the full stack and the seam tax is the dominant cost.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when the organization is already standardized on Azure governance, Entra, APIM workspaces, and a security/platform org that prefers many specialized services to one consolidated platform. The integration tax is real but well-amortized in this shape.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when the AI engineering team owns the full lifecycle and wants control plane, gateway, compute, and data to share one operating model. Particularly strong when the runtime estate must remain inside the customer's K8s clusters and the platform team is small enough that seam-tax cost dominates.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Why architecture is Blog 1</div>
+    <div class="qp-desc">Architecture is the constraint that decides every later dimension — identity model, data residency, routing abstraction, FinOps boundaries, MCP governance, agent runtime placement. Get this wrong and the next 11 blogs read as feature lists rather than as consequences.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Why architecture is the first serious axis</a></li>
+    <li><a href="#azure">§2 — Azure: a constellation of services</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: a split-plane platform</a></li>
+    <li><a href="#tradeoffs">§4 — Where the seams actually live</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+
+<section id="why">
+<h2>§1 — Why architecture is the first serious comparison axis</h2>
+
+<p class="intro-lead">There is a temptation in every AI-platform evaluation to start with a feature checklist: which product supports semantic caching, which one has the better routing DSL, which one wires up faster to your favorite observability stack. That instinct is wrong, and the production failure pattern at the start of this blog is why. Feature parity is not what determines the operational character of an AI platform. Architecture does.</p>
+
+<p>The most useful way to read the comparison is to ask one structural question: <em>what is the unit that AI engineering teams operate against?</em> On Azure, the answer is "the right service for the job." Inbound auth and rate-limiting belong to APIM. Prompt flow and the studio belong to AI Foundry. Hosted models belong to Azure OpenAI. Agent runtime belongs to Foundry Agent Service. Identity belongs to Entra. Secrets belong to Key Vault. Telemetry belongs to Monitor. Each of those services is mature, well-documented, and excellent at what it does. The structural property that matters is that they are <strong>independently engineered, independently versioned, and independently governed</strong>. A platform engineering team operating against the Azure stack composes nine services into one logical AI platform. A change in one service may or may not propagate cleanly across the others.</p>
+
+<p>On TrueFoundry, the answer is "the platform." The product is designed as four cooperating planes — <strong>control plane</strong> for orchestration and policy, <strong>gateway plane</strong> for the request path, <strong>compute plane</strong> for workloads, <strong>data plane</strong> for artifacts — and the seams between them are part of the product, not part of the customer's integration work. A change in one plane is engineered to propagate to the others through documented contracts (NATS for control-plane-to-gateway sync, Kubernetes namespace boundaries for tenancy, OTel for observability). The platform engineering team operates against one surface, and the seams that exist are documented contracts rather than emergent behaviors of nine separately versioned products.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The honest tension</div>
+  <p>Constellations are not bad — they are a different scaling strategy. Microsoft has put serious engineering into making each Azure service excellent in isolation, and a large organization with separate teams owning each surface gets real benefits from that separation. The cost shows up in <em>AI engineering operating problems specifically</em>, where AI-native concepts (a virtual model, a prompt version, an MCP tool, a guardrail hook) cross service boundaries that were not designed together. This blog measures that cost. It does not pretend the cost dominates every situation.</p>
+</div>
+
+<p>The rest of the blog walks the two architectures in equal detail, identifies the four most consequential seams on the Azure side, shows how TrueFoundry's split-plane design addresses each, and ends with an honest verdict. No claim made here lacks a primary-source citation; the goal is for a Microsoft FastTrack engineer to disagree with the framing without being able to find an inaccurate fact.</p>
+</section>
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: a constellation of services, each excellent in isolation</span></div>
+
+<p>The Azure AI platform is not a single product. It is a constellation that includes, at minimum, the services below. Each one is documented at <code>learn.microsoft.com</code> and operates as a first-class Azure resource with its own SLA, RBAC surface, and Bicep / Terraform footprint:</p>
+
+<ul>
+  <li><strong>Azure API Management</strong> — the AI gateway tier. Provides JWT validation, managed-identity backend auth, semantic cache, token limits, content safety, and MCP server exposure as policies. Available in five gateway flavors (classic, V2, consumption, self-hosted, workspace) with documented feature differences between them.</li>
+  <li><strong>Azure AI Foundry</strong> — the studio surface. Hosts prompt flow, the model catalog (which now spans Azure OpenAI deployments, Foundry models, and registered custom models), agent registration, and increasingly the central management plane for AI governance. AI gateway functionality is now reachable directly from the Foundry interface for unified policy and telemetry.</li>
+  <li><strong>Azure OpenAI</strong> — hosted GPT-class models with Azure-native quota, deployment, and managed-identity integration.</li>
+  <li><strong>Foundry Agent Service</strong> — the agent runtime. Registers agents running anywhere (Azure, other clouds, on-prem) into a Foundry-managed control plane and applies policies such as throttling and content safety from there.</li>
+  <li><strong>Azure Machine Learning</strong> — model registries, training compute, and the canonical place to register custom models that AI Foundry can then serve.</li>
+  <li><strong>Microsoft Entra ID</strong> — identity, including the <code>validate-azure-ad-token</code> policy in APIM and managed identities for service-to-service auth.</li>
+  <li><strong>Azure Key Vault</strong> — secrets, certificates, and named values that APIM references via managed identity.</li>
+  <li><strong>Azure Monitor + Application Insights</strong> — logs, metrics, traces, and the built-in AI gateway monitoring panel.</li>
+  <li><strong>Azure AI Content Safety</strong> — the backing service for the <code>llm-content-safety</code> policy in APIM.</li>
+  <li><strong>Azure Kubernetes Service</strong> — for self-hosted inference (vLLM, custom serving) and self-hosted APIM gateways when AI traffic must stay inside customer infrastructure.</li>
+</ul>
+
+<p>This is a serious stack. A large enterprise that already runs on Azure has institutional muscle for each of these services, and Microsoft has invested in making the seams between them as smooth as possible — Bicep modules, ARM templates, Azure Policy, and increasingly direct Foundry-to-APIM integration. The architectural point is not that the constellation is poorly engineered. It is that <em>the constellation is the platform</em>, and operating an AI program means operating across all of it.</p>
+
+<h3>Five gateway flavors, with documented feature differences</h3>
+
+<p>APIM alone has five gateway flavors, and they are not feature-equivalent. From the <a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-gateways-overview" target="_blank">API Management gateways overview</a>:</p>
+
+<ul>
+  <li><strong>Classic</strong> — the managed gateway in Developer, Basic, Standard, and Premium tiers (the dedicated tiers).</li>
+  <li><strong>V2</strong> — the managed gateway in Basic v2, Standard v2, and Premium v2.</li>
+  <li><strong>Consumption</strong> — the auto-scaling managed gateway in the Consumption tier.</li>
+  <li><strong>Self-hosted</strong> — a Linux-based Docker container deployable to Kubernetes (including AKS and Azure Arc-enabled Kubernetes), associated with a Gateway resource in cloud APIM that provides config.</li>
+  <li><strong>Workspace</strong> — a managed gateway scoped to a workspace, available in select tiers.</li>
+</ul>
+
+<p>Microsoft documents <a href="https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/workspaces-breaking-changes-march-2025" target="_blank">explicit limitations</a> for workspace gateways: <em>service-level managed identities are not supported in workspaces, which means features that depend on managed identity — including storing named values and certificates in Azure Key Vault and using the <code>authentication-managed-identity</code> policy — are not currently supported</em>. Custom domains on workspace gateways are also not currently supported. These are real, documented constraints — not bugs but design choices in how the workspace surface is being rolled out.</p>
+
+<div class="callout info">
+  <div class="callout-title">Why this matters for an AI gateway</div>
+  <p>Managed identity is APIM's preferred mechanism for backend auth to Azure OpenAI and other Azure AI services — it removes raw provider keys from the request path and is one of APIM's strongest security primitives. If you adopt workspaces (which Microsoft positions as the right multi-team isolation model), you give up that primitive in those workspaces until the support gap closes. Either you don't use workspaces, or you use them and accept that the AI traffic in them authenticates differently than the AI traffic in the root gateway. Both choices are workable; neither is invisible.</p>
+</div>
+
+<h3>What one AI request actually touches</h3>
+
+<p>To make the constellation concrete, here is what an AI request flowing through a fully-instrumented Azure deployment touches between the client and the model. This is not a strawman — every service named here is a documented part of Microsoft's AI gateway pattern.</p>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 540" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure AI request path: nine services touched between client and model">
+  <defs>
+    <linearGradient id="bgAz" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07101D"/>
+      <stop offset="100%" stop-color="#07172A"/>
+    </linearGradient>
+    <filter id="azShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <marker id="arAz" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/>
+    </marker>
+    <marker id="arAzWarn" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#F4C04F"/>
+    </marker>
+    <marker id="arAzGray" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#73839A"/>
+    </marker>
+  </defs>
+  <rect x="10" y="10" width="1260" height="520" rx="22" fill="url(#bgAz)" stroke="#22314C" stroke-width="2"/>
+  <text x="40" y="56" fill="#E8EEF8" font-size="22" font-weight="700" font-family="IBM Plex Sans, sans-serif">What one AI request touches in the Azure constellation</text>
+  <text x="40" y="84" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">A single chat-completion request crosses nine independently-engineered services. Solid arrows are hot-path; dashed arrows are out-of-band evidence flows.</text>
+
+  <!-- Hot path row -->
+  <rect x="40" y="120" width="120" height="64" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+  <text x="100" y="146" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Client app</text>
+  <text x="100" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">JWT or APIM key</text>
+
+  <rect x="190" y="120" width="148" height="64" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+  <text x="264" y="146" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application Gateway</text>
+  <text x="264" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">WAF · custom domain</text>
+
+  <rect x="368" y="120" width="148" height="64" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="2"/>
+  <text x="442" y="146" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">APIM gateway</text>
+  <text x="442" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">policies · token limit · cache</text>
+
+  <rect x="546" y="120" width="148" height="64" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+  <text x="620" y="146" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Entra ID</text>
+  <text x="620" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">JWT validation</text>
+
+  <rect x="724" y="120" width="148" height="64" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+  <text x="798" y="146" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Content Safety</text>
+  <text x="798" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">prompt + response check</text>
+
+  <rect x="902" y="120" width="148" height="64" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+  <text x="976" y="146" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Managed Redis</text>
+  <text x="976" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">semantic cache backend</text>
+
+  <rect x="1080" y="120" width="148" height="64" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="2"/>
+  <text x="1154" y="146" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Azure OpenAI</text>
+  <text x="1154" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">model deployment</text>
+
+  <!-- arrows hot path -->
+  <line x1="160" y1="152" x2="190" y2="152" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz)"/>
+  <line x1="338" y1="152" x2="368" y2="152" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz)"/>
+  <path d="M442 184 C442 220 620 220 620 184" fill="none" stroke="#7CC2FF" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#arAz)"/>
+  <path d="M442 184 C442 230 798 230 798 184" fill="none" stroke="#7CC2FF" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#arAz)"/>
+  <path d="M442 184 C442 240 976 240 976 184" fill="none" stroke="#7CC2FF" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#arAz)"/>
+  <line x1="516" y1="152" x2="546" y2="152" stroke="#7CC2FF" stroke-width="1.6" stroke-dasharray="4 4"/>
+  <line x1="694" y1="152" x2="724" y2="152" stroke="#7CC2FF" stroke-width="1.6" stroke-dasharray="4 4"/>
+  <line x1="872" y1="152" x2="902" y2="152" stroke="#7CC2FF" stroke-width="1.6" stroke-dasharray="4 4"/>
+  <line x1="1050" y1="152" x2="1080" y2="152" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz)"/>
+
+  <!-- Out of band row -->
+  <rect x="40" y="280" width="148" height="64" rx="10" fill="#0f1726" stroke="#73839A" stroke-width="1.6" stroke-dasharray="3 3"/>
+  <text x="114" y="306" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Key Vault</text>
+  <text x="114" y="326" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">named values · certs</text>
+
+  <rect x="208" y="280" width="148" height="64" rx="10" fill="#0f1726" stroke="#73839A" stroke-width="1.6" stroke-dasharray="3 3"/>
+  <text x="282" y="306" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Azure Monitor</text>
+  <text x="282" y="326" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">logs · metrics</text>
+
+  <rect x="376" y="280" width="148" height="64" rx="10" fill="#0f1726" stroke="#73839A" stroke-width="1.6" stroke-dasharray="3 3"/>
+  <text x="450" y="306" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">App Insights</text>
+  <text x="450" y="326" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">traces · custom metrics</text>
+
+  <rect x="544" y="280" width="148" height="64" rx="10" fill="#0f1726" stroke="#73839A" stroke-width="1.6" stroke-dasharray="3 3"/>
+  <text x="618" y="306" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Azure Policy</text>
+  <text x="618" y="326" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">audit · deny effects</text>
+
+  <rect x="712" y="280" width="148" height="64" rx="10" fill="#0f1726" stroke="#73839A" stroke-width="1.6" stroke-dasharray="3 3"/>
+  <text x="786" y="306" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">AI Foundry</text>
+  <text x="786" y="326" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">model catalog · governance</text>
+
+  <rect x="880" y="280" width="148" height="64" rx="10" fill="#0f1726" stroke="#73839A" stroke-width="1.6" stroke-dasharray="3 3"/>
+  <text x="954" y="306" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Azure ML registry</text>
+  <text x="954" y="326" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">custom models</text>
+
+  <rect x="1048" y="280" width="180" height="64" rx="10" fill="#0f1726" stroke="#73839A" stroke-width="1.6" stroke-dasharray="3 3"/>
+  <text x="1138" y="306" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Foundry Agent Service</text>
+  <text x="1138" y="326" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">if request is agent-driven</text>
+
+  <!-- dashed feeds from APIM down -->
+  <path d="M442 184 C420 220 200 244 114 280" fill="none" stroke="#73839A" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arAzGray)"/>
+  <path d="M442 184 C440 220 320 244 282 280" fill="none" stroke="#73839A" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arAzGray)"/>
+  <path d="M442 184 C470 224 460 244 450 280" fill="none" stroke="#73839A" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arAzGray)"/>
+  <path d="M442 184 C500 234 580 254 618 280" fill="none" stroke="#73839A" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arAzGray)"/>
+  <path d="M442 184 C600 230 700 254 786 280" fill="none" stroke="#73839A" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arAzGray)"/>
+
+  <text x="40" y="408" fill="#F4C04F" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">Seam tax: every dashed line is a service boundary</text>
+  <text x="40" y="432" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif" width="1180">
+    <tspan x="40" dy="0">A normal request crosses ≥4 services on the hot path (App Gateway → APIM → Entra → Content Safety → Managed Redis → AOAI) and emits</tspan>
+    <tspan x="40" dy="18">evidence into ≥5 more (Key Vault, Monitor, App Insights, Azure Policy, Foundry, ML, Agent Service). Each is a place where ownership,</tspan>
+    <tspan x="40" dy="18">RBAC, and version compatibility live independently. The integration tax is the cost of keeping all of it coherent across changes.</tspan>
+  </text>
+
+  <text x="40" y="500" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Solid arrows = hot path · dashed arrows = config / evidence flows</text>
+</svg>
+</div>
+<div class="img-caption">A single chat-completion request in a fully-instrumented Azure AI deployment crosses nine independently-engineered services. Each is excellent in isolation; the operational cost is in keeping them coherent across versions and ownership.</div>
+
+<h3>The APIM policy a serious AI deployment actually writes</h3>
+
+<p>Once you commit to APIM as the gateway tier, the policy XML for a production AI endpoint composes several documented features. The example below is illustrative — derived from the Microsoft Learn pages for <code>validate-azure-ad-token</code>, <code>authentication-managed-identity</code>, <code>llm-token-limit</code>, <code>llm-content-safety</code>, and <code>llm-semantic-cache-lookup</code> — and shows what the seam between auth, content safety, semantic cache, and backend routing looks like at the policy level:</p>
+
+<div class="code-wrap"><div class="code-lang">XML</div><pre>&lt;!-- Illustrative APIM inbound chain for an Azure OpenAI-backed AI API --&gt;
+&lt;policies&gt;
+  &lt;inbound&gt;
+    &lt;base /&gt;
+    &lt;!-- Caller identity: validate token issued by Entra --&gt;
+    &lt;validate-azure-ad-token tenant-id=&quot;{{aad-tenant-id}}&quot;&gt;
+      &lt;client-application-ids&gt;
+        &lt;application-id&gt;{{aad-client-application-id}}&lt;/application-id&gt;
+      &lt;/client-application-ids&gt;
+      &lt;audiences&gt;
+        &lt;audience&gt;api://contoso-ai-gateway&lt;/audience&gt;
+      &lt;/audiences&gt;
+    &lt;/validate-azure-ad-token&gt;
+
+    &lt;!-- Token-based admission --&gt;
+    &lt;llm-token-limit counter-key=&quot;@(context.Subscription.Id)&quot;
+                     tokens-per-minute=&quot;200000&quot;
+                     token-quota=&quot;3000000&quot;
+                     token-quota-period=&quot;Monthly&quot;
+                     estimate-prompt-tokens=&quot;true&quot; /&gt;
+
+    &lt;!-- Inbound content safety --&gt;
+    &lt;llm-content-safety backend-id=&quot;content-safety-backend&quot;
+                        shield-prompt=&quot;true&quot;&gt;
+      &lt;categories output-type=&quot;FourSeverityLevels&quot;&gt;
+        &lt;category name=&quot;Hate&quot; threshold=&quot;4&quot; /&gt;
+        &lt;category name=&quot;Violence&quot; threshold=&quot;4&quot; /&gt;
+      &lt;/categories&gt;
+    &lt;/llm-content-safety&gt;
+
+    &lt;!-- Semantic cache lookup --&gt;
+    &lt;llm-semantic-cache-lookup score-threshold=&quot;0.05&quot;
+                                embeddings-backend-id=&quot;embeddings-backend&quot;
+                                embeddings-backend-auth=&quot;system-assigned&quot;&gt;
+      &lt;vary-by&gt;@(context.Subscription.Id)&lt;/vary-by&gt;
+    &lt;/llm-semantic-cache-lookup&gt;
+
+    &lt;!-- Backend selection + managed identity to AOAI --&gt;
+    &lt;set-backend-service backend-id=&quot;aoai-primary&quot; /&gt;
+    &lt;authentication-managed-identity resource=&quot;https://cognitiveservices.azure.com/&quot; /&gt;
+  &lt;/inbound&gt;
+  &lt;outbound&gt;
+    &lt;llm-semantic-cache-store duration=&quot;600&quot; /&gt;
+    &lt;llm-emit-token-metric namespace=&quot;Contoso/AI&quot;&gt;
+      &lt;dimension name=&quot;team&quot; value=&quot;@(context.Request.Headers.GetValueOrDefault(&amp;quot;X-Team&amp;quot;,&amp;quot;unknown&amp;quot;))&quot; /&gt;
+    &lt;/llm-emit-token-metric&gt;
+    &lt;base /&gt;
+  &lt;/outbound&gt;
+&lt;/policies&gt;</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative composition based on Microsoft Learn documentation for <a href="https://learn.microsoft.com/en-us/azure/api-management/validate-azure-ad-token-policy" target="_blank">validate-azure-ad-token</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-token-limit-policy" target="_blank">llm-token-limit</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-content-safety-policy" target="_blank">llm-content-safety</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-semantic-cache-lookup-policy" target="_blank">llm-semantic-cache-lookup</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy" target="_blank">authentication-managed-identity</a>, and <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-emit-token-metric-policy" target="_blank">llm-emit-token-metric</a>.</div>
+
+<p>Read this policy carefully and you can count the seams: it references an Entra tenant, two backends (content safety and embeddings), a managed identity that resolves through Key Vault for any named values, a Subscription ID that lives in APIM's product/subscription model, a custom dimension that flows into Application Insights, and a backend service that ultimately resolves to an Azure OpenAI deployment registered through Azure AI Foundry. The XML is clear; the cross-service mental model is the integration tax.</p>
+
+<div class="callout warn">
+  <div class="callout-title">APIM strengths and the honest caveat</div>
+  <p>The strengths are obvious: enterprise-standard API governance with AI-specific extensions, deep Entra integration, distributed gateway placements, and a policy DSL that has been hardened across many years of API workloads. The caveat is equally important: APIM is one tier of an AI platform, not the platform itself. Model catalogs, prompt versioning, agent runtime, training compute, and the artifact lifecycle live in adjacent services, and the operating model spans all of them. That fact alone is not a problem — it is what the constellation strategy looks like in practice.</p>
+</div>
+</section>
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: a split-plane platform with one operating model</span></div>
+
+<p>TrueFoundry's <a href="https://www.truefoundry.com/docs/platform/architecture" target="_blank">platform architecture page</a> documents the product as four cooperating planes. This is not a marketing diagram — it is the load-bearing structure that determines how every later capability behaves. The four planes are:</p>
+
+<ul>
+  <li><strong>Control plane.</strong> Orchestrates configuration, identity, policy, integrations, and deployment state. Hosts the workspace model, team membership, virtual models, provider accounts, routing config, prompt registry, model registry, and gateway governance. The control plane talks to the gateway plane via NATS and falls back to HTTP to the control-plane backend if NATS is unreachable.</li>
+  <li><strong>Gateway plane.</strong> Brokers all LLM and MCP traffic. Built on the <a href="https://hono.dev/" target="_blank">Hono framework</a>; runs as stateless Kubernetes pods with an explicit hot-path contract — no external calls during request handling unless cache is involved. Documented benchmark: ~250 RPS per pod on 1 vCPU + 1 GB. Scales horizontally via Kubernetes HPA.</li>
+  <li><strong>Compute plane.</strong> Runs services, jobs, async-services, and workflows. The async-service primitive is what carries long-running agent loops without inheriting the gateway's request-timeout discipline. Self-hosted inference (vLLM, custom serving) lives here.</li>
+  <li><strong>Data plane.</strong> Stores artifacts, models, runs, and logs in the customer's object storage. Workspace-scoped by default.</li>
+</ul>
+
+<p>The first thing to notice about this list is that <em>every plane in it is part of the same product</em>. There is no separate model catalog service, no separate identity service, no separate agent runtime service. Workspaces, virtual models, MCP servers, prompt versions, and async-service deployments are all managed through one control surface and one IaC primitive (<code>tfy apply</code>). The seams that exist — control-plane-to-gateway sync, gateway-to-compute traffic, compute-to-data artifact flow — are documented contracts, not emergent behaviors of nine separately versioned services.</p>
+
+<h3>The gateway plane: Hono, in-memory, stateless</h3>
+
+<p>The <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway-plane-architecture page</a> is unusually specific about how the hot path is engineered. The principles, quoted from documentation:</p>
+
+<ol>
+  <li>No external calls in the pathway of executing a request from the client to the LLM provider — unless cache is involved.</li>
+  <li>All checks for rate-limits, load-balancing, authentication, and authorization are done in-memory.</li>
+  <li>Logs and metrics are written to a queue in async manner.</li>
+  <li>The gateway never fails a request even if the external queue is down.</li>
+  <li>Designed to be horizontally scalable and CPU-bound for clean HPA.</li>
+  <li>Control-plane and proxy separation so multiple gateways can run cross-region with one centralized config.</li>
+</ol>
+
+<p>Operationally, this means the JWT verification happens against public keys cached in the pod (downloaded once when the pod learns the SSO issuer URL from the control plane). The user-to-model authorization map is held in-memory and refreshed asynchronously via NATS. The rate-limit algorithm is a Sliding Window Token Bucket. The aggregator service in the control plane consumes per-request usage events from NATS, computes per-segment aggregates (per user, model, team, or any custom segment), and republishes them to NATS so every gateway pod refreshes its in-memory counters. The gateway never blocks on the external queue — if NATS is down, the gateway uses last-known-good aggregates and continues serving traffic.</p>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>Three concrete properties: (1) latency floor is bounded by the in-memory check time, not by any external service's tail latency; (2) the gateway has no Redis dependency for rate-limit coordination across replicas, which is one of the failure modes that bites Python-proxy gateways at scale; (3) cross-region multi-gateway deployment is a documented topology rather than a custom integration, because every gateway subscribes to the same NATS stream.</p>
+</div>
+
+<h3>What the operator actually writes</h3>
+
+<p>Because the four planes share an operating model, the artifacts an operator manages are AI-native rather than gateway-native. A virtual model — the stable, app-facing contract under which providers and self-hosted models can be swapped without application changes — is written in YAML and applied through <code>tfy apply</code>. Here is an illustrative shape consistent with the <a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">virtual-models documentation</a>:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative TrueFoundry virtual model — the stable contract apps consume
+type: virtual-llm-model
+name: claims-triage-prod
+mode: chat-completions
+
+# What the gateway routes to underneath
+routes:
+  - provider: azure-openai
+    model: gpt-4o-claims-primary
+    weight: 70
+  - provider: openai
+    model: gpt-4o-claims-fallback
+    weight: 30
+  - provider: self-hosted
+    model: vllm/llama-3.1-70b-claims
+    weight: 0   # passive; promoted via tfy apply if needed
+
+# Governance attached at the model layer, not improvised in policy
+controls:
+  budget_scope: workspace
+  rate_limit:
+    tokens_per_minute: 200000
+    requests_per_minute: 6000
+  metadata_required: [project_id, env, cost_center]
+  guardrails:
+    llm_input:  [tfy-pii, tfy-prompt-injection]
+    llm_output: [tfy-secrets, tfy-hallucination]
+
+# Telemetry export
+observability:
+  otel_traces: true
+  raw_metrics_api: true</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative virtual-model shape aligned to TrueFoundry docs for <a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">virtual models</a>, <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">routing overview</a>, <a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">budget limiting</a>, and <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrails overview</a>.</div>
+
+<p>The shape itself is unremarkable. What matters is what the shape <em>does not</em> have to coordinate across separately-engineered services. There is no Bicep file for a Key Vault entry, no Foundry studio change to register a custom model, no Azure ML registration step, no separate Foundry Agent Service definition for the agent runtime, no Application Insights custom dimension wiring. All of those concerns are inside the same operating model, applied through one IaC entry point.</p>
+
+<p>The deployment-time application is similarly consolidated:</p>
+
+<div class="code-wrap"><div class="code-lang">Bash</div><pre># Apply a virtual model + service + observability config in one preview-and-diff loop
+tfy apply --file claims-triage-prod.yaml \
+          --workspace risk-claims \
+          --preview
+
+# Output (illustrative):
+# Plan:
+#   ~ virtual-llm-model/claims-triage-prod      (modify routing weights)
+#   + service/claims-triage-api                 (create v3.2.1)
+#   + policy/claims-triage-deploy-validation    (create new validation hook)
+# Apply? [y/N]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative <code>tfy apply</code> output. See <a href="https://www.truefoundry.com/docs/using-tfy-apply" target="_blank">tfy apply documentation</a> for the canonical preview-and-diff workflow.</div>
+
+<h3>The split-plane diagram</h3>
+
+<p>The split-plane structure is easiest to see in one diagram. The same diagram in §1 of <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a> showed the comparison at a glance; the version below adds the seams the platform takes responsibility for and shows where customer infrastructure begins.</p>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry split-plane architecture with documented contracts between planes">
+  <defs>
+    <linearGradient id="bgTf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a0a05"/>
+      <stop offset="100%" stop-color="#0c0608"/>
+    </linearGradient>
+    <linearGradient id="paneBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f0d08"/>
+      <stop offset="100%" stop-color="#13070b"/>
+    </linearGradient>
+    <filter id="tfShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+    <marker id="arTf" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/>
+    </marker>
+    <marker id="arTfDash" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#73839A"/>
+    </marker>
+  </defs>
+  <rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgTf)" stroke="#5a2418" stroke-width="2"/>
+  <text x="40" y="56" fill="#FFE0D0" font-size="22" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry split-plane: four planes, documented contracts between them</text>
+  <text x="40" y="84" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">The seams between planes are part of the product. The customer operates against one platform with one IaC entry point.</text>
+
+  <!-- Customer K8s boundary -->
+  <rect x="40" y="110" width="1200" height="430" rx="14" fill="none" stroke="#F4C04F" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="56" y="132" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">CUSTOMER KUBERNETES CLUSTER (or hosted SAAS)</text>
+
+  <!-- Control plane -->
+  <rect x="64" y="148" width="1152" height="92" rx="12" fill="url(#paneBg)" stroke="#FF5533" stroke-width="2" filter="url(#tfShadow)"/>
+  <text x="84" y="172" fill="#FFB39C" font-size="14" font-weight="700" font-family="IBM Plex Mono, monospace">CONTROL PLANE</text>
+  <text x="84" y="194" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Workspaces · teams · virtual models · provider accounts · routing config · prompt registry · model registry · policies</text>
+  <text x="84" y="216" fill="#9AABBF" font-size="11.5" font-family="IBM Plex Sans, sans-serif">One IaC surface (tfy apply) · GitOps-friendly · deployment-validation policies as executable code with environment + creator context</text>
+
+  <!-- Gateway plane -->
+  <rect x="64" y="262" width="568" height="120" rx="12" fill="url(#paneBg)" stroke="#FF5533" stroke-width="2" filter="url(#tfShadow)"/>
+  <text x="84" y="286" fill="#FFB39C" font-size="14" font-weight="700" font-family="IBM Plex Mono, monospace">GATEWAY PLANE</text>
+  <text x="84" y="308" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Hono · stateless K8s pods · in-memory hot path</text>
+  <text x="84" y="328" fill="#9AABBF" font-size="11.5" font-family="IBM Plex Sans, sans-serif">No external calls in hot path (cache is the documented exception)</text>
+  <text x="84" y="346" fill="#9AABBF" font-size="11.5" font-family="IBM Plex Sans, sans-serif">~250 RPS / pod · K8s HPA · LLM + MCP + four guardrail hooks</text>
+  <text x="84" y="366" fill="#9AABBF" font-size="11.5" font-family="IBM Plex Sans, sans-serif">Cross-region multi-gateway with shared NATS subscription</text>
+
+  <!-- Compute plane -->
+  <rect x="648" y="262" width="568" height="120" rx="12" fill="url(#paneBg)" stroke="#FF5533" stroke-width="2" filter="url(#tfShadow)"/>
+  <text x="668" y="286" fill="#FFB39C" font-size="14" font-weight="700" font-family="IBM Plex Mono, monospace">COMPUTE PLANE</text>
+  <text x="668" y="308" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Services · jobs · async-services · workflows</text>
+  <text x="668" y="328" fill="#9AABBF" font-size="11.5" font-family="IBM Plex Sans, sans-serif">vLLM and custom serving for self-hosted inference</text>
+  <text x="668" y="346" fill="#9AABBF" font-size="11.5" font-family="IBM Plex Sans, sans-serif">Async-service primitive carries long-running agent loops</text>
+  <text x="668" y="366" fill="#9AABBF" font-size="11.5" font-family="IBM Plex Sans, sans-serif">Workspace-scoped K8s namespaces (physical isolation)</text>
+
+  <!-- Data plane -->
+  <rect x="64" y="404" width="1152" height="92" rx="12" fill="url(#paneBg)" stroke="#FF5533" stroke-width="2" filter="url(#tfShadow)"/>
+  <text x="84" y="428" fill="#FFB39C" font-size="14" font-weight="700" font-family="IBM Plex Mono, monospace">DATA PLANE</text>
+  <text x="84" y="450" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Artifacts · models · runs · request logs · OTel traces · raw metrics</text>
+  <text x="84" y="472" fill="#9AABBF" font-size="11.5" font-family="IBM Plex Sans, sans-serif">Customer object storage · workspace-scoped retention · OTel export to customer collector</text>
+
+  <!-- Documented contracts (arrows) -->
+  <line x1="348" y1="240" x2="348" y2="262" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf)"/>
+  <text x="358" y="256" fill="#FFB39C" font-size="10" font-family="IBM Plex Mono, monospace">NATS config sync (HTTP fallback)</text>
+
+  <line x1="932" y1="240" x2="932" y2="262" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf)"/>
+  <text x="942" y="256" fill="#FFB39C" font-size="10" font-family="IBM Plex Mono, monospace">deployment manifests · policies</text>
+
+  <line x1="632" y1="372" x2="648" y2="372" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf)"/>
+  <text x="640" y="388" text-anchor="middle" fill="#FFB39C" font-size="10" font-family="IBM Plex Mono, monospace">fwd</text>
+
+  <line x1="348" y1="382" x2="348" y2="404" stroke="#73839A" stroke-width="1.8" stroke-dasharray="3 3" marker-end="url(#arTfDash)"/>
+  <text x="358" y="398" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">async log/metric queue (never blocks hot path)</text>
+
+  <line x1="932" y1="382" x2="932" y2="404" stroke="#73839A" stroke-width="1.8" stroke-dasharray="3 3" marker-end="url(#arTfDash)"/>
+  <text x="942" y="398" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">artifacts · runs · request payloads</text>
+
+  <text x="40" y="568" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">All four planes in one cluster (or split: control plane in vendor SAAS, gateway/compute/data in customer K8s).</text>
+  <text x="40" y="586" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">The seams between planes are documented contracts, not customer integration work.</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry split-plane: four planes inside one platform. Solid arrows are hot-path contracts; dashed arrows are async flows that never block the request path.</div>
+
+<div class="two-col">
+  <div class="mini-card">
+    <h4>What this earns the operator</h4>
+    <ul class="bullet-tight">
+      <li>One IaC entry point covers virtual models, services, and policies.</li>
+      <li>Workspace = K8s namespace = physical tenancy boundary.</li>
+      <li>No service-to-service auth puzzle to compose at the platform level.</li>
+      <li>Self-hosted inference and gateway live in the same operational frame.</li>
+    </ul>
+  </div>
+  <div class="mini-card">
+    <h4>What it does not pretend to be</h4>
+    <ul class="bullet-tight">
+      <li>Not the agent runtime — that is the async-service primitive in the compute plane.</li>
+      <li>Not a replacement for cloud-provider services like Key Vault when those are the institutional standard.</li>
+      <li>Not a sovereign-cloud offering — see Blog 3 for the residency comparison.</li>
+      <li>Not the right shape for organizations with no Kubernetes operating muscle.</li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<section id="tradeoffs">
+<h2>§4 — Where the seams actually live</h2>
+
+<p>The right way to compare these architectures is to identify the four most consequential seams in the constellation and show what each one looks like inside a split-plane platform. This is how the architectural choice actually maps to operational outcomes.</p>
+
+<h3>Seam 1: identity propagation across services</h3>
+
+<p>On Azure, identity is Entra. APIM validates inbound JWTs through <code>validate-azure-ad-token</code>, authenticates to Azure OpenAI through <code>authentication-managed-identity</code>, references Key Vault named values through that same managed identity, and emits to Application Insights through Azure's identity model. This composition works, and Microsoft has documented every piece. The seam shows up in two places: (1) the workspace-gateway limitation discussed earlier, where managed identity does not currently flow into workspace-scoped APIs; (2) the propagation delay between Entra-side identity changes and downstream services that cache discovery documents at different intervals. Neither is a bug; both are operational facts that AI engineering teams need to account for.</p>
+
+<p>On TrueFoundry, identity is one model. The gateway pod caches the SSO issuer's public keys after the control plane syncs the issuer URL, and the user-to-model authorization map is in-memory inside the same pod. There is no second managed identity to compose with a third Key Vault reference; provider credentials are managed at the control-plane level and never travel to client applications. Blog 2 covers the identity model in depth.</p>
+
+<h3>Seam 2: routing abstraction vs deployment lifecycle</h3>
+
+<p>On Azure, the unit the application talks to is an APIM API or a backend; the unit the AI team manages is the model deployment in Azure OpenAI, the registered model in Azure ML, or the catalog entry in AI Foundry. Bridging the two — making sure the API in APIM points at the right deployment, that the deployment is registered with the right managed identity, that the model registration in Azure ML is current, and that AI Foundry's governance view is in sync — is the seam. It is doable, often automated through Bicep modules, but it is integration work the customer owns.</p>
+
+<p>On TrueFoundry, the unit the application talks to (a virtual model) and the unit the AI team manages (the same virtual model, with routes pointing at provider accounts or self-hosted deployments) are the same object. Provider swaps and weight changes are config edits. The bridge is the platform.</p>
+
+<h3>Seam 3: gateway flavor compatibility</h3>
+
+<p>APIM has five gateway flavors, and feature parity is not uniform across them. The published <a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-gateways-overview" target="_blank">gateway feature comparison</a> tracks which flavor supports which capability. For an AI platform program, the implication is that the gateway flavor you pick for your AI workspace is a structural choice — not just a cost or scale choice. Choosing a workspace gateway today means accepting that managed-identity-based auth and Key Vault named-value references are not currently available for AI APIs in that workspace; choosing a self-hosted gateway means a different feature surface again.</p>
+
+<p>TrueFoundry has one gateway flavor — Hono pods, deployable to SAAS or to customer Kubernetes — with the same feature surface across deployment topologies. That is a meaningful simplification when the AI program needs to commit to a deployment topology before the platform is fully in production.</p>
+
+<h3>Seam 4: where governance lives</h3>
+
+<p>Azure Policy applies to Azure resources. APIM policies apply to API requests. AI Foundry now hosts unified governance for AI traffic (registered models, agents, tools) and integrates with APIM. Each of these is well-engineered, and Microsoft is actively investing in making the seams between them disappear — the Foundry-APIM unification announced in 2025 is the clearest example. The current state, as of April 2026, is that governance is a multi-product composition where each product owns a slice and the seams are improving.</p>
+
+<p>TrueFoundry's governance lives in one control plane. Deployment-validation policies are executable code that inspect manifests with environment and creator context at <code>tfy apply</code> time. Runtime guardrails are the four-hook model attached to virtual models and MCP servers. Workspace-level RBAC is the K8s namespace boundary. The seams are the contracts between control plane and gateway plane (NATS), between gateway plane and compute plane (forward-to-self-hosted), and between compute plane and data plane (async logs). All three are documented and inside the same product. Blog 12 covers GitOps and policy-as-code in depth.</p>
+
+<h3>The architectural comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+  <thead>
+    <tr><th>Architectural axis</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters operationally</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Primary product identity</strong></td>
+      <td><span class="check">✅</span> Constellation: APIM + AI Foundry + Azure OpenAI + Foundry Agent Service + Azure ML + Entra + Monitor + Key Vault + Content Safety + AKS.</td>
+      <td><span class="check">✅</span> One platform with four planes — control, gateway, compute, data — designed top-to-bottom.</td>
+      <td>Determines whether the operating model is "compose nine services" or "operate one platform."</td>
+    </tr>
+    <tr>
+      <td><strong>Gateway runtime</strong></td>
+      <td>5 flavors (classic, V2, consumption, self-hosted, workspace) with documented feature differences. Workspace gateways currently lack managed-identity support.</td>
+      <td><span class="check">✅</span> One flavor — Hono pods — with the same feature surface across SAAS and self-hosted deployments.</td>
+      <td>Affects whether deployment-topology and feature decisions can be made independently.</td>
+    </tr>
+    <tr>
+      <td><strong>Hot-path contract</strong></td>
+      <td><span class="partial">◐</span> Hot-path behavior depends on policy composition; external service calls (Entra cache miss, Content Safety, embeddings backend, Managed Redis) are configurable in or out.</td>
+      <td><span class="check">✅</span> Documented: no external calls during request handling unless cache is involved. Auth, authz, rate-limit, load-balance all in-memory.</td>
+      <td>Determines latency floor and external-dependency surface in the request path.</td>
+    </tr>
+    <tr>
+      <td><strong>App-facing routing abstraction</strong></td>
+      <td><span class="partial">◐</span> APIM API + backend pool + <code>set-backend-service</code>; the catalog entry (Foundry / Azure OpenAI / Azure ML) is a separate object.</td>
+      <td><span class="check">✅</span> Virtual model is the stable contract; provider/model swap is a config edit.</td>
+      <td>Determines how often application teams have to redeploy when the AI team changes provider mix.</td>
+    </tr>
+    <tr>
+      <td><strong>Self-hosted inference path</strong></td>
+      <td><span class="partial">◐</span> Possible via AKS + custom serving; documented but not framed as part of the AI platform surface.</td>
+      <td><span class="check">✅</span> First-class: deploy from the model registry to the compute plane with one operating model.</td>
+      <td>Important for organizations with private models or compliance constraints on hosted inference.</td>
+    </tr>
+    <tr>
+      <td><strong>Tenancy boundary</strong></td>
+      <td><span class="partial">◐</span> Logical: Entra tenant + APIM workspace + resource group + RBAC composed together.</td>
+      <td><span class="check">✅</span> Physical: workspaces are K8s namespaces. Deployments, secrets, and model access are namespace-scoped.</td>
+      <td>Different blast-radius properties under failure and breach. Covered in depth in Blog 2.</td>
+    </tr>
+    <tr>
+      <td><strong>Number of IaC surfaces</strong></td>
+      <td>Bicep / Terraform per service: APIM, Foundry, Azure OpenAI, Azure ML, Key Vault, Monitor, AKS, Entra. Plus Azure Policy.</td>
+      <td><span class="check">✅</span> One: <code>tfy apply</code> with preview/diff. OpenTofu / Terraform + Helm for platform install.</td>
+      <td>Determines how many places a platform change has to land coherently.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">The constellation is the right architecture when each surface is operated by a different team and the integration tax is amortized across many programs. APIM's enterprise-standard policy DSL, Entra-native identity, and the Azure-wide governance fabric are real strengths. AI Foundry's increasing role as a unified governance surface is closing the seams that exist today.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> your organization is already standardized on Azure governance, your AI program will be operated alongside many non-AI programs by overlapping teams, and the institutional muscle for Bicep / Terraform / Azure Policy is strong enough that the seam tax is well-amortized.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">A split-plane platform is the right architecture when the AI engineering team owns the full lifecycle and the seam tax of operating across nine services is the dominant operational cost. The Hono-based gateway with in-memory hot path, NATS-based config sync, and one IaC entry point are concrete simplifications. K8s-native deployment and physical workspace boundaries are decisive for some compliance programs.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> you have a Kubernetes-native operating model, the AI platform team is small enough that seam-tax cost dominates, you need self-hosted inference and gateway in the same operating frame, or workspace = namespace tenancy is a non-negotiable for your security review.</div>
+  </div>
+</div>
+
+<p>The most useful conclusion is not that one architecture is universally better. It is that they optimize for different organizational shapes. Azure optimizes for an enterprise that already operates well across a constellation of cloud services and wants AI to fit that operating model. TrueFoundry optimizes for a team that wants the AI platform to be one product with one operating model and is willing to commit to Kubernetes as the deployment substrate.</p>
+
+<p>The next blog (<a href="02-truefoundry-vs-azure-identity-multi-tenancy-zero-trust.html">Identity, Multi-Tenancy &amp; Zero-Trust</a>) walks the identity seam in depth — including why "workspace = K8s namespace" produces different blast-radius properties from "workspace = APIM workspace + RBAC composition" under realistic breach and failure scenarios.</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-gateways-overview" target="_blank">Microsoft Learn — API gateway in Azure API Management (gateway flavors and feature comparison)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/workspaces-overview" target="_blank">Microsoft Learn — Workspaces in Azure API Management</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/workspaces-breaking-changes-march-2025" target="_blank">Microsoft Learn — Workspace breaking changes (managed-identity limitation)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/self-hosted-gateway-overview" target="_blank">Microsoft Learn — Self-hosted gateway overview</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities" target="_blank">Microsoft Learn — AI gateway in Azure API Management</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/validate-azure-ad-token-policy" target="_blank">Microsoft Learn — validate-azure-ad-token policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy" target="_blank">Microsoft Learn — authentication-managed-identity policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-token-limit-policy" target="_blank">Microsoft Learn — llm-token-limit policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-content-safety-policy" target="_blank">Microsoft Learn — llm-content-safety policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-semantic-cache-lookup-policy" target="_blank">Microsoft Learn — llm-semantic-cache-lookup policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-emit-token-metric-policy" target="_blank">Microsoft Learn — llm-emit-token-metric policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/well-architected/service-guides/azure-api-management" target="_blank">Microsoft Learn — Architecture best practices for Azure API Management</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/architecture" target="_blank">TrueFoundry Docs — Platform Architecture (split-plane overview)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry Docs — Gateway Plane Architecture (Hono · in-memory hot path · NATS sync)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/control-plane-architecture" target="_blank">TrueFoundry Docs — Control Plane Architecture</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/compute-plane-architecture" target="_blank">TrueFoundry Docs — Compute Plane Architecture</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/intro-to-llm-gateway" target="_blank">TrueFoundry Docs — Introduction to AI Gateway</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">TrueFoundry Docs — Virtual Models</a></li>
+  <li><a href="https://www.truefoundry.com/docs/using-tfy-apply" target="_blank">TrueFoundry Docs — tfy apply (declarative deploy with preview/diff)</a></li>
+  <li><a href="https://hono.dev/" target="_blank">Hono — ultra-fast minimalistic web framework</a></li>
+</ol>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Movement I — Foundations · Blog 1 of 12 · April 2026 · <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">← Series intro</a> · <a href="02-truefoundry-vs-azure-identity-multi-tenancy-zero-trust.html">Blog 2 — Identity →</a>
+</p>
+</section>
+
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try {
+        await navigator.clipboard.writeText(pre.innerText);
+        btn.textContent = 'copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200);
+      } catch (e) {
+        btn.textContent = 'failed';
+        setTimeout(() => { btn.textContent = 'copy'; }, 1200);
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
