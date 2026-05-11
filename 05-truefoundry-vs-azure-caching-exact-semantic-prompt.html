@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="Three caches in one request path — APIM's two policy pairs (azure-openai-semantic-cache-* and llm-semantic-cache-*) with embeddings backend + Azure Managed Redis vs TrueFoundry's per-request x-tfy-cache-config header with response-header observability — plus the third cache (OpenAI implicit + Anthropic explicit) that shapes the actual cost picture for high-volume long-prompt workloads."/>
+<title>Caching — Exact, Semantic &amp; Provider Prompt Caching: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement II · Hot path</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 5 of 12</span>
+</div>
+
+<h1>Caching — Exact, Semantic &amp; Provider Prompt Caching: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 30 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Performance · FinOps · AI Engineering</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for the two semantic-cache policy pairs (<code>azure-openai-semantic-cache-lookup</code>/<code>store</code> for AOAI and <code>llm-semantic-cache-lookup</code>/<code>store</code> for general LLM APIs), the "Enable semantic caching for LLM APIs" tutorial, the embeddings-backend pattern with system-assigned managed identity, the Azure Managed Redis tutorial, and Microsoft's own safety warning about semantic caching. The TrueFoundry side is grounded in the AI Gateway caching documentation (the <code>x-tfy-cache-config</code> request header and the <code>x-tfy-cache-status</code>, <code>x-tfy-cached-trace-id</code>, <code>x-tfy-cache-similarity-score</code> response headers) and the gateway-plane-architecture page (cache as the documented exception to the no-external-calls hot-path rule). Provider-side caching grounded in OpenAI's prompt-caching documentation and Anthropic's prompt-caching documentation. Code blocks are illustrative compositions of documented features.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Most AI-platform discussions about caching pick one cache. They compare semantic-cache implementations, or they compare exact-match key-value caches, or they discuss provider prompt caching. But a production AI request can hit <em>all three</em> on the same hop, and reasoning about cost, latency, and correctness requires a model that includes all of them. This blog argues that the right comparison frames are (1) <strong>three caches in one request path</strong> — gateway exact, gateway semantic, provider prompt — with different cost-impact and correctness profiles; (2) <strong>the threshold convention difference</strong> between APIM (cosine distance, lower = stricter) and TrueFoundry (cosine similarity, higher = stricter); and (3) <strong>the configuration locus</strong> — APIM puts cache strategy in policy XML, TrueFoundry puts it in a per-request header — which determines who owns threshold tuning and how visible cache decisions are at debug time. Both products are well-engineered; the operating-model fit is what differs.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A cache hit that becomes a correctness question</div>
+<p>An e-commerce search team enables semantic caching on their product-recommendation endpoint to reduce token spend on a long-context RAG workload. They've read the docs, picked a similarity threshold that sounded reasonable, set a TTL of 10 minutes, and shipped the change on a Thursday. Cache-hit rates land at 31% within an hour — better than the team's hoped-for 25% — and the finance lead celebrates the projected $14K/month token savings on the team's Slack.</p>
+<p>Three days later, a customer-success ticket arrives that the team almost dismisses. A user has filed a screenshot: they searched <em>"noise-cancelling headphones for sleeping"</em> and the recommendation card returned three pairs of <em>noise-cancelling headphones for travel</em>. The product titles are correct; the visual styling is correct; the recommendations are simply for the wrong use case. The user's request is reasonable — they want sleeping-optimized recommendations, not generic noise-cancelling — and what they got back is a previous recommendation generated for a different user who searched something similar. The cache returned a hit; the hit was on a prompt with high embedding similarity but materially different intent.</p>
+<p>The platform engineer on call walks the diagnostic. The two prompts — "noise-cancelling headphones for sleeping" and "noise-cancelling headphones for travel" — have a cosine similarity of around 0.93 on the embeddings backend the team is using. The configured threshold, set to what the docs called a "balanced default," would have surfaced the cache hit. The architectural lesson lands hard at the standup the next morning: <em>semantic similarity in the embedding space is not the same as task equivalence</em>. Two prompts that look semantically close can produce very different correct answers when the use case differs subtly. The fix takes ninety minutes — tighten the threshold and add a workspace dimension to the cache namespace so that different product categories don't share entries. The lesson takes longer.</p>
+<p>This blog is not about whether semantic caching is good or bad. It's a useful tool when calibrated for the workload. The architectural point is that <em>the threshold tuning, the namespace partitioning, and the observability of why a cache hit happened</em> are the three operational properties that determine whether semantic caching improves the system or introduces correctness regressions. Microsoft's own documentation acknowledges this directly: <em>"semantic caching returns responses based on similarity (not exact match), it can surface responses that are incorrect, outdated, or unsafe for the current request. Evaluate this feature carefully for your workload and include safeguards."</em> That warning sets the bar for any comparison framework: caching is not a free win — it is a calibrated trade-off, and the platform's job is to make the calibration tractable.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Three caches, not one.</strong> An AI request can hit (1) the gateway's exact-match cache, (2) the gateway's semantic cache, and (3) the provider's own prompt cache (OpenAI implicit, Anthropic explicit via <code>cache_control</code>). All three exist whether you reason about them or not. For high-volume long-prompt workloads, provider caching shapes the cost curve more than either gateway cache.</li>
+    <li><strong>Azure: two policy pairs with explicit infrastructure.</strong> <code>azure-openai-semantic-cache-lookup</code>/<code>store</code> for AOAI; <code>llm-semantic-cache-lookup</code>/<code>store</code> for other LLM APIs. Both require an embeddings-backend (typically AOAI text-embedding) and an external cache (Azure Managed Redis). The threshold is a <strong>distance ceiling</strong> — lower = stricter; Microsoft's docs warn "above 0.2 may lead to cache mismatch." Configuration locus is policy XML, per API.</li>
+    <li><strong>TrueFoundry: per-request header with response-header observability.</strong> <code>x-tfy-cache-config</code> on the request specifies <code>type</code> (exact-match or semantic), <code>similarity_threshold</code> (cosine similarity floor — higher = stricter, inverse of APIM), <code>ttl</code>, and <code>namespace</code>. Response carries <code>x-tfy-cache-status</code>, <code>x-tfy-cached-trace-id</code>, <code>x-tfy-cache-similarity-score</code> — making cache decisions debuggable from logs alone.</li>
+    <li><strong>Threshold conventions are inverse.</strong> APIM uses distance (lower = stricter); TrueFoundry uses similarity (higher = stricter). Numbers across the two products are not directly comparable.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when the embeddings-backend integration with AOAI text-embedding deployments is institutional, when Azure Managed Redis already exists in the org's footprint, when <code>vary-by</code> through policy expressions matches the team's caching-discipline practice, and when Azure Monitor is the natural surface for cache-hit observability.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when per-call cache control is decisive (different endpoints with different cache strategies), when the response-header observability surface (<code>x-tfy-cache-status</code> + <code>x-tfy-cache-similarity-score</code>) is operationally valuable for debugging false-positive hits, and when the application opting in per call rather than the platform team opting in per API is the desired contract.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">The third cache</div>
+    <div class="qp-desc">Provider prompt caching is invisible to most discussions. It sits underneath both gateway caches and shapes the actual cost picture more than either gateway-side cache for high-volume long-prompt workloads. A correct comparison framework accounts for all three.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Three caches in one request path</a></li>
+    <li><a href="#azure">§2 — Azure: <code>llm-semantic-cache-lookup</code> with embeddings backend + Azure Managed Redis</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: per-request cache control with response-header observability</a></li>
+    <li><a href="#provider">§4 — The third cache: provider-side prompt caching</a></li>
+    <li><a href="#scenarios">§5 — Three caching scenarios compared</a></li>
+    <li><a href="#verdict">§6 — Editorial verdict</a></li>
+    <li><a href="#references">§7 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — Three caches in one request path</h2>
+
+<p class="intro-lead">Most AI-platform discussions about caching pick one cache and compare implementations of it. The framing is wrong because a production AI request can hit three caches on the same hop, and reasoning about cost, latency, and correctness requires a model that includes all of them. The three caches are different kinds of objects with different control surfaces, and only when all three are accounted for does the cost picture make sense.</p>
+
+<h3>The three caches</h3>
+
+<ol>
+<li><strong>Gateway exact-match cache.</strong> A byte-for-byte (or normalized-byte-for-normalized-byte) hash of the request producing a cache key. If the same prompt is sent twice, the second one returns the first one's response. Both products implement this; it is operationally trivial and correctness-safe — the only correctness risk is staleness, which the TTL bounds.</li>
+<li><strong>Gateway semantic cache.</strong> An embedding of the prompt is computed; a similarity search finds the nearest neighbor in cached entries; if the similarity exceeds (or, in APIM's distance model, falls below) the configured threshold, the cached response is returned. Both products implement this; the configuration mechanics differ; the correctness risk is real and threshold-dependent.</li>
+<li><strong>Provider prompt cache.</strong> The model provider's own caching layer, sitting underneath whatever the gateway does. OpenAI's is implicit (long shared prefixes are cached automatically when prompts exceed 1024 tokens); Anthropic's is explicit (the application opts in by adding <code>cache_control: {"type": "ephemeral"}</code> to message blocks). Neither gateway can change how provider caching works; both pass through the headers and request structure that providers need to recognize cache opportunities.</li>
+</ol>
+
+<h3>Why all three matter for the cost discussion</h3>
+
+<p>For a workload that sends short, varied prompts (an interactive search assistant, say), the gateway caches do most of the work. Exact-match catches verbatim repeats; semantic caches catches reformulated repeats; provider caching does little because prompts are too short to benefit. For a workload that sends long, structured prompts with shared prefixes (a RAG application that injects 4K of retrieved context plus a 1K system prompt into every call), the picture inverts: <em>provider prompt caching shapes the cost curve more than either gateway cache</em>. A RAG workload paying ~80% of its input-token bill on the prefix can knock that down to single-digit percent through OpenAI's automatic prefix caching or Anthropic's explicit <code>cache_control</code> — and gateway caching only helps for the small fraction of prompts that are sufficiently similar to existing entries.</p>
+
+<p>The implication for the comparison framework: <strong>"which gateway has better caching" is the wrong question to ask in isolation</strong>. The right questions are: (a) does the gateway's semantic cache work well for the workload's prompt-similarity distribution? (b) does the gateway preserve the structure providers need to recognize their own cache opportunities? (c) does the platform make threshold tuning and cache-decision debugging tractable enough for the team to operate semantic caching safely? Both products answer (a) and (b) competently; the difference shows up in (c), which is what the rest of this blog walks.</p>
+
+<div class="callout warn">
+  <div class="callout-title">A safety warning that is not Claude's, but Microsoft's</div>
+  <p>Microsoft's <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-semantic-cache-lookup-policy" target="_blank">azure-openai-semantic-cache-lookup policy reference</a> includes this warning verbatim: <em>"Because semantic caching returns responses based on similarity (not exact match), it can surface responses that are incorrect, outdated, or unsafe for the current request. Evaluate this feature carefully for your workload and include safeguards."</em> The e-commerce scenario at the top of this blog is exactly the kind of incident this warning anticipates. Both products carry the same fundamental risk because the risk is intrinsic to semantic caching itself, not to either implementation. The platform's job is not to eliminate the risk but to make it tractable: tunable thresholds, partitioned namespaces, and per-decision observability are the three operational properties that determine whether the team can manage the trade-off.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks the Azure semantic-cache surface — two policy pairs (AOAI-specific and LLM-general), the embeddings-backend pattern with managed identity, the Azure Managed Redis dependency, the threshold-as-distance convention — with a working policy composition. §3 walks TrueFoundry's per-request <code>x-tfy-cache-config</code> header model and the response-header observability surface — with a working request and a debugging walkthrough. §4 zooms out to the third cache: provider prompt caching from OpenAI and Anthropic, what each gateway does to preserve it, and what neither can change. §5 walks three concrete caching scenarios side by side. §6 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: <code>llm-semantic-cache-lookup</code> with embeddings backend + Azure Managed Redis</span></div>
+
+<p>APIM's semantic-cache surface is, like its routing surface, a composition of well-engineered primitives. The architectural choice that shapes the operating model is that <em>cache strategy lives in policy XML and depends on first-class Azure infrastructure</em>: a configured embeddings-backend resource and an Azure Managed Redis instance. Both are real Azure resources that the customer provisions and operates; both are referenced from policy. Setting up semantic caching is not a single-flag toggle — it is a multi-resource composition that, once configured, is mature and well-integrated.</p>
+
+<h3>Layer 1 — Two policy pairs for two API surfaces</h3>
+
+<p>APIM exposes <strong>two separate semantic-cache policy pairs</strong> for two different API surfaces:</p>
+
+<ul>
+<li><strong><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-semantic-cache-lookup-policy" target="_blank"><code>azure-openai-semantic-cache-lookup</code></a> + <code>azure-openai-semantic-cache-store</code></strong> — the AOAI-specific pair, used when the API in APIM is an Azure OpenAI in Foundry models endpoint. Optimized for AOAI Chat Completion APIs and AOAI's specific request/response shapes.</li>
+<li><strong><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-semantic-cache-lookup-policy" target="_blank"><code>llm-semantic-cache-lookup</code></a> + <code>llm-semantic-cache-store</code></strong> — the general pair, used for LLM APIs that come in through the Azure AI Model Inference API or for OpenAI-compatible models served through third-party inference providers.</li>
+</ul>
+
+<p>The two pairs share the same configuration shape — <code>score-threshold</code>, <code>embeddings-backend-id</code>, <code>embeddings-backend-auth</code>, <code>ignore-system-messages</code>, <code>max-message-count</code>, <code>vary-by</code> — and the same fundamental semantics. The split exists because the AOAI pair is tuned for AOAI's specific request structure while the LLM pair is more general. Operationally this means a workload that mixes AOAI and non-AOAI providers writes two policy compositions; the team has to pick the right pair per API.</p>
+
+<h3>Layer 2 — The embeddings-backend pattern with managed identity</h3>
+
+<p>Semantic caching requires computing an embedding for each incoming prompt. APIM does not embed; it delegates to a configured backend. The <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-enable-semantic-caching" target="_blank">"Enable semantic caching for LLM APIs" tutorial</a> documents the pattern: create a backend resource of type <code>Custom URL</code> pointing at an embeddings model deployment (typically AOAI <code>text-embedding-3-small</code> or similar), configure managed-identity auth on that backend, then reference the backend by ID from the cache-lookup policy.</p>
+
+<p>The recommended auth pattern is <em>system-assigned managed identity</em> with the <code>Cognitive Services OpenAI User</code> role on the embeddings AOAI resource. The policy's <code>embeddings-backend-auth="system-assigned"</code> attribute hooks into APIM's managed-identity flow (per the Layer 2 identity model from Blog 2). This is one of the cleaner identity compositions in the Azure stack — when it works, it works well.</p>
+
+<h3>Layer 3 — Azure Managed Redis as the cache backend</h3>
+
+<p>The cache itself is external. Microsoft's <a href="https://learn.microsoft.com/en-us/azure/redis/" target="_blank">Azure Managed Redis</a> tutorial documents the canonical pattern: provision an Azure Managed Redis instance with the RediSearch module enabled, configure APIM to use it as an external cache, ensure the connection auth (typically access key) is in place. The semantic-cache policies use Redis with vector similarity search to find nearest-neighbor cached entries. This means semantic caching adds <strong>two infrastructure dependencies</strong> the team must operate: the embeddings backend and the Redis cluster.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The threshold convention — a footgun, documented</div>
+  <p>The <code>score-threshold</code> attribute is <strong>cosine distance</strong>, not similarity. Lower values are stricter (closer to identical); higher values are looser. Microsoft's docs explicitly say "above 0.2 may lead to cache mismatch" and recommend starting at 0.05 and tuning from there. This is the inverse of TrueFoundry's convention (similarity floor — higher = stricter), and it is the inverse of how most engineers intuitively think about similarity scores. <strong>A threshold of 0.5 in APIM is loose; a threshold of 0.5 in TrueFoundry is loose-to-moderate; the numbers are not directly comparable.</strong> Teams switching between the two products, or evaluating both, need to keep this conversion in mind explicitly.</p>
+</div>
+
+<h3>The Azure semantic-caching topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure semantic caching topology">
+<defs>
+  <linearGradient id="bgAz5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az5sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAz5" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+  <marker id="arAz5G" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#50fa7b"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="460" rx="22" fill="url(#bgAz5)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure semantic caching — three infrastructure components composed via policy</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">APIM policy → embedding lookup via AOAI text-embedding → similarity search in Azure Managed Redis → hit returns cached response.</text>
+
+<!-- App + APIM -->
+<rect x="40" y="140" width="160" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az5sh)"/>
+<text x="120" y="168" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application</text>
+<text x="120" y="188" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">chat completion req</text>
+<text x="120" y="204" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">prompt + system msg</text>
+
+<rect x="220" y="140" width="200" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="2" filter="url(#az5sh)"/>
+<text x="320" y="162" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">APIM API</text>
+<text x="320" y="182" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">policy XML inbound:</text>
+<text x="320" y="198" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">azure-openai-semantic-</text>
+<text x="320" y="214" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">cache-lookup</text>
+
+<line x1="200" y1="180" x2="220" y2="180" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz5)"/>
+
+<!-- Step 1: embed -->
+<rect x="450" y="110" width="220" height="100" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az5sh)"/>
+<text x="560" y="136" fill="#7CC2FF" font-size="11" font-family="IBM Plex Mono, monospace" text-anchor="middle">STEP 1 — embed prompt</text>
+<text x="560" y="158" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">embeddings-backend</text>
+<text x="560" y="178" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">AOAI text-embedding</text>
+<text x="560" y="196" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ system-assigned MI</text>
+
+<line x1="420" y1="165" x2="450" y2="165" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz5)"/>
+
+<!-- Step 2: similarity search -->
+<rect x="700" y="110" width="220" height="100" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az5sh)"/>
+<text x="810" y="136" fill="#7CC2FF" font-size="11" font-family="IBM Plex Mono, monospace" text-anchor="middle">STEP 2 — vector search</text>
+<text x="810" y="158" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Azure Managed Redis</text>
+<text x="810" y="178" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">RediSearch module</text>
+<text x="810" y="196" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">cosine distance ≤ 0.05</text>
+
+<line x1="670" y1="160" x2="700" y2="160" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz5)"/>
+
+<!-- Step 3: decision -->
+<rect x="950" y="110" width="290" height="100" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="1.6" filter="url(#az5sh)"/>
+<text x="1095" y="136" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace" text-anchor="middle">STEP 3 — hit or miss</text>
+<text x="1095" y="158" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">if neighbor within threshold:</text>
+<text x="1095" y="178" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">return cached response</text>
+<text x="1095" y="198" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">else: forward to backend, store</text>
+
+<line x1="920" y1="160" x2="950" y2="160" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz5)"/>
+
+<!-- Threshold convention panel -->
+<rect x="40" y="240" width="600" height="180" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="60" y="266" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">THRESHOLD CONVENTION — APIM (cosine distance)</text>
+<text x="60" y="292" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">score-threshold = cosine DISTANCE (lower = stricter)</text>
+
+<rect x="60" y="306" width="540" height="36" rx="6" fill="#0a1220" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="330" fill="#50fa7b" font-size="12" font-family="IBM Plex Mono, monospace">0.0  ← strict (near-identical only)</text>
+<text x="380" y="330" fill="#F4C04F" font-size="12" font-family="IBM Plex Mono, monospace">0.5  →  1.0 (loose, mismatch likely)</text>
+
+<text x="60" y="362" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">Microsoft's docs: "above 0.2 may lead to cache mismatch"</text>
+<text x="60" y="382" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">Recommended starting point: 0.05, tune up while monitoring hit/miss ratio</text>
+<text x="60" y="404" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ inverse of TrueFoundry's similarity-floor convention — see §3</text>
+
+<!-- Infrastructure cost panel -->
+<rect x="660" y="240" width="580" height="180" rx="14" fill="#0a1220" stroke="#1e3a5f" stroke-width="1.4"/>
+<text x="680" y="266" fill="#60a5fa" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">INFRASTRUCTURE OPERATING SURFACE</text>
+<text x="680" y="294" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">+ Azure OpenAI text-embedding deployment (provisioned capacity)</text>
+<text x="680" y="314" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">+ APIM backend resource (with system-assigned managed identity)</text>
+<text x="680" y="334" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">+ Azure Managed Redis instance (with RediSearch module)</text>
+<text x="680" y="354" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">+ APIM external-cache configuration (connection string in Key Vault)</text>
+<text x="680" y="374" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Cognitive Services OpenAI User role on the embeddings AOAI for the MI</text>
+<text x="680" y="394" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">All four are first-class Azure resources — IaC-managed, RBAC-governed</text>
+
+<text x="40" y="450" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Cache decisions visible through Azure Monitor; no first-party response header surfaces the similarity score that triggered the hit (see §3 for contrast).</text>
+</svg>
+</div>
+<div class="img-caption">Azure semantic caching composes three first-class Azure resources — APIM policy, AOAI embeddings backend with managed identity, and Azure Managed Redis with RediSearch — coordinated through policy XML. Cache decisions are observable through Azure Monitor.</div>
+
+<h3>What the operator writes — semantic caching for an AOAI Chat Completion API</h3>
+
+<p>The XML below is the canonical AOAI semantic-cache shape, with the rate-limit guard Microsoft's documentation specifically recommends adding immediately after the cache lookup. The <code>vary-by</code> partitions cache entries by subscription so cross-tenant cache poisoning is structurally prevented:</p>
+
+<div class="code-wrap"><div class="code-lang">XML</div><pre>&lt;policies&gt;
+  &lt;inbound&gt;
+    &lt;base /&gt;
+
+    &lt;!-- Lookup with subscription-partitioned cache entries --&gt;
+    &lt;azure-openai-semantic-cache-lookup
+        score-threshold=&quot;0.05&quot;
+        embeddings-backend-id=&quot;embeddings-backend&quot;
+        embeddings-backend-auth=&quot;system-assigned&quot;
+        ignore-system-messages=&quot;true&quot;
+        max-message-count=&quot;10&quot;&gt;
+      &lt;vary-by&gt;@(context.Subscription.Id)&lt;/vary-by&gt;
+      &lt;vary-by&gt;@(context.Request.Headers.GetValueOrDefault(&amp;quot;X-Tenant&amp;quot;,&amp;quot;&amp;quot;))&lt;/vary-by&gt;
+    &lt;/azure-openai-semantic-cache-lookup&gt;
+
+    &lt;!-- Microsoft's recommended pattern: rate-limit immediately after the
+         cache lookup, to prevent overload if the cache is unavailable --&gt;
+    &lt;rate-limit calls=&quot;10&quot; renewal-period=&quot;60&quot; /&gt;
+
+    &lt;!-- Standard backend selection + managed identity to AOAI --&gt;
+    &lt;set-backend-service backend-id=&quot;aoai-primary&quot; /&gt;
+    &lt;authentication-managed-identity resource=&quot;https://cognitiveservices.azure.com/&quot; /&gt;
+  &lt;/inbound&gt;
+
+  &lt;outbound&gt;
+    &lt;!-- Store the response keyed by the prompt embedding for future hits --&gt;
+    &lt;azure-openai-semantic-cache-store duration=&quot;600&quot; /&gt;
+    &lt;base /&gt;
+  &lt;/outbound&gt;
+&lt;/policies&gt;</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-semantic-cache-lookup-policy" target="_blank">azure-openai-semantic-cache-lookup</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-semantic-cache-store-policy" target="_blank">azure-openai-semantic-cache-store</a>, and the <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-enable-semantic-caching" target="_blank">enable-semantic-caching tutorial</a>. The <code>ignore-system-messages="true"</code> attribute excludes system messages from the embedding computation — useful when system messages are templated and should not affect the cache key. <code>max-message-count="10"</code> bounds how many recent messages contribute to the embedding.</div>
+
+<h3>What APIM is genuinely strong at — and what the operating model costs</h3>
+
+<p>What APIM's semantic-cache surface does well is real and worth naming explicitly:</p>
+
+<ul>
+<li><strong>Mature managed-identity integration</strong> for the embeddings backend. The <code>system-assigned</code> auth flow is the same one APIM uses everywhere else — institutional muscle for any team operating APIM seriously.</li>
+<li><strong>The <code>ignore-system-messages</code> attribute</strong> is a thoughtful piece of engineering. Most production AI workloads include long system prompts that are nominally identical across requests but shouldn't dominate the embedding similarity; excluding them is exactly right.</li>
+<li><strong><code>max-message-count</code></strong> bounds the embedding computation cost on long conversation histories — sensible for chat workloads where the conversation grows over time.</li>
+<li><strong>Composability with the rest of the policy stack.</strong> Cache lookup, rate-limit, backend routing, managed-identity auth, and emit-token-metric all compose in one policy XML document. For teams already fluent in APIM, this is excellent leverage.</li>
+<li><strong>Azure Monitor integration</strong> for cache-hit metrics. Observability flows through standard APIM diagnostic settings.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest caveats</div>
+  <p>(1) <strong>Two infrastructure dependencies</strong> the team operates: the embeddings AOAI deployment (which has its own capacity, quota, and cost) and Azure Managed Redis (which has its own SKU, scaling, and operational burden). Both are first-class Azure resources, which is good, but neither is part of APIM itself. (2) <strong>The threshold convention is unintuitive</strong> — distance not similarity, and the docs themselves warn that 0.2 is too loose. Teams new to semantic caching typically over-permit hits on first deployment. (3) <strong>No first-party response-header observability</strong>. The similarity score that triggered a hit is not surfaced in a response header; debugging false-positive hits requires correlation through Application Insights traces. The e-commerce scenario at the top of this blog would have been faster to diagnose with a similarity-score response header.</p>
+</div>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: per-request cache control with response-header observability</span></div>
+
+<p>TrueFoundry's cache surface is shaped by a different operating-model question. Where APIM puts cache strategy in policy XML — owned by the platform team, set per API, applied uniformly to all callers of that API — TrueFoundry puts it in a per-request header sent by the application. The platform-team-versus-application-team boundary is drawn differently, and the consequences flow through to threshold tuning, namespace partitioning, and cache-decision observability.</p>
+
+<h3>Layer 1 — The <code>x-tfy-cache-config</code> request header</h3>
+
+<p>TrueFoundry's <a href="https://www.truefoundry.com/docs/ai-gateway/caching" target="_blank">caching documentation</a> defines the cache contract as a request header rather than a platform-side configuration. The application sends <code>x-tfy-cache-config</code> on each call, with a JSON value specifying the cache strategy for <em>that call</em>. The header has four primary fields:</p>
+
+<ul>
+<li><code>type</code> — <code>exact-match</code> or <code>semantic</code>. Determines which of the two gateway-side caches participates.</li>
+<li><code>similarity_threshold</code> — for semantic caching, the cosine similarity floor. <strong>Higher = stricter</strong>, the inverse of APIM's distance-ceiling convention. Typical values are 0.92–0.97 for production usage.</li>
+<li><code>ttl</code> — time-to-live in seconds. Bounds how long a cache entry remains valid.</li>
+<li><code>namespace</code> — partition key. Different namespaces have isolated cache pools; the right pattern is to name the namespace after the workload (e.g., <code>product-search</code>, <code>customer-support-classifier</code>) so unrelated calls don't share entries.</li>
+</ul>
+
+<p>The architectural implication is that <strong>the application opts in per call</strong>. Different endpoints can use different cache strategies — a high-stakes credit-decisioning endpoint might disable caching entirely, while a low-stakes product-recommendation endpoint enables semantic caching with a tight threshold and a workload-specific namespace. The platform team isn't choosing the strategy on behalf of every caller; the application that knows the use case picks the strategy that fits.</p>
+
+<h3>Layer 2 — Response-header observability</h3>
+
+<p>This is the part of the design that produces operational value disproportionate to its size. The gateway returns three observability headers on every cache-touching response:</p>
+
+<ul>
+<li><code>x-tfy-cache-status</code> — <code>hit</code>, <code>miss</code>, or <code>bypass</code>. Tells the caller (and the logs) whether the cache participated in this response and what it decided.</li>
+<li><code>x-tfy-cached-trace-id</code> — when the status is <code>hit</code>, this is the trace ID of the original request whose response is being replayed. Critical for debugging: <em>"why does this response include X?"</em> becomes answerable by following the trace ID to the original generation context.</li>
+<li><code>x-tfy-cache-similarity-score</code> — when the status is <code>hit</code> and the type is <code>semantic</code>, the actual similarity score that triggered the hit. Makes threshold tuning data-driven rather than guess-and-check.</li>
+</ul>
+
+<p>The e-commerce scenario at the top of this blog would have been diagnosed in minutes rather than hours with this surface. The CS ticket includes a request ID; the platform engineer pulls the request from logs; the response carries <code>x-tfy-cache-status: hit</code>, <code>x-tfy-cached-trace-id: trace-7b2f9a</code>, <code>x-tfy-cache-similarity-score: 0.93</code>; the engineer pulls trace-7b2f9a, sees the original prompt was about travel, immediately understands the false-positive hit. The threshold-tuning conversation that follows is data-driven from the start.</p>
+
+<h3>Layer 3 — Cache as the documented exception to the no-external-calls rule</h3>
+
+<p>The <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway-plane-architecture page</a> states this explicitly: in the gateway pod's hot path, rate-limit checks, auth verification, and load-balance decisions are all in-memory; <em>cache</em> is the one operation that legitimately leaves the pod. This is by design — semantic caching requires an embedding lookup and a similarity search over potentially millions of entries, neither of which fits in a pod's memory footprint at production scale. The platform manages the cache backend; the customer doesn't provision a separate Redis cluster.</p>
+
+<p>The architectural implication is operational simplicity: <strong>one fewer infrastructure dependency for the customer to operate</strong>. The trade-off is less direct control — the cache backend is a platform-managed component rather than a customer-provisioned Redis instance the team can tune. For most workloads this is the right trade; for workloads that need specific Redis tuning, the trade-off goes the other way.</p>
+
+<h3>The TrueFoundry semantic-caching topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry semantic caching topology">
+<defs>
+  <linearGradient id="bgTf5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf5sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf5" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+  <marker id="arTf5G" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#50fa7b"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="460" rx="22" fill="url(#bgTf5)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry semantic caching — per-request opt-in, response-header observability</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Application opts in via x-tfy-cache-config; gateway returns hit/miss + similarity score + cached-trace-id on every response.</text>
+
+<!-- Request side -->
+<rect x="40" y="140" width="220" height="100" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tf5sh)"/>
+<text x="150" y="162" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application request</text>
+<text x="150" y="182" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">x-tfy-cache-config:</text>
+<text x="150" y="198" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">{"type":"semantic",</text>
+<text x="150" y="214" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">"similarity_threshold":0.95}</text>
+
+<!-- Gateway pod -->
+<rect x="290" y="140" width="220" height="100" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="2" filter="url(#tf5sh)"/>
+<text x="400" y="162" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Gateway pod</text>
+<text x="400" y="182" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">parses cache-config</text>
+<text x="400" y="198" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">computes embedding</text>
+<text x="400" y="214" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">queries cache backend</text>
+
+<line x1="260" y1="190" x2="290" y2="190" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf5)"/>
+
+<!-- Cache backend -->
+<rect x="540" y="140" width="220" height="100" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tf5sh)"/>
+<text x="650" y="162" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Cache backend</text>
+<text x="650" y="182" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">platform-managed</text>
+<text x="650" y="198" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">vector similarity search</text>
+<text x="650" y="214" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">cosine similarity ≥ 0.95</text>
+
+<line x1="510" y1="190" x2="540" y2="190" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf5)"/>
+
+<!-- Decision -->
+<rect x="790" y="140" width="220" height="100" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="1.6" filter="url(#tf5sh)"/>
+<text x="900" y="162" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Decision</text>
+<text x="900" y="182" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">match found ≥ threshold</text>
+<text x="900" y="198" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">→ return cached response</text>
+<text x="900" y="214" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">else: forward, then store</text>
+
+<line x1="760" y1="190" x2="790" y2="190" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf5)"/>
+
+<!-- Response side -->
+<rect x="1040" y="140" width="200" height="100" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="2" filter="url(#tf5sh)"/>
+<text x="1140" y="162" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Response to app</text>
+<text x="1140" y="182" text-anchor="middle" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">x-tfy-cache-status: hit</text>
+<text x="1140" y="198" text-anchor="middle" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">x-tfy-cached-trace-id: ...</text>
+<text x="1140" y="214" text-anchor="middle" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">x-tfy-cache-similarity-score</text>
+
+<line x1="1010" y1="190" x2="1040" y2="190" stroke="#50fa7b" stroke-width="2" marker-end="url(#arTf5G)"/>
+
+<!-- Threshold convention panel -->
+<rect x="40" y="240" width="600" height="180" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="60" y="266" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">THRESHOLD CONVENTION — TrueFoundry (cosine similarity)</text>
+<text x="60" y="292" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">similarity_threshold = cosine SIMILARITY (higher = stricter)</text>
+
+<rect x="60" y="306" width="540" height="36" rx="6" fill="#0a0608" stroke="#5a2418" stroke-width="1"/>
+<text x="80" y="330" fill="#F4C04F" font-size="12" font-family="IBM Plex Mono, monospace">0.0 → 0.5 (loose, mismatch likely)</text>
+<text x="380" y="330" fill="#50fa7b" font-size="12" font-family="IBM Plex Mono, monospace">0.95+ ← strict (typical prod)</text>
+
+<text x="60" y="362" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">Production starting point: 0.92–0.97 depending on workload tolerance</text>
+<text x="60" y="382" fill="#9AABBF" font-size="12" font-family="IBM Plex Sans, sans-serif">Tune down to increase hit rate, watching response-header similarity scores</text>
+<text x="60" y="404" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ inverse of APIM's distance-ceiling convention — see §2</text>
+
+<!-- Operating surface panel -->
+<rect x="660" y="240" width="580" height="180" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="680" y="266" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">OPERATING SURFACE</text>
+<text x="680" y="294" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">+ x-tfy-cache-config header on each request (app opts in)</text>
+<text x="680" y="314" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">+ namespace field partitions cache pools per workload</text>
+<text x="680" y="334" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">+ response headers on every cache-touching response</text>
+<text x="680" y="354" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">No customer-provisioned Redis to operate</text>
+<text x="680" y="374" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">No customer-provisioned embeddings backend</text>
+<text x="680" y="394" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ debugging from logs alone — no Application Insights correlation</text>
+
+<text x="40" y="450" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Cache is the documented exception to the gateway pod's no-external-calls hot-path rule (Blog 1) — embedding lookup and similarity search legitimately leave the pod.</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry semantic caching — application opts in via <code>x-tfy-cache-config</code>; gateway computes embedding, queries platform-managed cache, and returns observability headers on every response. The similarity score is exposed for data-driven threshold tuning.</div>
+
+<h3>What the operator writes — request, response, and debugging walkthrough</h3>
+
+<p>The shape below shows a request with semantic caching enabled, the response headers the gateway returns, and how the response surface answers the operational question that the e-commerce scenario raised:</p>
+
+<div class="code-wrap"><div class="code-lang">Bash</div><pre># Application sends request with cache config opting in to semantic caching
+curl -X POST https://gateway.contoso.com/api/llm/api/inference/openai/chat/completions \
+  -H "Authorization: Bearer ${TFY_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -H 'x-tfy-cache-config: {"type":"semantic","similarity_threshold":0.95,"ttl":600,"namespace":"product-search"}' \
+  -d '{
+    "model": "product-recommendation-prod",
+    "messages": [
+      {"role":"system","content":"You are a product recommendation assistant..."},
+      {"role":"user","content":"noise-cancelling headphones for sleeping"}
+    ]
+  }'
+
+# Response headers when the cache returns a hit:
+#
+#   HTTP/1.1 200 OK
+#   x-tfy-cache-status: hit
+#   x-tfy-cached-trace-id: trace-7b2f9a4e-8c11-4b3d
+#   x-tfy-cache-similarity-score: 0.93
+#   ...
+#
+# At debug time:
+#   1. Customer reports "wrong recommendations" — gives request ID
+#   2. Engineer pulls request from logs, sees x-tfy-cache-status: hit + score 0.93
+#   3. Engineer pulls trace-7b2f9a4e (the original request whose response was cached)
+#   4. Original prompt was "noise-cancelling headphones for travel"
+#   5. Diagnosis: false-positive hit; threshold 0.95 was too loose for this workload
+#   6. Fix: tighten threshold to 0.97, add use-case dimension to namespace
+#
+# Total debug time: ~10 minutes from CS ticket to identified root cause.</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative request/response pair consistent with <a href="https://www.truefoundry.com/docs/ai-gateway/caching" target="_blank">TrueFoundry caching docs</a>. The response-header surface makes false-positive hits diagnosable from logs alone — no separate observability correlation required. The <code>namespace</code> field is the partitioning primitive that prevents cross-workload cache poisoning.</div>
+
+<p>Compare this to the equivalent debugging on Azure: the platform engineer pulls the request from Application Insights, queries Log Analytics for the cache-hit metric, correlates the request ID to find the cache decision, then has to look elsewhere to understand which prior request the cached response came from — because the similarity score and the trace-back are not in the response itself. Both products can produce the same diagnostic answer; the operational distance is what differs.</p>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>Per-call control.</strong> Different endpoints can use different cache strategies without a policy redeploy on each. The credit-decisioning endpoint disables caching; the product-recommendation endpoint enables it with a tight threshold; the FAQ endpoint enables it with a loose threshold and long TTL. (2) <strong>Response-header observability.</strong> The <code>x-tfy-cache-similarity-score</code> on every hit makes threshold tuning data-driven; the <code>x-tfy-cached-trace-id</code> makes false-positive hits diagnosable from logs alone. (3) <strong>One fewer infrastructure dependency.</strong> No customer-provisioned Redis, no customer-provisioned embeddings backend; the platform manages both. (4) <strong>Namespace partitioning is structural.</strong> The <code>namespace</code> field in the cache config is a first-class primitive — workloads with different correctness profiles get isolated cache pools by construction.</p>
+</div>
+</section>
+
+
+<section id="provider">
+<h2>§4 — The third cache: provider-side prompt caching</h2>
+
+<p>Both OpenAI and Anthropic operate prompt caches at the provider level that sit underneath whatever the gateway does. These caches are invisible to most platform-comparison discussions, but for high-volume long-prompt workloads they shape the cost picture more than either gateway-side cache. A correct comparison framework has to account for them — and the framework has to be honest that <em>neither gateway can change how provider caching works</em>. What both can do is preserve the request structure providers need to recognize their own cache opportunities.</p>
+
+<h3>OpenAI prompt caching — implicit, prefix-based</h3>
+
+<p><a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI's prompt caching</a> is automatic. Requests with prompts of 1024 tokens or more that share a long common prefix (system prompts, few-shot examples, retrieved RAG context that's the same across calls) get cache-hit pricing on the prefix automatically. Cached input tokens are billed at a fraction of the standard input rate. No application configuration is required; the prefix matching happens server-side based on the actual content of the request.</p>
+
+<p>The cost implication for a typical RAG workload is dramatic. Consider a customer-support agent that:</p>
+
+<ul>
+<li>Includes a 2,000-token system prompt with persona, constraints, and tool descriptions.</li>
+<li>Includes 1,500 tokens of retrieved knowledge-base context relevant to the user's question.</li>
+<li>Includes 500 tokens of conversation history.</li>
+<li>Adds a 200-token user message.</li>
+</ul>
+
+<p>That's 4,200 input tokens per call. The system prompt and many of the few-shot examples are identical across calls; the retrieved context varies but often shares prefixes when users ask similar questions. With OpenAI's prompt caching active, a meaningful fraction of those 4,200 tokens hits cache pricing — knocking 60-80% off the input-token cost for that workload at no operational effort. Neither gateway adds anything to make this happen; OpenAI does it server-side based on content matching.</p>
+
+<h3>Anthropic prompt caching — explicit, with <code>cache_control</code></h3>
+
+<p><a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank">Anthropic's prompt caching</a> is explicit. The application opts in by adding <code>cache_control: {"type": "ephemeral"}</code> to specific message blocks (typically system messages, retrieved context, or tool definitions). Cached blocks are billed at approximately 10% of the standard input rate on cache hits and approximately 125% on the first write. TTL is 5 minutes by default with optional 1-hour extended cache.</p>
+
+<p>The application-side request structure determines whether caching kicks in, which means: <strong>both gateways must preserve the <code>cache_control</code> field on their way through</strong>. Stripping it (in a misguided "normalization" step) would silently disable Anthropic prompt caching. Both products document that they pass through provider-specific request fields unchanged on the documented hot path.</p>
+
+<h3>What the gateways do — and what they cannot</h3>
+
+<p>For the cost discussion, the operational facts are:</p>
+
+<ul>
+<li><strong>Both gateways pass through provider-side cache headers and structure unchanged.</strong> OpenAI's prefix caching works regardless of whether the request flowed through APIM, TrueFoundry, or directly. Anthropic's <code>cache_control</code> field is preserved by both.</li>
+<li><strong>Neither gateway can make provider caching work better.</strong> The cache is the provider's; the gateway has no influence on its hit rate beyond preserving the structure that determines hits.</li>
+<li><strong>Gateway exact-match caching can short-circuit provider caching.</strong> When the gateway exact-cache returns a hit, the request never reaches the provider, so provider caching does not contribute to the cost. For workloads where the gateway exact-match hit rate is very high, this is fine; for workloads where it's low, the provider cache is what carries the cost story.</li>
+<li><strong>Gateway semantic caching changes the prompt.</strong> A semantic cache hit returns a cached response without forwarding to the provider. So semantic caching, when it hits, is "free" of provider costs — but the provider cache stops contributing on those calls. The cost calculus combines both.</li>
+</ul>
+
+<div class="callout info">
+  <div class="callout-title">The composite cost picture</div>
+  <p>For a workload that:</p>
+  <ol style="margin-bottom:0;">
+    <li>Has long shared prefixes (RAG, agent system prompts, few-shot example sets) — provider caching is the dominant cost reducer; gateway caching is incremental.</li>
+    <li>Has short, varied prompts (interactive search, classification) — gateway caching does most of the work; provider caching contributes little.</li>
+    <li>Has a mix — provider caching reduces input-token cost on the prefix; gateway caching reduces total request count for repeats.</li>
+  </ol>
+  <p style="margin-top:.7rem; margin-bottom:0;">A correct cost model accounts for all three caches because their effects compose differently for different workload shapes. "Which gateway has better caching" is the wrong unit of comparison; "which caching strategy fits this workload, and how do the platforms support it" is the right one.</p>
+</div>
+</section>
+
+<section id="scenarios">
+<h2>§5 — Three caching scenarios compared</h2>
+
+<p>The three scenarios below walk realistic patterns where caching strategy decides the cost or correctness outcome. Each is shown side by side under both products.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">Product-recommendation false-positive — debugging from a CS ticket</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The e-commerce scenario from the opening. A customer reports wrong recommendations from a semantic-cached endpoint. The platform team needs to identify that the cause is a false-positive cache hit, find the original prompt that the cached response was generated for, and tune the threshold appropriately.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Pull the request from Application Insights with the customer's request ID. Query Log Analytics for cache-hit telemetry on that request. Correlate the cache-hit event to find which entry was returned. Look up the original request that produced that entry — typically through additional KQL on the request that originally populated the cache (no direct response-header link). Identify that the original prompt was different. Tune the threshold by adjusting the policy XML's <code>score-threshold</code> value, deploy the policy update. <em>Time-to-diagnose: 1-3 hours depending on telemetry pipeline maturity. Time-to-fix: minutes once diagnosed; deploy is policy XML update.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Pull the request from logs. Read <code>x-tfy-cache-status: hit</code>, <code>x-tfy-cached-trace-id: trace-7b2f9a</code>, <code>x-tfy-cache-similarity-score: 0.93</code> directly from the response. Pull <code>trace-7b2f9a</code> from logs to see the original prompt. Identify the false-positive immediately. Tighten threshold to 0.97 in the application's cache-config header (which can be deployed independently per endpoint). <em>Time-to-diagnose: ~10 minutes. Time-to-fix: minutes; deploy can be application-side per endpoint.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">RAG workload with shared system prompt — provider caching dominates</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A customer-support agent uses a 2K-token system prompt + 1.5K retrieved KB context per request, calling Anthropic Claude. The team wants to maximize cost savings without changing the user-visible behavior.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The big lever is Anthropic prompt caching via <code>cache_control: {"type": "ephemeral"}</code> on the system message and the retrieved-context blocks. APIM passes this through unchanged on the request path; the AI gateway's role here is to not interfere. Adding gateway exact-match caching catches verbatim repeats but for an agent with varied user inputs the hit rate is low. Adding gateway semantic caching can help for clusters of similar questions but requires careful threshold tuning to avoid false positives. <em>Outcome: provider caching does most of the work; gateway caches are incremental.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Same fundamental answer. Application uses Anthropic <code>cache_control</code>; the gateway preserves it on the request path. The application can additionally enable gateway exact-match caching with a long TTL via <code>x-tfy-cache-config: {"type": "exact-match", "ttl": 3600, "namespace": "support-agent"}</code> for verbatim repeats. Semantic caching is optional and tunable per endpoint. The response-header observability surface helps tune any gateway-cache decision. <em>Outcome: equivalent provider caching, slightly easier per-endpoint gateway-cache tuning.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Multi-tenant SaaS — different customers must not share cache entries</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A B2B SaaS company runs an AI feature across hundreds of customer tenants. The team wants semantic caching for cost savings but absolutely cannot have one tenant's cached response served to another tenant — both for correctness reasons and for data-isolation compliance.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The <code>vary-by</code> element in the cache-lookup policy is the partitioning primitive. <code>&lt;vary-by&gt;@(context.Request.Headers.GetValueOrDefault("X-Tenant",""))&lt;/vary-by&gt;</code> isolates entries per tenant ID. The implementation is correct as long as every request carries the tenant header and the policy correctly extracts it. Verification at audit time requires walking the policy XML and confirming the <code>vary-by</code> elements are correct on every cache-using API. <em>Effective; verification is policy-by-policy.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The <code>namespace</code> field in <code>x-tfy-cache-config</code> is the partitioning primitive. The application can include the tenant ID in the namespace name (e.g., <code>"namespace": "support-agent:tenant-a-12345"</code>) to isolate entries per tenant. Combined with workspace-scoped tenancy from Blog 2 (workspaces are K8s namespaces with physical isolation), the data-isolation story is structurally clean. <em>Effective; verification is checking that the application includes the tenant ID in the namespace, which is application-side.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The caching comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>Cache property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>Exact-match cache</strong></td><td><span class="check">✅</span> Standard APIM cache policies (<code>cache-lookup</code>/<code>cache-store</code>).</td><td><span class="check">✅</span> <code>type: "exact-match"</code> in cache config.</td><td>Trivial dedup for repeated identical prompts; both first-class.</td></tr>
+<tr><td><strong>Semantic cache</strong></td><td><span class="check">✅</span> Two policy pairs (<code>azure-openai-semantic-cache-*</code> for AOAI, <code>llm-semantic-cache-*</code> for general LLM APIs).</td><td><span class="check">✅</span> <code>type: "semantic"</code> in per-call header.</td><td>Both first-class; configuration model differs.</td></tr>
+<tr><td><strong>Threshold convention</strong></td><td>Cosine <strong>distance</strong>: lower = stricter (e.g., 0.05).</td><td>Cosine <strong>similarity</strong>: higher = stricter (e.g., 0.95).</td><td>Inverse axes; raw numbers not comparable; teams switching between products must keep this conversion in mind.</td></tr>
+<tr><td><strong>Configuration locus</strong></td><td>Policy XML, per API.</td><td>Per-request header, application opts in.</td><td>Determines who owns threshold-tuning decisions and per-endpoint variation.</td></tr>
+<tr><td><strong>Cache backend infrastructure</strong></td><td><span class="partial">◐</span> Azure Managed Redis required + embeddings backend (AOAI deployment).</td><td><span class="check">✅</span> Platform-managed; no separate Redis or embeddings AOAI to provision.</td><td>Operational footprint difference of 2 vs 0 customer-operated dependencies.</td></tr>
+<tr><td><strong>Vary-by / namespace partitioning</strong></td><td><span class="check">✅</span> <code>vary-by</code> elements with policy expressions.</td><td><span class="check">✅</span> <code>namespace</code> field in cache config.</td><td>Both prevent cross-tenant cache poisoning; both first-class.</td></tr>
+<tr><td><strong>System-message handling</strong></td><td><span class="check">✅</span> <code>ignore-system-messages="true"</code> attribute.</td><td><span class="partial">◐</span> Configurable per implementation; less explicit attribute.</td><td>For workloads with templated system prompts, exclusion from embedding is useful.</td></tr>
+<tr><td><strong>Response-header observability</strong></td><td><span class="cross">✕</span> No first-party response header surfaces cache decision details.</td><td><span class="check">✅</span> <code>x-tfy-cache-status</code>, <code>x-tfy-cached-trace-id</code>, <code>x-tfy-cache-similarity-score</code>.</td><td>Determines whether false-positive hits are debuggable from logs alone.</td></tr>
+<tr><td><strong>OpenAI provider prefix caching</strong></td><td><span class="check">✅</span> Pass-through; not platform-controlled.</td><td><span class="check">✅</span> Pass-through; not platform-controlled.</td><td>Both preserve the structure OpenAI needs for prefix caching.</td></tr>
+<tr><td><strong>Anthropic <code>cache_control</code></strong></td><td><span class="check">✅</span> Pass-through.</td><td><span class="check">✅</span> Pass-through.</td><td>Both preserve the explicit Anthropic cache directives.</td></tr>
+<tr><td><strong>Microsoft's documented safety warning applies to both</strong></td><td>—</td><td>—</td><td>"Semantic caching can surface responses that are incorrect, outdated, or unsafe." The risk is intrinsic to the technique, not to either implementation.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§6 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">A mature semantic-cache implementation with clean managed-identity integration to AOAI text-embedding deployments, the institutional Azure Monitor observability story, and thoughtful attributes like <code>ignore-system-messages</code> and <code>max-message-count</code> that show genuine engineering attention to AI workloads. The two-policy-pair split (AOAI-specific + general LLM) gives precise tuning for each surface. The <code>vary-by</code> through policy expressions is the standard pattern teams already operating APIM know how to apply. For organizations whose cache discipline already includes Azure Managed Redis as institutional infrastructure, the composition is excellent.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> the team already operates Azure Managed Redis, the policy-XML configuration locus matches the team's caching-discipline practice, Azure Monitor is the observability target, and the threshold-as-distance convention is part of how the team thinks about similarity scores.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">Per-request cache control through the <code>x-tfy-cache-config</code> header lets different endpoints use different strategies without policy redeploys — a credit-decisioning endpoint can disable caching while a product-recommendation endpoint enables it tightly, all from application-side decisions. The response-header observability surface (<code>x-tfy-cache-status</code>, <code>x-tfy-cached-trace-id</code>, <code>x-tfy-cache-similarity-score</code>) makes false-positive hits debuggable from logs alone. The platform-managed cache backend removes two customer-operated infrastructure dependencies. For AI engineering teams that need fast iteration on cache strategy, the cumulative reduction in operational distance is the value the design delivers.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> per-call cache control matters (different endpoints with different strategies), response-header observability is valuable for debugging cache decisions, or the operational simplicity of one platform-managed cache backend is preferred over composing Redis + embeddings backend manually.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that both products implement the same fundamental technique — semantic caching with cosine-similarity matching against an embedding store — and the architectural difference is where the configuration sits and how visible the cache decision is at debug time. Azure puts strategy in policy XML owned by the platform team and integrates with the broader Azure observability stack; TrueFoundry puts strategy in a per-request header owned by the application and surfaces decisions in response headers. Both approaches are coherent; both produce equivalent cost outcomes on workloads where the strategy fits.</p>
+
+<p>The deciding question is whether the team thinks of caching as a platform-team decision applied uniformly per API, or as an application-team decision varied per endpoint. The former matches APIM's model; the latter matches TrueFoundry's. For AI workloads where different endpoints have very different correctness profiles — credit decisioning vs FAQ vs product search vs internal-tool classification — the per-endpoint flexibility TrueFoundry's design provides is a meaningful operational simplification. For workloads where caching is uniform per service surface, APIM's model is equally fit.</p>
+
+<p>And underneath both: provider-side prompt caching shapes the cost picture more than either gateway-side cache for high-volume long-prompt workloads. Both gateways pass through the structure providers need; neither can change how provider caching itself works. A correct cost model accounts for all three caches because their effects compose differently for different workload shapes.</p>
+
+<p>The next blog (<a href="06-truefoundry-vs-azure-token-governance-finops-attribution.html">Token Governance &amp; FinOps Attribution</a>) walks the third hot-path dimension. Token enforcement and per-team attribution determine whether cost-spike response is hours or minutes — and the architectural choice that makes attribution fast is what decides which platform fits which FinOps shape.</p>
+</section>
+
+<section id="references">
+<h2>§7 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-semantic-cache-lookup-policy" target="_blank">Microsoft Learn — llm-semantic-cache-lookup policy (general LLM APIs)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-semantic-cache-store-policy" target="_blank">Microsoft Learn — llm-semantic-cache-store policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-semantic-cache-lookup-policy" target="_blank">Microsoft Learn — azure-openai-semantic-cache-lookup policy (AOAI-specific)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-semantic-cache-store-policy" target="_blank">Microsoft Learn — azure-openai-semantic-cache-store policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-enable-semantic-caching" target="_blank">Microsoft Learn — Enable semantic caching for LLM APIs in Azure API Management</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/redis/" target="_blank">Microsoft Learn — Azure Managed Redis</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/redis/tutorial-semantic-cache" target="_blank">Microsoft Learn — Tutorial: Use Azure Managed Redis as a semantic cache</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/cache-lookup-policy" target="_blank">Microsoft Learn — cache-lookup policy (exact-match caching)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities" target="_blank">Microsoft Learn — AI gateway capabilities overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/caching" target="_blank">TrueFoundry Docs — Caching (exact-match and semantic, x-tfy-cache-config header)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry Docs — Gateway Plane Architecture (cache as the documented hot-path exception)</a></li>
+  <li><a href="https://platform.openai.com/docs/guides/prompt-caching" target="_blank">OpenAI — Prompt Caching (implicit, prefix-based)</a></li>
+  <li><a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching" target="_blank">Anthropic — Prompt Caching (explicit, cache_control)</a></li>
+  <li><a href="https://redis.io/docs/latest/develop/interact/search-and-query/" target="_blank">Redis — RediSearch module documentation (vector search backend used by APIM)</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 5 of 12 · April 2026 · <a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html">← Blog 4 — Routing</a> · <a href="06-truefoundry-vs-azure-token-governance-finops-attribution.html">Blog 6 — FinOps →</a>
+</p>
+</body>
+</html>
