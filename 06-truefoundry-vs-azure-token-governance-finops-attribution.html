@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="APIM's llm-token-limit + llm-emit-token-metric (with the documented 5-custom-dimension cap, per-gateway counter scope, v2/classic algorithm split, and Azure Monitor TS limits) vs TrueFoundry's Sliding Window Token Bucket + NATS aggregator + workspace-aligned budgets — comparing time-to-attribution under cost-spike scenarios where workspace = K8s namespace = team boundary = budget scope is the structural advantage."/>
+<title>Token Governance &amp; FinOps Attribution: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement II · Hot path</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 6 of 12</span>
+</div>
+
+<h1>Token Governance &amp; FinOps Attribution: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 32 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 FinOps · Platform Engineering</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for the two token-policy pairs (<code>azure-openai-token-limit</code>/<code>emit-token-metric</code> for AOAI and <code>llm-token-limit</code>/<code>emit-token-metric</code> for general LLM APIs), the documented overshoot behavior under concurrency, the per-gateway counter scope (each gateway tracks independently — counters do not aggregate across the APIM instance), the v2-vs-classic algorithm difference (token bucket vs sliding window), the streaming and image-token nuances, and the explicit 5-custom-dimension cap on emit-token-metric plus Azure Monitor's 10-dimension-keys-per-metric and 50,000-active-time-series-per-region limits. The TrueFoundry side is grounded in the gateway-plane-architecture page (Sliding Window Token Bucket algorithm in-memory + NATS aggregator), the budget-limiting and cost-tracking documentation, the raw-metrics API, and the request-headers / metadata documentation. Code blocks are illustrative compositions of documented features.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>FinOps for AI is not about totals. The hard part is answering <em>which team caused this spend, and who should act on it</em> in minutes rather than hours. The architectural property that decides time-to-attribution is whether the workload's owning team is a <strong>first-class label on the token metric</strong> or a downstream join across separate logging pipelines. Both products meter tokens at the gateway and both can produce correct attribution given enough effort. The structural difference is what they make easy by default — and that difference compounds over the lifetime of an AI program where cost-spike incidents recur. The two operationally consequential differences this blog examines: <strong>(1)</strong> APIM's documented <em>5-custom-dimension cap per <code>llm-emit-token-metric</code> policy</em> versus TrueFoundry's metadata-driven attribution with no equivalent cap, and <strong>(2)</strong> APIM's <em>per-gateway counter scope</em> (each gateway tracks independently, counters don't aggregate across the instance) versus TrueFoundry's NATS-aggregated counters across pods.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A cost spike that becomes an attribution question</div>
+<p>Friday afternoon, 4:23 PM. The CFO of a 4,000-person SaaS company forwards a Slack thread to the VP of Engineering: AI provider spend is up 340% month-over-month. The board meeting is Tuesday. The CFO would like an answer by Monday morning, and specifically wants to know <em>which team caused the spike and what the platform team's plan is to prevent recurrence</em>.</p>
+<p>The platform lead opens the AI cost dashboard. The dashboard is good — it shows total token throughput by API, by region, by AOAI deployment, by hour-of-day. What the dashboard does not show is which application team ran the workload that caused the spike. The team has Azure Monitor with <code>llm-emit-token-metric</code> emitting four custom dimensions: <code>subscription_id</code>, <code>region</code>, <code>model</code>, and <code>environment</code>. None of them maps cleanly to "which engineering team owns this." Subscriptions are issued per application, not per team; teams own multiple applications; the lookup table that maps subscription IDs to team names lives in a wiki page that has not been updated since November.</p>
+<p>The triage takes the rest of Friday and most of Saturday. Walking the attribution graph: APIM diagnostic logs in Application Insights to identify caller subscription IDs from the spike window; KQL queries to correlate those subscription IDs with custom dimensions; an internal lookup table to map subscription IDs to team names (with Slack messages to identify ownership where the wiki is wrong); the AI Foundry portal to check whether a new model deployment landed without finance review. By Sunday afternoon, the answer arrives: a back-office team rolled out a new daily batch process the previous Tuesday that calls a long-context model in a loop for every record in a customer-data table; the table has 47 million rows; the loop ran without bounds because the team's QA environment had only 50 sample records and the bound check wasn't tested at production scale. The runaway is real, the team is identified, the fix is straightforward — bound the loop, switch to a smaller model for the batch tier, add a daily-spend alert.</p>
+<p>The architecture lesson the team takes away from the postmortem is the time-to-attribution. The team that owns the workload should be in the metric directly — not derivable through three hops of correlation across separate logging pipelines. The dimensional richness of the metric should be calibrated to the org's actual attribution model — team, product, environment, cost-center, model — not bounded by an arbitrary 5-dimension cap that forces the team to choose which questions to answer at metric-emit time. And the metric pipeline should not require correlation across separate Azure subscriptions whose mapping to teams has drifted from reality.</p>
+<p>The platform team writes a follow-up architecture memo proposing a refactor: every workload must declare its owning team and cost center as request metadata; the gateway must emit those as first-class metric dimensions; the response time for "which team caused this spike" must be under 30 minutes to be operationally credible. The question the memo doesn't quite name but implies: <em>should the platform's attribution model itself be bounded by a 5-dimension cap?</em></p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Both products meter tokens at the gateway.</strong> APIM uses <code>llm-token-limit</code> + <code>llm-emit-token-metric</code> (or the AOAI-specific pair). TrueFoundry uses the gateway's in-memory <em>Sliding Window Token Bucket</em> algorithm with a NATS aggregator that broadcasts updates to every pod.</li>
+    <li><strong>Both products document the overshoot caveat honestly.</strong> Microsoft's own docs: <em>"the policy can't predict total token consumption in advance. This design could allow token limits to be exceeded temporarily when multiple requests are processed concurrently."</em> TrueFoundry documents the same fundamental limitation. The cause is identical: completion tokens are inherently known after generation, so no token-based enforcement can be perfectly precise without sacrificing throughput. Both products are honest about it.</li>
+    <li><strong>The 5-dimension cap is the operationally consequential APIM constraint.</strong> Microsoft Learn explicitly states: <em>"You can configure at most 5 custom dimensions for this policy."</em> Azure Monitor adds two more limits: 10 dimension keys per metric, 50,000 total active time series per region per subscription per 12 hours. These compose into a real ceiling on how rich the attribution model can be.</li>
+    <li><strong>APIM counter scope is per-gateway, not per-instance.</strong> Microsoft Learn: <em>"This policy tracks token usage independently at each gateway where it is applied, including workspace gateways and regional gateways in a multi-region deployment. It doesn't aggregate token counts across the entire instance."</em> A workload that splits across two gateways has two independent counters. TrueFoundry's NATS aggregator broadcasts cross-pod aggregates so all gateway pods see one logical counter.</li>
+    <li><strong>v2 vs classic tier algorithm split adds a wrinkle.</strong> APIM's v2 tiers use a token-bucket algorithm; classic tiers use a sliding window. When token limits are configured at multiple scopes with the same counter-key, Microsoft warns: <em>"make sure that the tokens-per-minute value is consistent across all policy instances."</em></li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when 5 attribution dimensions are sufficient for the chargeback model, when Azure Monitor + Cost Management is the institutional FinOps surface, when the per-region counter-per-gateway model fits the multi-region deployment posture, and when the team's existing FinOps practice already operates inside Azure's TS-limit and dimension-key constraints.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when attribution requires more dimensions than the APIM 5-cap allows, when workspace-level budget enforcement (workspace = K8s namespace = team boundary) is the natural model, when raw-metrics export to a customer FinOps stack is the operational target, or when cross-pod counter aggregation is decisive for multi-region cost control.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Time-to-attribution as the metric</div>
+    <div class="qp-desc">FinOps response speed is the operational metric that matters. Time-to-attribution determines whether the team can answer "which team caused this" in minutes or hours — and that is determined by where workload identity lives in the metric pipeline, not by dashboard quality.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — The time-to-attribution question</a></li>
+    <li><a href="#azure">§2 — Azure: <code>llm-token-limit</code> + <code>llm-emit-token-metric</code> with the 5-dimension cap</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: Sliding Window Token Bucket + NATS aggregator + workspace budgets</a></li>
+    <li><a href="#scenarios">§4 — Three FinOps scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — The time-to-attribution question</h2>
+
+<p class="intro-lead">FinOps for AI looks deceptively simple at the dashboard level. Total tokens, cost per model, cost per day — these are easy charts to produce. The hard part shows up at incident time: <em>which team caused this spend, and who should act on it?</em> The dimension that decides whether that question is answered in minutes or in hours is whether the workload's owning team is a first-class label on the token metric or a downstream join across separate logging pipelines.</p>
+
+<p>Both products can produce correct totals. Both can attribute spend if the platform team writes the right dimensions and operates the right correlation pipeline. The structural question is what the platform makes easy <em>by default</em> — because what the platform makes easy is what teams actually do, and what teams actually do is what determines incident-response time when the cost spike arrives at 4:23 on a Friday.</p>
+
+<p>There are three operational properties that compose into time-to-attribution, and the comparison framework needs to account for each:</p>
+
+<ol>
+<li><strong>Dimensional richness.</strong> How many attributes can the metric carry? Team, product, environment, cost-center, model, region, application, request-class — the chargeback model the org actually wants typically has 6-8 dimensions. APIM caps at 5 custom dimensions per policy and Azure Monitor caps at 10 dimension keys per metric overall (with a 50K active-time-series ceiling per region per subscription per 12-hour window). TrueFoundry has no equivalent cap on metadata-driven attribution.</li>
+<li><strong>Counter coordination across the deployment topology.</strong> When the workload runs across multiple gateways — a workspace gateway plus a regional gateway, or two regional gateways in a multi-region deployment — do the counters aggregate, or does each gateway track independently? APIM's documentation is explicit: <em>each gateway tracks independently; counts don't aggregate across the instance</em>. TrueFoundry's NATS aggregator broadcasts cross-pod aggregates so all pods see one logical counter.</li>
+<li><strong>Workload-team boundary alignment.</strong> Is the team boundary a first-class object in the platform that aligns with tenancy and identity, or is it a separate mapping (Azure subscription → team, owned in a wiki) that has to be maintained out of band? TrueFoundry's workspaces are simultaneously the tenancy boundary (Blog 2: K8s namespace), the identity boundary, and the FinOps boundary. APIM workspaces and Azure subscriptions are workable boundaries but require explicit coordination with the org's team model.</li>
+</ol>
+
+<p>The opening scenario at the top of this blog is the natural failure mode of getting any one of these wrong. The team had reasonable dimensions; they hit the 5-cap and chose dimensions that didn't map to teams. The team had multi-region telemetry; they didn't realize the counters per region were independent until they tried to correlate. The team had subscription-based attribution; the subscription-to-team mapping had drifted from reality. None of these is an APIM defect — they are the operational consequences of the architectural choices APIM made, and they are what teams encounter at scale.</p>
+
+<div class="callout warn">
+  <div class="callout-title">Both products document the fundamental overshoot honestly</div>
+  <p>Before walking the architectures, name the limitation both products share. From Microsoft's <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-token-limit-policy" target="_blank"><code>llm-token-limit</code> policy reference</a>: <em>"because the actual number of tokens consumed depends on both the prompt size and the completion size (which varies by request), the policy can't predict total token consumption in advance. This design could allow token limits to be exceeded temporarily when multiple requests are processed concurrently."</em> TrueFoundry's gateway-plane-architecture documents the same fundamental fact about completion-token estimation. The cause is identical and intrinsic to how LLMs generate: completion tokens are known after the response, not before, so any token-based enforcement that runs before generation is necessarily approximate. Neither product can solve this by being more clever; both honestly document it. Production designs should leave headroom on token quotas to absorb the documented overshoot.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks the Azure token-policy surface — the two policy pairs, the 5-dimension cap with its Azure Monitor TS limit context, the documented overshoot, the per-gateway counter scope, the v2-vs-classic algorithm wrinkle, the streaming and image-token nuances — with a working policy composition that demonstrates each. §3 walks TrueFoundry's Sliding Window Token Bucket + NATS aggregator + workspace-budget surface — with a working virtual-model and budget definition. §4 walks three FinOps scenarios side-by-side. §5 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: <code>llm-token-limit</code> + <code>llm-emit-token-metric</code> with the 5-dimension cap</span></div>
+
+<p>APIM's token-governance surface is engineered with the same care as its routing and caching surfaces. The two policy pairs are well-documented. The configuration mechanics are explicit. Microsoft's documentation is unusually candid about the architectural constraints — overshoot under concurrency, per-gateway counter scope, the v2-vs-classic algorithm difference, the 5-dimension cap. None of this is hidden; the question is whether the constraints fit the workload's FinOps requirements.</p>
+
+<h3>Layer 1 — Two policy pairs for two API surfaces</h3>
+
+<p>As with caching (Blog 5), APIM provides two policy pairs:</p>
+
+<ul>
+<li><strong><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-token-limit-policy" target="_blank"><code>azure-openai-token-limit</code></a> + <code>azure-openai-emit-token-metric</code></strong> — the AOAI-specific pair, used when the API in APIM is an Azure OpenAI in Foundry models endpoint.</li>
+<li><strong><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-token-limit-policy" target="_blank"><code>llm-token-limit</code></a> + <code>llm-emit-token-metric</code></strong> — the general pair, used for LLM APIs that come in through the Azure AI Model Inference API or for OpenAI-compatible models served through third-party inference providers.</li>
+</ul>
+
+<p>The pairs share configuration shape. The token-limit policy supports both <code>tokens-per-minute</code> (rate limit, fixed-window-style) and <code>token-quota</code> + <code>token-quota-period</code> (quota over <code>Hourly | Daily | Weekly | Monthly | Yearly</code>). Either or both must be specified. The <code>counter-key</code> attribute determines what the counter is keyed on — typically <code>@(context.Subscription.Id)</code> for per-subscription enforcement, sometimes IP, sometimes a header value. The <code>estimate-prompt-tokens</code> boolean controls whether prompt tokens are estimated before forwarding (saves a backend call when over limit, costs some latency) or counted post-response from the <code>usage</code> field (cheaper compute, but lets a few overage requests reach the backend before the limit kicks in).</p>
+
+<h3>Layer 2 — The documented overshoot caveat</h3>
+
+<p>The architectural fact that shapes how the limit actually behaves under concurrency is documented directly. From Microsoft Learn: <em>"because the actual number of tokens consumed depends on both the prompt size and the completion size (which varies by request), the policy can't predict total token consumption in advance. This design could allow token limits to be exceeded temporarily when multiple requests are processed concurrently."</em></p>
+
+<p>The cause is intrinsic. Completion tokens are determined by the model during generation; the gateway only learns the actual count when the response arrives. A burst of N concurrent requests will all see "remaining quota OK" at admission and will all generate to completion before any of their counter updates land. The policy then blocks subsequent requests until the limit resets. This is the right behavior given the constraint, and the documentation is honest about it. Production designs leave headroom on quotas — the rule of thumb is to set the limit at 80-85% of the actual ceiling so the documented overshoot doesn't push past the real cap.</p>
+
+<h3>Layer 3 — Per-gateway counter scope</h3>
+
+<p>The constraint that affects multi-gateway topologies is explicit in the policy reference: <em>"This policy tracks token usage independently at each gateway where it is applied, including workspace gateways and regional gateways in a multi-region deployment. It doesn't aggregate token counts across the entire instance."</em></p>
+
+<p>For a single-region single-gateway workload, this is invisible. For a multi-region deployment with one APIM service replicated across two regions and a managed gateway in each, each region's gateway has its own counter. A team that wants to enforce a global TPM limit on a key has to set the per-gateway TPM at the global TPM divided by the number of regions — and trust that traffic distribution across regions is even enough that no region exceeds its share.</p>
+
+<p>The same applies to workspace gateways: a workload that splits across the cloud managed gateway and a workspace gateway has two independent counters. Microsoft's <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-token-limit-policy" target="_blank">documentation also notes</a> that v2 tiers use a token-bucket algorithm while classic tiers use a sliding window — and warns: <em>"when you configure token limits in the v2 tiers at multiple scopes by using the same counter-key, make sure that the tokens-per-minute value is consistent across all policy instances."</em> Inconsistent values cause unpredictable behavior.</p>
+
+<h3>Layer 4 — The 5-dimension cap on emit-token-metric</h3>
+
+<p>This is the constraint that most directly shapes the time-to-attribution discussion. Microsoft's <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-emit-token-metric-policy" target="_blank"><code>llm-emit-token-metric</code> reference</a> is explicit:</p>
+
+<blockquote style="border-left:3px solid var(--azure); padding-left:1rem; margin:1rem 0; color:var(--ink); font-style:italic;">
+"You can configure at most 5 custom dimensions for this policy. Where available, values in the usage section of the response from the LLM API are used to determine token metrics."
+</blockquote>
+
+<p>And from the same reference, two additional Azure Monitor constraints that compose with the 5-cap:</p>
+
+<blockquote style="border-left:3px solid var(--azure); padding-left:1rem; margin:1rem 0; color:var(--ink); font-style:italic;">
+"Azure Monitor imposes usage limits for custom metrics that may affect your ability to emit metrics from API Management. For example, Azure Monitor currently sets a limit of 10 dimension keys per metric, and a limit of 50,000 total active time series per region in a subscription (within a 12 hour period)."
+</blockquote>
+
+<p>These three numbers — 5 custom dimensions per policy, 10 dimension keys per metric, 50,000 active time series — compose into a real ceiling on chargeback dimensionality. Teams designing for chargeback often want many dimensions: team, project, environment, model, cost-center, region, application, request-class. With 5 dimensions per policy, you choose 5 of those 8 questions to make filterable in Azure Monitor. The other 3 belong in logs, accessible through KQL but not through metric dashboards.</p>
+
+<div class="callout warn">
+  <div class="callout-title">A specific operational consequence</div>
+  <p>When the team in the opening scenario discovered they couldn't filter by "owning team" in their dashboard, the cause was the 5-cap forcing a choice at metric-emit time months earlier. The four chosen dimensions — <code>subscription_id</code>, <code>region</code>, <code>model</code>, <code>environment</code> — were defensible at the time. The fifth dimension slot was reserved "for later." When the cost spike arrived, the team had to reconstruct team ownership from a separate logging pipeline through correlation on subscription IDs. Every team that hits this constraint hits it the same way: the chargeback model the org actually wants has more dimensions than the cap allows; the team has to pick which questions to answer in metrics versus logs; the operational consequences appear at incident time when the metric dashboard can't answer the question that matters.</p>
+</div>
+
+<h3>Layer 5 — Streaming and image-token nuances</h3>
+
+<p>Two additional constraints that the documentation calls out and that affect production accuracy:</p>
+
+<ul>
+<li><strong>Streaming responses:</strong> when <code>stream: true</code>, prompt tokens are <em>always</em> estimated regardless of <code>estimate-prompt-tokens</code>; completion tokens are estimated as well. The <code>remaining-tokens</code> values are estimates, more accurate as the quota is approached.</li>
+<li><strong>Image inputs:</strong> for vision models, image tokens are normally counted by the backend and included in limit calculations. <em>However:</em> when streaming or estimation is on, the policy currently over-counts each image as a maximum of <strong>1200 tokens</strong>. This is a documented over-estimate that affects accuracy for vision workloads.</li>
+</ul>
+
+<h3>The Azure token-governance topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure token governance topology">
+<defs>
+  <linearGradient id="bgAz6" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az6sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAz6" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgAz6)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure token governance — per-gateway counters + 5-dimension metric cap</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Each gateway tracks token usage independently. Custom metrics emit up to 5 dimensions; Azure Monitor caps at 10 keys / 50K active TS per region.</text>
+
+<!-- Multi-region gateway topology -->
+<rect x="40" y="110" width="600" height="220" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="60" y="136" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">MULTI-REGION DEPLOYMENT — counters do not aggregate</text>
+
+<rect x="60" y="156" width="260" height="160" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="190" y="182" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">East US gateway</text>
+<text x="190" y="206" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">llm-token-limit policy</text>
+<text x="190" y="224" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">counter-key: subscription.Id</text>
+<rect x="80" y="240" width="220" height="40" rx="6" fill="#0a1220" stroke="#1e3a5f" stroke-width="1"/>
+<text x="190" y="256" text-anchor="middle" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">independent counter</text>
+<text x="190" y="272" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">counts only East traffic</text>
+<text x="190" y="298" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">v2 tier: token bucket alg</text>
+
+<rect x="340" y="156" width="260" height="160" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="470" y="182" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">West US gateway</text>
+<text x="470" y="206" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">llm-token-limit policy</text>
+<text x="470" y="224" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">counter-key: subscription.Id</text>
+<rect x="360" y="240" width="220" height="40" rx="6" fill="#0a1220" stroke="#1e3a5f" stroke-width="1"/>
+<text x="470" y="256" text-anchor="middle" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">independent counter</text>
+<text x="470" y="272" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">counts only West traffic</text>
+<text x="470" y="298" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">same TPM value required</text>
+
+<text x="60" y="346" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ A global TPM of 200K → set 100K per region (assuming even distribution)</text>
+
+<!-- 5-dimension cap panel -->
+<rect x="660" y="110" width="580" height="220" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="680" y="136" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">METRIC DIMENSION CAP — 5 custom + Azure Monitor TS limits</text>
+
+<rect x="680" y="156" width="540" height="160" rx="10" fill="#0a0f1a" stroke="#1e2d45" stroke-width="1.4"/>
+<text x="700" y="182" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">llm-emit-token-metric — at most 5 custom dimensions:</text>
+
+<rect x="700" y="200" width="520" height="22" rx="4" fill="#101B2C" stroke="#7CC2FF" stroke-width="1"/>
+<text x="710" y="216" fill="#7CC2FF" font-size="11" font-family="IBM Plex Mono, monospace">1. subscription_id</text>
+<rect x="700" y="226" width="520" height="22" rx="4" fill="#101B2C" stroke="#7CC2FF" stroke-width="1"/>
+<text x="710" y="242" fill="#7CC2FF" font-size="11" font-family="IBM Plex Mono, monospace">2. region</text>
+<rect x="700" y="252" width="520" height="22" rx="4" fill="#101B2C" stroke="#7CC2FF" stroke-width="1"/>
+<text x="710" y="268" fill="#7CC2FF" font-size="11" font-family="IBM Plex Mono, monospace">3. model</text>
+<rect x="700" y="278" width="520" height="22" rx="4" fill="#101B2C" stroke="#7CC2FF" stroke-width="1"/>
+<text x="710" y="294" fill="#7CC2FF" font-size="11" font-family="IBM Plex Mono, monospace">4. environment</text>
+
+<text x="940" y="328" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">+ slot 5 reserved (team? cost-center? request-class? — must choose one)</text>
+
+<!-- Concurrent overshoot panel -->
+<rect x="40" y="350" width="600" height="180" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="60" y="376" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">DOCUMENTED OVERSHOOT UNDER CONCURRENCY</text>
+<text x="60" y="402" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Microsoft's docs (verbatim):</text>
+<text x="60" y="424" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">"the policy can't predict total token consumption in advance.</text>
+<text x="60" y="440" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">This design could allow token limits to be exceeded temporarily</text>
+<text x="60" y="456" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">when multiple requests are processed concurrently."</text>
+<text x="60" y="488" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Cause is intrinsic: completion tokens known after generation, not before.</text>
+<text x="60" y="508" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Mitigation: leave 15-20% headroom on configured limits.</text>
+
+<!-- Streaming/image nuances panel -->
+<rect x="660" y="350" width="580" height="180" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="680" y="376" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">STREAMING + IMAGE TOKEN NUANCES</text>
+<text x="680" y="402" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">When stream=true: prompt + completion tokens always estimated</text>
+<text x="680" y="424" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">remaining-tokens values are estimates;</text>
+<text x="680" y="440" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">accuracy improves as quota is approached</text>
+<text x="680" y="468" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Vision models with image input:</text>
+<text x="680" y="488" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">when streaming or estimating, image over-counted</text>
+<text x="680" y="504" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">at maximum 1200 tokens per image (documented)</text>
+
+<text x="40" y="566" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Each constraint is well-documented; designs that account for them work cleanly. Designs that don't, hit the constraints in production.</text>
+</svg>
+</div>
+<div class="img-caption">Azure token governance — per-gateway independent counters in multi-region, the 5-custom-dimension cap on emit-token-metric, the documented overshoot under concurrency, and the streaming + image-token nuances. All four are documented; designs that account for them work cleanly.</div>
+
+<h3>What the operator writes — token-limit + emit-token-metric composition</h3>
+
+<p>The XML below is a working composition for an AOAI Chat Completion API: a per-subscription TPM limit, a monthly quota, the standard <code>retry-after</code> header for 429 responses, the metric emission with the 5-dimension cap fully utilized, and the standard set-backend-service + managed-identity auth chain:</p>
+
+<div class="code-wrap"><div class="code-lang">XML</div><pre>&lt;policies&gt;
+  &lt;inbound&gt;
+    &lt;base /&gt;
+
+    &lt;!-- Capture team and cost-center from request headers for downstream attribution --&gt;
+    &lt;set-variable name=&quot;team&quot;
+      value=&quot;@(context.Request.Headers.GetValueOrDefault(&amp;quot;X-Team&amp;quot;,&amp;quot;unknown&amp;quot;))&quot; /&gt;
+    &lt;set-variable name=&quot;costCenter&quot;
+      value=&quot;@(context.Request.Headers.GetValueOrDefault(&amp;quot;X-Cost-Center&amp;quot;,&amp;quot;unknown&amp;quot;))&quot; /&gt;
+
+    &lt;!-- Token enforcement: TPM rate limit + monthly quota, keyed by subscription --&gt;
+    &lt;azure-openai-token-limit
+        counter-key=&quot;@(context.Subscription.Id)&quot;
+        tokens-per-minute=&quot;200000&quot;
+        token-quota=&quot;3000000000&quot;
+        token-quota-period=&quot;Monthly&quot;
+        estimate-prompt-tokens=&quot;true&quot;
+        retry-after-header-name=&quot;Retry-After&quot;
+        remaining-tokens-header-name=&quot;X-Tokens-Remaining&quot;
+        tokens-consumed-header-name=&quot;X-Tokens-Consumed&quot; /&gt;
+
+    &lt;set-backend-service backend-id=&quot;aoai-primary&quot; /&gt;
+    &lt;authentication-managed-identity resource=&quot;https://cognitiveservices.azure.com/&quot; /&gt;
+  &lt;/inbound&gt;
+
+  &lt;outbound&gt;
+    &lt;!-- Attribution: 5 custom dimensions (the documented cap) --&gt;
+    &lt;azure-openai-emit-token-metric namespace=&quot;Contoso/AI&quot;&gt;
+      &lt;dimension name=&quot;team&quot; value=&quot;@((string)context.Variables[&amp;quot;team&amp;quot;])&quot; /&gt;
+      &lt;dimension name=&quot;cost-center&quot; value=&quot;@((string)context.Variables[&amp;quot;costCenter&amp;quot;])&quot; /&gt;
+      &lt;dimension name=&quot;env&quot;
+        value=&quot;@(context.Request.Headers.GetValueOrDefault(&amp;quot;X-Env&amp;quot;,&amp;quot;prod&amp;quot;))&quot; /&gt;
+      &lt;dimension name=&quot;model&quot;
+        value=&quot;@(context.Variables.GetValueOrDefault(&amp;quot;model&amp;quot;,&amp;quot;unknown&amp;quot;))&quot; /&gt;
+      &lt;dimension name=&quot;subscription&quot; value=&quot;@(context.Subscription.Name)&quot; /&gt;
+      &lt;!-- 5/5 dimensions used. Additional context (project_id, request_id, region)
+           lives in Application Insights logs, accessible through KQL but not
+           filterable directly in Azure Monitor metric dashboards. --&gt;
+    &lt;/azure-openai-emit-token-metric&gt;
+    &lt;base /&gt;
+  &lt;/outbound&gt;
+&lt;/policies&gt;</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-token-limit-policy" target="_blank">azure-openai-token-limit</a> and <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-emit-token-metric-policy" target="_blank">azure-openai-emit-token-metric</a>. The 5-dimension cap is hard; teams hitting it must decide which question to answer in metrics versus logs. The set-variable pattern at the top captures dimensions from request headers — the standard idiom for app-supplied attribution.</div>
+
+<h3>What APIM does well — and the operating cost</h3>
+
+<p>What APIM's token-governance surface does well is real:</p>
+
+<ul>
+<li><strong>Mature policy DSL with the right primitives.</strong> Both rate (TPM) and quota (period-bounded total) in one policy, with <code>retry-after</code> and remaining-token observability headers; the standard idioms for capturing team/cost-center from request headers and emitting them as dimensions; combined with the routing layer (Blog 4), the AOAI-specific auth pattern (Blog 2), and the managed-identity story, the composition is excellent for organizations that already operate APIM seriously.</li>
+<li><strong>Direct integration with Azure Cost Management and Azure Monitor.</strong> The metrics flow into the same surfaces the org already uses for Azure-wide cost reporting. Custom workbooks, alerts, and dashboards leverage existing institutional muscle.</li>
+<li><strong>Documented honesty about limitations.</strong> The overshoot caveat, the per-gateway counter scope, the streaming/image-token nuances, the v2/classic algorithm difference, the dimension caps — all explicitly documented. Teams designing for the constraints can operate them reliably.</li>
+<li><strong>The <code>retry-after</code> header pattern.</strong> When the limit triggers a 429, APIM returns a <code>Retry-After</code> header derived from the quota reset time; clients can implement principled retry behavior.</li>
+</ul>
+
+<p>The operating costs are the constraints themselves. <strong>The 5-dimension cap is the most consequential</strong> for chargeback-rich organizations — it forces a metric-versus-logs choice at metric-emit time and bounds dashboard expressiveness. <strong>The per-gateway counter scope is consequential for multi-region deployments</strong> — you can't enforce a global TPM with one policy. <strong>The v2/classic algorithm split is a footgun</strong> when policies are configured at multiple scopes. None of these are defects; they are architectural choices with documented consequences. They become FinOps friction when the workload's chargeback model needs more dimensions or more coordinated enforcement than the architecture provides.</p>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: Sliding Window Token Bucket + NATS aggregator + workspace budgets</span></div>
+
+<p>TrueFoundry's token-governance surface is shaped by the architectural choice from Blog 1 — gateway state lives in-memory in each pod, with NATS as the propagation channel. Token counters are an in-memory data structure (the documented Sliding Window Token Bucket algorithm); cross-pod aggregation happens through a NATS aggregator service that broadcasts updates so every gateway pod sees one logical counter. Attribution is metadata-driven through whatever fields the application chooses to send — no equivalent of the 5-dimension cap.</p>
+
+<h3>Layer 1 — Sliding Window Token Bucket in the gateway pod</h3>
+
+<p>The <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway-plane-architecture page</a> documents the algorithm explicitly. Each gateway pod runs an in-memory Sliding Window Token Bucket per counter key — for example, per virtual-account, per workspace, per virtual model, or per metadata-derived key. Admission decisions on incoming requests check the bucket; the request is admitted if the bucket has tokens, denied with a 429 if it doesn't, with a documented <code>Retry-After</code> equivalent.</p>
+
+<p>The bucket runs in the same in-memory hot path as identity verification (Blog 2) and routing decisions (Blog 4) — no external lookup on the request path. This produces predictable latency: enforcement is microseconds, not milliseconds.</p>
+
+<h3>Layer 2 — The NATS aggregator for cross-pod coordination</h3>
+
+<p>The architectural piece that distinguishes TrueFoundry's enforcement model from APIM's per-gateway scope is the NATS aggregator. Each gateway pod publishes per-request usage events to NATS; an aggregator service consumes the stream, computes per-segment aggregates (per workspace, per user, per virtual model, per any custom segment), and republishes them to NATS. Every gateway pod consumes the aggregate stream and refreshes its in-memory counter view.</p>
+
+<p>The implication is that <strong>all gateway pods see one logical counter</strong> for any given segment, regardless of how many pods serve traffic or how many regions they're spread across. A workload with 50 gateway pods across 3 regions enforcing a 1M-TPM cap on a workspace sees 1M-TPM enforcement total — not 1M-TPM per pod and not 333K-TPM per region. The algorithm shares the same fundamental overshoot caveat as APIM (completion tokens are inherently after-the-fact) but the cross-pod coordination problem is solved by the aggregator rather than left as a per-gateway operational concern.</p>
+
+<h3>Layer 3 — Workspace budgets as the team-aligned boundary</h3>
+
+<p>The piece of the architecture that makes attribution structurally clean is that <strong>workspace = K8s namespace = team boundary = budget boundary</strong>. The same workspace concept that Blog 2 used for tenancy and identity is also where budgets live. A workspace named <code>claims-triage</code> has:</p>
+
+<ul>
+<li>Its own K8s namespace (<code>tfy-claims</code>) — physical isolation from other workloads (Blog 2).</li>
+<li>Its own RBAC bindings — admins, developers, viewers within that workspace (Blog 2).</li>
+<li>Its own virtual accounts and secret groups (Blog 2).</li>
+<li><strong>Its own monthly budget cap</strong> — enforceable at the gateway, with hard or soft modes.</li>
+<li><strong>Its own per-virtual-model rate limits</strong> — TPM caps that the gateway enforces.</li>
+<li>All workload requests labeled with the workspace by the gateway, so attribution to "this team's spend" is structural rather than computed.</li>
+</ul>
+
+<p>The implication for the FinOps response from the opening scenario: if the workload that caused the cost spike were running in TrueFoundry, the workspace label is structural — not a fifth-slot metric dimension that may or may not exist. <em>"Which team's workspace generated 340% more spend last week"</em> is a one-query answer, not a three-hop correlation.</p>
+
+<h3>Layer 4 — Metadata-driven attribution with no dimension cap</h3>
+
+<p>For attribution beyond the workspace boundary, TrueFoundry uses <em>metadata</em> fields on requests. The application sends metadata as JSON in the <code>x-tfy-metadata</code> header (the same metadata pattern used for routing in Blog 4); the gateway captures it and emits it as labels on token usage events. The number of fields is not capped — a request that includes <code>{team: "claims-ai", project: "triage-v2", environment: "prod", cost_center: "cc-3091", request_class: "batch", customer_segment: "enterprise"}</code> emits all six as labels.</p>
+
+<p>The ceiling is wherever the customer's downstream observability stack imposes one. If the team exports raw metrics to a customer-operated Prometheus cluster, the limit is whatever Prometheus tolerates (high). If the team exports to Datadog or Honeycomb, the limit is whatever those platforms support (typically high). The <a href="https://www.truefoundry.com/docs/ai-gateway/fetch-raw-metrics" target="_blank">raw-metrics API</a> exposes the underlying token-usage data with all metadata fields preserved, suitable for direct query into a customer FinOps stack.</p>
+
+<h3>The TrueFoundry token-governance topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry token governance topology">
+<defs>
+  <linearGradient id="bgTf6" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf6sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf6" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgTf6)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry token governance — in-memory bucket per pod, NATS aggregates, workspace budgets</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">All gateway pods see one logical counter per segment via NATS-broadcast aggregates. Workspace = K8s namespace = budget boundary.</text>
+
+<!-- Three gateway pods + NATS aggregator -->
+<rect x="40" y="110" width="600" height="240" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="60" y="136" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">GATEWAY POD FLEET — counters aggregate via NATS</text>
+
+<rect x="60" y="156" width="170" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="145" y="178" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Pod 1 (East)</text>
+<text x="145" y="198" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">in-memory bucket</text>
+<text x="145" y="214" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">~250 RPS / pod</text>
+
+<rect x="240" y="156" width="170" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="325" y="178" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Pod 2 (East)</text>
+<text x="325" y="198" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">in-memory bucket</text>
+<text x="325" y="214" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">~250 RPS / pod</text>
+
+<rect x="420" y="156" width="170" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="505" y="178" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Pod 3 (West)</text>
+<text x="505" y="198" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">in-memory bucket</text>
+<text x="505" y="214" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">~250 RPS / pod</text>
+
+<line x1="145" y1="236" x2="320" y2="266" stroke="#FF8866" stroke-width="1.8" marker-end="url(#arTf6)"/>
+<line x1="325" y1="236" x2="335" y2="266" stroke="#FF8866" stroke-width="1.8" marker-end="url(#arTf6)"/>
+<line x1="505" y1="236" x2="350" y2="266" stroke="#FF8866" stroke-width="1.8" marker-end="url(#arTf6)"/>
+
+<rect x="220" y="270" width="240" height="60" rx="10" fill="#13070b" stroke="#FF5533" stroke-width="2"/>
+<text x="340" y="292" text-anchor="middle" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">NATS AGGREGATOR</text>
+<text x="340" y="310" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">consumes events · broadcasts aggregates</text>
+<text x="340" y="324" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">→ all pods see one logical counter</text>
+
+<!-- Workspace budgets panel -->
+<rect x="660" y="110" width="580" height="240" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="680" y="136" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">WORKSPACE BUDGETS — same boundary as tenancy + identity</text>
+
+<rect x="680" y="156" width="540" height="32" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="700" y="178" fill="#FFB39C" font-size="11" font-family="IBM Plex Mono, monospace">workspace: claims-triage · ns: tfy-claims · budget: $50K/mo (hard)</text>
+
+<rect x="680" y="194" width="540" height="32" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="700" y="216" fill="#FFB39C" font-size="11" font-family="IBM Plex Mono, monospace">workspace: coding-assistant · ns: tfy-coding · budget: $80K/mo (hard)</text>
+
+<rect x="680" y="232" width="540" height="32" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="700" y="254" fill="#FFB39C" font-size="11" font-family="IBM Plex Mono, monospace">workspace: rag-search · ns: tfy-rag · budget: $30K/mo (soft + alert)</text>
+
+<rect x="680" y="270" width="540" height="32" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="700" y="292" fill="#FFB39C" font-size="11" font-family="IBM Plex Mono, monospace">workspace: experiments · ns: tfy-exp · budget: $5K/mo (hard)</text>
+
+<text x="680" y="328" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">"Which team caused the spike?" → query by workspace label · structural answer</text>
+
+<!-- Metadata panel -->
+<rect x="40" y="370" width="600" height="180" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="60" y="396" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">METADATA-DRIVEN ATTRIBUTION — no equivalent dimension cap</text>
+
+<text x="60" y="424" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">x-tfy-metadata: { team, project, environment, cost_center,</text>
+<text x="60" y="442" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">                  request_class, customer_segment, ... }</text>
+
+<text x="60" y="476" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">All fields preserved as labels on token-usage events.</text>
+<text x="60" y="494" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Ceiling = customer's downstream observability stack (Datadog, Prometheus, etc.)</text>
+<text x="60" y="512" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ chargeback model can have 6-8+ dimensions without metric-vs-logs choice</text>
+
+<!-- Raw metrics API panel -->
+<rect x="660" y="370" width="580" height="180" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="680" y="396" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">RAW METRICS API + OPENTELEMETRY EXPORT</text>
+<text x="680" y="424" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">/v1/metrics/raw — direct query for token-usage data</text>
+<text x="680" y="446" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">all metadata fields preserved · suitable for warehouse load</text>
+<text x="680" y="476" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">+ OTel export to customer's collector</text>
+<text x="680" y="498" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Datadog, Honeycomb, Tempo, Grafana Cloud — wherever the org runs SRE</text>
+<text x="680" y="518" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ FinOps stack integration is direct, not through Azure-Monitor bridge</text>
+
+<text x="40" y="572" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Same overshoot caveat as APIM (intrinsic to LLM generation). Same headroom discipline. Different dimensional ceiling and counter coordination.</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry token governance — Sliding Window Token Bucket per pod with NATS aggregator broadcasting cross-pod aggregates, workspace budgets aligned with tenancy and identity boundaries, metadata-driven attribution with no equivalent dimension cap.</div>
+
+<h3>What the operator writes — workspace budget + virtual-model with metadata enforcement</h3>
+
+<p>The YAML below shows a workspace declaration with a monthly budget, a virtual model declaration with rate limits, and the required-metadata enforcement that prevents requests from being admitted without the attribution fields the team needs:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Workspace budget — applies to all virtual models in the workspace
+type: workspace
+name: claims-triage
+namespace: tfy-claims      # K8s namespace; same boundary as tenancy and identity
+budget:
+  scope: workspace
+  monthly_usd: 50000
+  enforcement: hard        # vs soft (warn-only with alert) or off
+  alert_thresholds: [50, 75, 90]   # percent — fires alerts at each threshold
+
+---
+# Virtual model with per-virtual-account rate limits and required metadata
+type: virtual-llm-model
+name: claims-triage-prod
+mode: chat-completions
+
+# Routing covered in Blog 4
+routing:
+  - default:
+      strategy: latency-aware
+      backends:
+        - { provider: azure-openai, model: gpt-4o-east, weight: 70, priority: 1 }
+        - { provider: azure-openai, model: gpt-4o-west, weight: 30, priority: 1 }
+
+# Token enforcement — TPM rate per virtual account, RPM as hard ceiling
+rate_limits:
+  - scope: virtual_account
+    tokens_per_minute: 200000
+    requests_per_minute: 6000
+
+# Required metadata — the gateway rejects (or labels) requests missing these fields
+metadata:
+  required: [team, project_id, environment, cost_center]
+  # Any number of fields; all flow into raw-metrics export and OTel labels.
+  # Required fields produce attribution as a contract, not a convention.
+
+# Telemetry — OTel-first, raw metrics queryable
+observability:
+  raw_metrics_api: true
+  otel_export:
+    endpoint: https://otel-collector.contoso.local:4317
+    resource_attributes:
+      service.namespace: ai-platform
+      deployment.environment: prod</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition consistent with TrueFoundry docs for <a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">budget limiting</a>, <a href="https://www.truefoundry.com/docs/ai-gateway/cost-tracking" target="_blank">cost tracking</a>, the <a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">gateway plane architecture</a> describing the Sliding Window Token Bucket algorithm and NATS aggregator, and the <a href="https://www.truefoundry.com/docs/ai-gateway/fetch-raw-metrics" target="_blank">raw-metrics API</a>. The <code>metadata.required</code> field is the structural enforcement primitive — attribution becomes a contract, not a convention.</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>No 5-dimension cap.</strong> Attribution metadata flows through with whatever shape the team needs; the chargeback model can have 6, 8, or 10 dimensions without forcing a metric-versus-logs choice. (2) <strong>Workspace = K8s namespace = team boundary = budget scope.</strong> The same object across tenancy, identity, and FinOps; the "which team caused this" question is a one-query answer, not a three-hop correlation. (3) <strong>NATS aggregator coordinates counters across pods.</strong> Multi-region or multi-pod deployments enforce one logical counter, not per-pod independent counters. (4) <strong>Required-metadata enforcement.</strong> Attribution is a contract, not a convention — requests missing the required fields are rejected (or labeled) at admission, so attribution coverage doesn't drift over time. (5) <strong>Raw-metrics API and OTel export.</strong> Direct integration with whatever FinOps stack the customer runs; no Azure-Monitor bridge required.</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Three FinOps scenarios compared</h2>
+
+<p>The three scenarios below walk concrete operational moments where the FinOps surface decides the outcome. Each is shown side by side under both products. The scenarios are realistic patterns from production AI engineering practice — these are the moments when the dimensional richness, the counter coordination, and the workload-team boundary alignment land directly on the team.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">CFO escalates a 340% cost spike on a Friday afternoon</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The opening scenario closes here. The CFO wants attribution by Monday morning — which engineering team caused the spike, what's the plan to prevent recurrence. The dashboard shows totals; the question is which team owns the workload.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The chargeback-model walk: pull <code>llm-emit-token-metric</code> data from Azure Monitor for the spike window. Filter by available dimensions — typically subscription, region, model, environment. Discover the team field is <em>not</em> in the metric (the 5-cap forced an earlier choice). Pivot to Application Insights logs to correlate request-IDs with custom dimensions populated by the policy. Cross-reference subscription IDs to the team-ownership wiki/spreadsheet, fixing drift where the wiki is wrong (Slack messages to identify ownership). Identify the back-office team, the batch loop, the unbounded iteration. <em>Time-to-attribution: 1-2 days for a team unfamiliar with the correlation pipeline; 3-6 hours for a team practiced in it. The 5-cap is felt every time this question arises.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The chargeback-model walk is shorter because the workspace boundary is the team boundary. Query raw-metrics or OTel-exported data for the spike window, group by <code>workspace</code> label. The workspace label is structural — it's set by the gateway based on which workspace the request was authenticated against, not derived from a separately-maintained mapping. Identify the workspace responsible for the spike, drill into the project_id and request_class metadata to find the specific workload. Confirm via workspace-admin Slack channel. <em>Time-to-attribution: 30-60 minutes. The workspace=team alignment makes this the kind of question the architecture is structured to answer.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">Multi-region production with a global 1M-TPM contract limit</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A large enterprise has negotiated a 1M-TPM commitment with their AOAI provider for a specific application. Production traffic flows through gateways in three regions. The platform team needs to enforce the global 1M cap so the org doesn't accidentally burst over and incur overage charges.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The constraint: APIM's <code>llm-token-limit</code> tracks per-gateway, not per-instance. To enforce a 1M-TPM cap across three regions, the team has options: (1) divide the cap by region (333K-TPM per region) and trust traffic distribution stays even; (2) implement a global counter in a separate service (Cosmos DB, Redis) and call it from a custom policy at admission time, accepting the latency cost; (3) accept that the enforcement is best-effort and rely on the AOAI provider's overage notification as the safety net. None is fully satisfactory; production teams typically choose (1) with a 15-20% safety margin (e.g., 280K per region instead of 333K) to absorb traffic asymmetry. <em>Effective; the per-gateway scope is the architectural fact teams must design around.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The NATS aggregator handles this directly. Configure <code>tokens_per_minute: 1000000</code> on the virtual model with cross-region scope; gateway pods in all three regions publish per-request usage events to NATS; the aggregator broadcasts the global counter; every pod sees the same logical view. The 1M cap is enforced as one logical limit, not as a sum of per-region limits. The same overshoot caveat from completion-token estimation applies (rule of thumb: leave 10-15% headroom), but the cross-region coordination problem is solved by the architecture rather than left to the operator. <em>Architecturally clean for this workload shape.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Chargeback model with 8 dimensions for finance</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The finance organization has defined the chargeback model: every AI dollar spent must be attributable along eight dimensions — team, product, project, environment, cost-center, model, application, request-class. The attribution data feeds the company's existing chargeback pipeline (an internal data warehouse + monthly chargeback reports).</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The 5-dimension cap forces choices. The team picks 5 of the 8 dimensions for emit-token-metric (typically the highest-cardinality / most-frequently-queried — often team, cost-center, model, environment, product). The other 3 dimensions (project, application, request-class) live in Application Insights logs, accessible through KQL but not in the metric dashboards. The chargeback pipeline ingests both: metric data for fast aggregation, log data for the long-tail dimensions. Workable but requires two-pipeline data engineering. Azure Monitor's 50K active-time-series limit per region per subscription per 12 hours is a separate ceiling that affects high-cardinality dimensions like project_id (many projects = many time series). <em>Achievable; non-trivial data-engineering investment.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The chargeback model maps directly to <code>metadata.required: [team, product, project, environment, cost_center, model, application, request_class]</code>. All 8 fields flow into raw-metrics export and OTel labels. The chargeback pipeline ingests one source. The customer's downstream observability/data-warehouse limits become the ceiling rather than a platform-imposed cap. <em>Direct fit for the workload; one data-engineering pipeline rather than two.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The FinOps comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>FinOps property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>TPM rate limiting</strong></td><td><span class="check">✅</span> <code>tokens-per-minute</code> on token-limit policy.</td><td><span class="check">✅</span> Sliding Window Token Bucket per virtual model.</td><td>Standard hot-path admission control; both first-class.</td></tr>
+<tr><td><strong>Period quotas</strong></td><td><span class="check">✅</span> <code>token-quota</code> with <code>token-quota-period</code>: Hourly/Daily/Weekly/Monthly/Yearly.</td><td><span class="check">✅</span> Workspace budgets at monthly cadence; per-virtual-model TPM separately.</td><td>Both support period-bounded enforcement.</td></tr>
+<tr><td><strong>Overshoot under concurrency</strong></td><td><span class="partial">◐</span> Documented; intrinsic to LLM generation.</td><td><span class="partial">◐</span> Documented; same fundamental cause.</td><td>Both honest about the limitation; design with 10-20% headroom.</td></tr>
+<tr><td><strong>Counter coordination</strong></td><td><span class="cross">✕</span> Per-gateway scope; <em>"doesn't aggregate token counts across the entire instance."</em></td><td><span class="check">✅</span> NATS aggregator broadcasts cross-pod aggregates.</td><td>Decisive for multi-region or multi-pod global TPM enforcement.</td></tr>
+<tr><td><strong>Algorithm consistency across tiers</strong></td><td><span class="partial">◐</span> v2 uses token bucket, classic uses sliding window; same counter-key requires consistent TPM values across scopes.</td><td><span class="check">✅</span> Single algorithm (Sliding Window Token Bucket) across all gateway pods.</td><td>v2/classic split is a footgun in mixed-tier deployments.</td></tr>
+<tr><td><strong>Attribution dimension cap</strong></td><td><span class="cross">✕</span> 5 custom dimensions per <code>llm-emit-token-metric</code>.</td><td><span class="check">✅</span> No equivalent cap on <code>x-tfy-metadata</code>.</td><td>Determines how rich the chargeback model can be; consequential for organizations with 6-8 dimension chargeback.</td></tr>
+<tr><td><strong>Azure Monitor TS limits</strong></td><td><span class="partial">◐</span> 10 dimension keys / metric; 50K active TS / region / sub / 12h.</td><td><span class="partial">◐</span> Customer's downstream stack imposes ceiling.</td><td>For very high-cardinality dimensions (project_id), Azure Monitor's TS ceiling can be hit before the dimension cap.</td></tr>
+<tr><td><strong>Workload-team boundary alignment</strong></td><td><span class="partial">◐</span> Subscription / product / workspace, joined to attribution mapping.</td><td><span class="check">✅</span> Workspace = K8s namespace = team boundary = budget scope.</td><td>Same boundary across tenancy + identity + FinOps; structural attribution.</td></tr>
+<tr><td><strong>Required-metadata enforcement</strong></td><td><span class="partial">◐</span> Possible via policy expressions (<code>return-response</code> on missing header).</td><td><span class="check">✅</span> First-class <code>metadata.required</code> field.</td><td>Determines whether attribution is enforceable as a contract or relies on convention.</td></tr>
+<tr><td><strong>Streaming and image-token accuracy</strong></td><td><span class="partial">◐</span> Documented over-counting (1200 tokens/image max during estimation).</td><td><span class="partial">◐</span> Same fundamental constraint.</td><td>Both have estimation accuracy trade-offs; design with the documented behavior.</td></tr>
+<tr><td><strong>Provider-limit synchronization (<code>retry-after</code>)</strong></td><td><span class="check">✅</span> <code>retry-after-header-name</code> on token-limit; <code>acceptRetryAfter</code> on circuit breaker (Blog 4).</td><td><span class="check">✅</span> <code>honor_retry_after</code> on retry config.</td><td>Both honor provider's recovery signal cleanly.</td></tr>
+<tr><td><strong>FinOps stack integration</strong></td><td><span class="check">✅</span> Azure Monitor + Cost Management institutional.</td><td><span class="check">✅</span> Raw-metrics API + OTel for customer stacks.</td><td>Both work; integration shape differs (Azure-native vs vendor-agnostic).</td></tr>
+<tr><td><strong>Time-to-attribution (CFO 4:23 PM scenario)</strong></td><td>3-6 hours practiced; 1-2 days unfamiliar (5-cap forces correlation).</td><td>30-60 minutes (workspace label is structural).</td><td>This is the operational metric that matters for FinOps response.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">A mature token-policy surface with the right primitives — TPM rate limiting and period quotas, both estimation and post-response counting modes, response headers for client-side retry behavior, and direct integration with Azure Cost Management and Azure Monitor. The two-policy-pair split (AOAI-specific + general LLM) and the documented honesty about limitations (overshoot, per-gateway scope, streaming and image-token nuances, the 5-dimension cap, Azure Monitor TS limits) are exactly what a serious enterprise platform looks like. For organizations whose chargeback model fits within 5 metric dimensions and whose workloads sit cleanly inside Azure's institutional FinOps surface, the composition is best-in-class.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> 5 attribution dimensions cover the chargeback model, Azure Cost Management is the institutional FinOps target, the existing workspace/subscription model is acceptable as the team-attribution boundary, and per-region counter scope fits the multi-region deployment posture.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">Workspace as budget scope is the same object as namespace tenancy (Blog 2) and identity scope — which produces a structurally coherent attribution model without compositional joins. The NATS aggregator solves the cross-pod counter coordination problem that APIM leaves to the operator. Required-metadata enforcement makes attribution a contract rather than a convention. Raw-metrics export integrates directly with whatever FinOps stack the customer runs — no Azure-Monitor bridge required. For AI programs whose chargeback model exceeds 5 dimensions or whose workload-team boundary needs to be one object across tenancy + identity + FinOps, the cumulative reduction in operational distance is the value the architecture delivers.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> attribution needs more dimensions than the 5-cap allows, the team boundary should be one object across tenancy + identity + budget, required-metadata enforcement is part of the FinOps discipline, multi-region or multi-pod global TPM enforcement is an explicit requirement, or time-to-attribution under cost-spike pressure is an operational metric the team is measured on.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that the two architectures optimize for different relationships between the platform team and the rest of the FinOps function. APIM optimizes for organizations whose AI workloads sit inside an existing Azure institutional surface — the metrics flow into Azure Monitor that the Azure cost-management practice already knows; the dimensions are bounded by Azure's documented limits that the org's existing dashboards already operate within; the policy surface composes cleanly with the rest of the APIM estate. For Azure-anchored organizations, this is exactly right.</p>
+
+<p>TrueFoundry optimizes for organizations whose AI program is operated as its own first-class concern, with cross-cutting requirements that span tenancy, identity, observability, and FinOps as one coherent model. The workspace boundary is the team boundary is the budget boundary is the namespace boundary — one object across multiple architectural concerns rather than a composition of separately-maintained mappings. The dimensional ceiling is wherever the customer's downstream stack imposes one. The cross-pod counter coordination is solved by the architecture rather than by operator discipline.</p>
+
+<p>Time-to-attribution is the operational metric that tests both. Under the CFO-4:23-PM-Friday scenario, the architectures produce different response curves: APIM's gives a competent answer in hours-to-days depending on the team's correlation-pipeline maturity; TrueFoundry's gives a structural answer in minutes because the workload-team boundary is a first-class label. Both can be operated to good outcomes; the operational distance is what differs, and it compounds over the lifetime of an AI program where cost-spike incidents recur.</p>
+
+<p>The next blog (<a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Guardrails &amp; the Four-Hook Model</a>) closes Movement II — the hot path. Where APIM's <code>llm-content-safety</code> covers two hooks (input + output), TrueFoundry's four-hook model adds two more (MCP Pre-Tool, MCP Post-Tool). For tool-using agents, that gap is the architectural piece that decides which platform fits the safety review.</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-token-limit-policy" target="_blank">Microsoft Learn — llm-token-limit policy (TPM, quota, overshoot caveat, per-gateway scope, v2/classic algorithm split, streaming and image-token nuances)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-token-limit-policy" target="_blank">Microsoft Learn — azure-openai-token-limit policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-emit-token-metric-policy" target="_blank">Microsoft Learn — llm-emit-token-metric policy (5-dimension cap explicitly documented)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-emit-token-metric-policy" target="_blank">Microsoft Learn — azure-openai-emit-token-metric policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/quota-policy" target="_blank">Microsoft Learn — quota policy (general request quota; complements token quota)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-llm-logs" target="_blank">Microsoft Learn — AI gateway logging tutorial</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-sample-flexible-throttling" target="_blank">Microsoft Learn — Advanced throttling reference (per-region counter mechanics)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities" target="_blank">Microsoft Learn — AI gateway capabilities (token limit overview)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/metrics-custom-overview" target="_blank">Microsoft Learn — Azure Monitor custom metrics (10 dimension keys / 50K active TS limits)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/cost-management-billing/" target="_blank">Microsoft Learn — Azure Cost Management overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/budgetlimiting" target="_blank">TrueFoundry Docs — Budget limiting</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/cost-tracking" target="_blank">TrueFoundry Docs — Cost tracking</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/fetch-raw-metrics" target="_blank">TrueFoundry Docs — Raw Metrics API</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry Docs — Gateway Plane Architecture (Sliding Window Token Bucket, NATS aggregator)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/request-headers" target="_blank">TrueFoundry Docs — Request Headers &amp; Metadata</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/rate-limits" target="_blank">TrueFoundry Docs — Rate Limits configuration</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 6 of 12 · April 2026 · <a href="05-truefoundry-vs-azure-caching-exact-semantic-prompt.html">← Blog 5 — Caching</a> · <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Blog 7 — Guardrails →</a>
+</p>
+</body>
+</html>
