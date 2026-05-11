@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="APIM backend pools with priority/weight + first-class circuit breakers (failureCondition, tripDuration, acceptRetryAfter) + the retry policy + AOAI-aware policies vs TrueFoundry virtual models with latency-aware (TPOT-based) routing as a first-class strategy — the contracting-unit question that determines whether routing changes are platform-only or visible to applications."/>
+<title>Routing, Load Balancing &amp; Failover for AI Traffic: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement II · Hot path</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 4 of 12</span>
+</div>
+
+<h1>Routing, Load Balancing &amp; Failover for AI Traffic: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 30 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Platform Engineering · AI Infrastructure</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for backends in API Management (the load-balanced pool, with priority and weight semantics), the backend circuit-breaker property (failureCondition / tripDuration / acceptRetryAfter), the <code>set-backend-service</code> policy, the <code>retry</code> policy, the <code>azure-openai-token-limit</code> and <code>azure-openai-emit-token-metric</code> policies, plus the AI gateway capabilities page and Microsoft's published OpenAI-at-scale architecture guidance. The TrueFoundry side is grounded in the virtual-models documentation, the load-balancing-overview, the load-balancing-configuration page (weighted, priority, latency-aware strategies), the fallback-strategies documentation, and the gateway-plane-architecture page (in-memory routing, NATS-propagated config). Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog opens Movement II and assumes the foundations established in Blogs 1–3.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Routing comparisons usually walk feature checklists — weighted, priority, retry, circuit breaker — and find parity. The checklist comparison is correct but misses the operationally consequential point. The question that survives the production test is not <em>which strategies are supported</em>; it is <em>what does the application code bind to, and what does the platform team operate?</em> The two products answer this differently. <strong>Azure binds the application to APIM backends</strong> with routing logic expressed in policy XML and ARM-managed pool resources. <strong>TrueFoundry binds the application to virtual models</strong> with routing strategy hidden beneath. Both can be operated to similar latency and resilience outcomes. The operational cost of a routing change differs structurally — and for AI workloads where routing strategy evolves weekly, that cost compounds.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A routing change that becomes a contract question</div>
+<p>At 11:47 on a Wednesday in early March, a fintech AI team rolls out what they describe in the change ticket as "a small experiment" — they want to send 80% of credit-decisioning traffic to Azure OpenAI <code>gpt-4o</code> in East US and 20% to a self-hosted Llama-3.1-70B vLLM deployment running in their Sweden Central K8s cluster. The economics are compelling: their finance lead has calculated that the experiment, if successful, would shave nearly 28% off their monthly AI bill. The platform team adds a new backend pool to APIM with weighted routing, edits the policy XML on the credit-decisioning API to reference the new pool, deploys the change, and watches the dashboards.</p>
+<p>Within forty minutes, customer-success is fielding complaints about latency. The Llama deployment is healthy. CPU is well under target, GPU utilization is in the green, the error rate is zero. But the time-per-output-token on the self-hosted deployment is consistently 2.3× the Azure OpenAI median — not because Llama is slow per-token in absolute terms, but because <code>gpt-4o</code> on Azure's optimized inference infrastructure is exceptionally fast, and the streaming UX of the credit-decisioning UI is calibrated against the faster backend. The 20% of users routed to the self-hosted backend are seeing visibly slower responses; some are complaining; one large customer has paged their account manager.</p>
+<p>The platform team's instinct is correct: this is a routing problem, not a model problem. The right strategy is <em>latency-aware routing</em> — measure the streaming time-per-output-token on each backend, and shift traffic toward the lower-latency backend automatically. But here the architecture decision made four months ago lands directly on the team's hour-by-hour: latency-aware routing is not a first-class APIM strategy. The team can implement it, but the implementation is a custom policy expression that reads cached metrics and selects a backend in <code>set-backend-service</code>; the cached metrics need to be populated by some out-of-band aggregator; the policy XML on three different APIs has to be updated; the deploy goes through a PR, a CI pipeline, and a controlled rollout. Six engineers, three hours, two pull requests. The fix lands at 15:08; latency normalizes by 15:30.</p>
+<p>The architectural lesson the team takes away from the postmortem is what this blog is about: <em>the unit the application binds to should not be the unit the platform team optimizes against</em>. If the application calls a stable virtual model and the platform routes underneath it, routing changes are config edits — apply, NATS sync, done. If the application calls a backend by name, and the backend's routing strategy is expressed as policy XML on the API, every routing change is a policy redeploy with the change visible to anything that consumes the policy. Both architectures can produce the same outcome; the cost of getting there is what differs.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Azure routes through APIM backends and load-balanced pools.</strong> Backends are first-class ARM resources. The <a href="https://learn.microsoft.com/en-us/azure/api-management/backends" target="_blank">load-balanced pool</a> supports <code>round-robin</code>, <code>weighted</code>, <code>priority</code>, and <code>session-aware</code> strategies. Circuit breakers are first-class properties of the backend resource (<code>failureCondition</code>, <code>tripDuration</code>, <code>acceptRetryAfter</code>). The <code>retry</code> policy with exponential backoff is institutional. <strong>The contracting unit is the backend</strong> (or the API that references it).</li>
+    <li><strong>TrueFoundry routes through virtual models.</strong> The application binds to a stable virtual model name; routing happens beneath it with weighted, priority, latency-aware (TPOT-based), retry, circuit-breaker, and metadata-driven targeting. Provider/model swap is a config edit. <strong>The contracting unit is the virtual model</strong> — one indirection from the application's view.</li>
+    <li><strong>Latency-aware routing is the AI-specific strategy gap.</strong> APIM's pool strategies are excellent for traditional API traffic but not built around streaming-LLM latency metrics like time-per-output-token. TrueFoundry treats latency-aware as first-class.</li>
+    <li><strong>Honest framing.</strong> APIM's policy DSL is genuinely more mature than TrueFoundry's routing config; for traditional API governance, the comparison is reversed. For AI-specific routing patterns, the abstraction TrueFoundry offers reduces operational cost in ways that compound.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when the AI workload sits inside an existing APIM estate, the routing patterns are similar to the API patterns the team already operates, the policy-expression DSL is institutional muscle, and the team has discipline around policy XML edits as part of routing changes.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when AI engineering teams run many routing experiments — provider mix tuning, latency-aware fallback, cost-aware steering — and the friction of policy redeploys per change is the dominant operational cost. Especially decisive when streaming LLM latency (time-per-output-token) is the metric that drives routing decisions.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Why this opens Movement II</div>
+    <div class="qp-desc">Routing is the first hot-path dimension. It determines latency, cost, and reliability under provider degradation. The contracting unit is what makes routing safe to change — which means routing strategy can co-evolve with the workload rather than being frozen by deployment friction.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — The contracting-unit question</a></li>
+    <li><a href="#azure">§2 — Azure: backends, pools, circuit breakers, and policy expressions</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: virtual models as the application contract</a></li>
+    <li><a href="#scenarios">§4 — Four routing scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — The contracting-unit question</h2>
+
+<p class="intro-lead">The routing comparison that finds parity walks features. Both products do weighted load balancing. Both do priority groups for failover. Both have retry with backoff. Both have circuit breakers. Both can drive routing decisions from request metadata. If routing comparison were a checklist, this blog would already be over.</p>
+
+<p>The question that decides the architecture is one level up. <em>What is the unit the application code binds to, and what is the unit the platform team operates?</em> When those two units are the same — application calls a backend, platform configures the backend — every routing change is a change visible to the application. When they are different — application calls a stable abstraction, platform configures providers underneath — routing changes are platform-team-only operations. The first model is easier to reason about for a single-team API where the application owners and the platform owners are the same people. The second is easier to operate for an AI program where the application code is owned by feature teams, the routing strategy is owned by an AI platform team, and routing strategy needs to evolve weekly without a coordination cost on every change.</p>
+
+<p>This is not a theoretical distinction. The fintech scenario at the top of this blog is one concrete instance; the same pattern shows up everywhere routing strategy is part of how AI cost and latency get tuned. A few examples that the comparison framework needs to account for:</p>
+
+<ul>
+<li><strong>Provider mix tuning.</strong> An AI program runs production on Azure OpenAI but adds Anthropic Claude as a 10% canary for a specific workload to evaluate quality differences. The 10% needs to ramp to 30% over two weeks, then to 50% if quality holds. Each step is a routing-weight change.</li>
+<li><strong>Latency-aware fallback.</strong> A high-traffic chat endpoint routes primarily to AOAI East but falls back to AOAI West when East's observed time-per-output-token exceeds a threshold. The threshold needs to be tunable based on observed traffic patterns; the metric is streaming-LLM-specific (TPOT, not request latency).</li>
+<li><strong>Cost-aware steering.</strong> A tier-2 internal tool routes to a self-hosted Llama backend during business hours and to AOAI on-demand outside business hours. The schedule changes after a quota negotiation with the provider.</li>
+<li><strong>Tenant-aware routing.</strong> An enterprise SaaS sends the top-10 highest-paying customers to a dedicated provisioned-throughput AOAI deployment and the rest to a shared standard deployment. The list of top-10 customers changes monthly.</li>
+</ul>
+
+<p>For each of these patterns, the routing logic is the same on both products — weighted, priority, latency-aware, metadata-driven. The structural difference is what changes when the routing logic itself changes. On Azure, every change is a policy XML edit (or a backend pool reconfiguration through ARM), reviewed and deployed through whatever pipeline governs APIM changes. On TrueFoundry, the change is a YAML edit to the virtual model definition, applied through <code>tfy apply</code>, propagated to gateway pods through NATS in seconds.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>Azure's policy DSL is more mature and expressive than TrueFoundry's routing config. For complex transformation logic — rewriting requests, manipulating headers, chaining policies — APIM is genuinely better engineered, and the fluency that years of Azure API Management practice produces in a team is real institutional muscle. The argument is not that TrueFoundry's routing layer is more powerful; it is that <em>for AI-specific routing patterns, the abstraction TrueFoundry chose reduces the operational cost of routing changes</em>. For traditional API governance, the comparison reverses; for AI workloads, the abstraction wins.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks the Azure routing surface — backends, load-balanced pools, the circuit-breaker property, the retry policy, and the AOAI-specific policies that make APIM's AI-routing story competitive — with a working Bicep + policy composition. §3 walks TrueFoundry's virtual model surface — the routing strategies, the application contract, latency-aware as a first-class strategy — with a working YAML + Python composition. §4 walks four concrete routing scenarios side by side. §5 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: backends, pools, circuit breakers, and policy expressions</span></div>
+
+<p>APIM's routing surface is, frankly, one of the most mature in the industry. <a href="https://learn.microsoft.com/en-us/azure/api-management/backends" target="_blank">Backends</a> are first-class ARM objects representing upstream services. Backend pools aggregate multiple backends with a chosen strategy. Circuit breakers are first-class properties of the backend resource. The <code>retry</code> policy with exponential backoff is institutional. <code>set-backend-service</code> with policy-expression-based selection covers any custom routing logic. The combination, written carefully, produces a credible AI-routing implementation.</p>
+
+<p>The architectural choice that shapes the operating model is that <em>routing logic lives in policy XML</em>. Backend pools are ARM resources with declarative configuration; policies that reference those pools are XML documents on APIs, products, or operations. Both surfaces are first-class — but both surfaces are <em>visible</em> to anything that consumes the policy or the API definition.</p>
+
+<h3>Layer 1 — Backends and load-balanced pools</h3>
+
+<p>A backend in APIM is an ARM resource of type <code>Microsoft.ApiManagement/service/backends</code>. A "single" backend points at one URL with credentials and circuit-breaker config. A "Pool" backend references multiple single backends with priority groups and weights.</p>
+
+<p>Microsoft's <a href="https://learn.microsoft.com/en-us/azure/api-management/backends" target="_blank">backends documentation</a> describes the pool semantics directly: <strong>backends in lower priority groups will only be used when all backends in higher priority groups are unavailable because circuit breaker rules are tripped</strong>. Within a priority group, traffic is distributed across backends according to their weight values. This gives the operator a clean two-dimensional model: priority for failover, weight for distribution within a tier.</p>
+
+<h3>Layer 2 — Circuit breakers as backend properties</h3>
+
+<p>The circuit breaker is a property of the backend itself, not a separate policy. Microsoft's documentation specifies the shape:</p>
+
+<ul>
+<li><strong><code>failureCondition</code></strong> — the conditions under which a request counts as a failure. Specified as some combination of <code>count</code>, <code>percentage</code>, <code>interval</code>, <code>statusCodeRanges</code>, and <code>errorReasons</code> (the symbolic reasons APIM emits like <code>'Server errors'</code>, <code>'Timeout'</code>, <code>'BackendConnectionFailure'</code>).</li>
+<li><strong><code>tripDuration</code></strong> — how long the circuit stays open after tripping. ISO 8601 duration format (<code>PT10S</code>, <code>PT1M</code>, <code>PT1H</code>).</li>
+<li><strong><code>acceptRetryAfter</code></strong> — when set to <code>true</code>, the circuit breaker honors the <code>Retry-After</code> header from the backend. AOAI returns 429 with a <code>Retry-After</code> header on rate-limit; <code>acceptRetryAfter: true</code> uses that value as the trip duration. This is genuinely well-engineered for AOAI traffic; it makes circuit recovery synchronized with the upstream service's own recovery signal.</li>
+</ul>
+
+<p>When the circuit breaker trips, APIM stops sending requests to that backend and returns 503 Service Unavailable to the caller — unless the request is handled by a load-balanced pool that still has another backend available, in which case the pool routes to that backend. This composition (pool with priority + per-backend circuit breaker) is the canonical AOAI failover pattern Microsoft's own architecture guidance documents.</p>
+
+<h3>Layer 3 — AOAI-specific policies</h3>
+
+<p>For AI traffic specifically, APIM exposes a set of AOAI-aware policies that complement the routing layer:</p>
+
+<ul>
+<li><code>azure-openai-token-limit</code> — TPM and quota enforcement keyed by subscription, IP, or any policy expression. Semantics covered in <a href="06-truefoundry-vs-azure-token-governance-finops-attribution.html">Blog 6</a>.</li>
+<li><code>azure-openai-emit-token-metric</code> — emits per-request token attribution to Azure Monitor with up to 5 custom dimensions.</li>
+<li><code>azure-openai-semantic-cache-lookup</code> / <code>azure-openai-semantic-cache-store</code> — semantic caching, covered in <a href="05-truefoundry-vs-azure-caching-exact-semantic-prompt.html">Blog 5</a>.</li>
+</ul>
+
+<p>The architectural point is that these AOAI policies are <em>composable with</em> the routing layer, not part of it. A team that wants to combine token-limit enforcement, semantic caching, and weighted routing across two AOAI deployments writes one policy XML document that includes all of them in the correct order.</p>
+
+<h3>The Azure routing topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure routing topology — pool with priority groups and circuit breakers">
+<defs>
+  <linearGradient id="bgAz4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az4sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAz4" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+  <marker id="arAz4F" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#F4C04F"/></marker>
+  <marker id="arAz4D" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#ff4757"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="560" rx="22" fill="url(#bgAz4)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure routing — load-balanced pool with priority groups and per-backend circuit breakers</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">App calls APIM API; the API's policy resolves the backend pool; the pool routes by priority + weight; each backend has its own circuit breaker.</text>
+
+<!-- App + APIM API -->
+<rect x="40" y="110" width="160" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az4sh)"/>
+<text x="120" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application</text>
+<text x="120" y="158" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">→ APIM API endpoint</text>
+<text x="120" y="174" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">/credit/decision</text>
+
+<rect x="220" y="110" width="180" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az4sh)"/>
+<text x="310" y="132" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">APIM API + policy</text>
+<text x="310" y="152" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">set-backend-service</text>
+<text x="310" y="168" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">backend-id="ai-pool"</text>
+<text x="310" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">retry on 429/5xx</text>
+
+<rect x="420" y="110" width="180" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="2" filter="url(#az4sh)"/>
+<text x="510" y="132" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Pool: ai-pool</text>
+<text x="510" y="152" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">type: Pool</text>
+<text x="510" y="168" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">priority+weight</text>
+<text x="510" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">routing matrix</text>
+
+<line x1="200" y1="150" x2="220" y2="150" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz4)"/>
+<line x1="400" y1="150" x2="420" y2="150" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz4)"/>
+
+<!-- Priority 1 group -->
+<rect x="660" y="80" width="560" height="180" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="680" y="106" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PRIORITY 1 — primary tier (weighted across)</text>
+
+<rect x="680" y="120" width="240" height="120" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="800" y="144" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">aoai-east</text>
+<text x="800" y="164" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">priority: 1, weight: 70</text>
+<text x="800" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">circuitBreaker:</text>
+<text x="800" y="200" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">429/5xx in PT10S → trip PT10S</text>
+<text x="800" y="220" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">acceptRetryAfter: true</text>
+
+<rect x="940" y="120" width="270" height="120" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="1075" y="144" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">aoai-west</text>
+<text x="1075" y="164" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">priority: 1, weight: 30</text>
+<text x="1075" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">circuitBreaker:</text>
+<text x="1075" y="200" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">429/5xx in PT10S → trip PT10S</text>
+<text x="1075" y="220" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">acceptRetryAfter: true</text>
+
+<line x1="600" y1="150" x2="660" y2="150" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz4)"/>
+
+<!-- Priority 2 group -->
+<rect x="660" y="290" width="560" height="170" rx="14" fill="#0d1620" stroke="#F4C04F" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="680" y="316" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PRIORITY 2 — fallback tier (used only when all P1 circuits open)</text>
+
+<rect x="680" y="330" width="510" height="110" rx="10" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="935" y="358" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">llama-vllm (self-hosted)</text>
+<text x="935" y="380" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">priority: 2 — only used when</text>
+<text x="935" y="400" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">aoai-east AND aoai-west circuits are open</text>
+<text x="935" y="424" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">independent circuit breaker on this backend</text>
+
+<line x1="510" y1="195" x2="510" y2="290" stroke="#F4C04F" stroke-width="2" marker-end="url(#arAz4F)" stroke-dasharray="6 4"/>
+
+<!-- Bottom annotation -->
+<rect x="40" y="290" width="600" height="180" rx="14" fill="#0a1220" stroke="#1e3a5f" stroke-width="1.4"/>
+<text x="60" y="316" fill="#60a5fa" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">CONTRACT SURFACE FOR THE APP</text>
+<text x="60" y="340" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">App calls /credit/decision on the APIM API.</text>
+<text x="60" y="360" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">The pool reference is in the API's policy XML.</text>
+<text x="60" y="384" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Routing change → policy XML edit → APIM deploy.</text>
+<text x="60" y="404" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Pool composition change → ARM apply.</text>
+<text x="60" y="430" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">⚠ latency-aware (TPOT-based) routing requires</text>
+<text x="60" y="446" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">  custom policy expression + cached metric population.</text>
+</svg>
+</div>
+<div class="img-caption">Azure routing topology — load-balanced pool with priority groups (P1 active, P2 fallback) and per-backend circuit breakers honoring <code>Retry-After</code>. The application binds to the APIM API; the pool reference and routing logic live in policy XML.</div>
+
+<h3>What the operator writes — Bicep + policy composition</h3>
+
+<p>The Bicep below defines two AOAI single backends (East + West) each with a circuit breaker, a self-hosted Llama backend at lower priority, and a load-balanced pool that composes them. The companion APIM policy XML references the pool through <code>set-backend-service</code> and applies the AOAI-aware policies in the right order:</p>
+
+<div class="code-wrap"><div class="code-lang">Bicep</div><pre>// Illustrative — single backends with circuit breakers + a load-balanced pool
+// Sources: Microsoft Learn — backends documentation; AOAI architecture guidance.
+
+resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = {
+  name: 'contoso-apim'
+}
+
+resource aoaiEast 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
+  parent: apim
+  name: 'aoai-east'
+  properties: {
+    url: 'https://contoso-aoai-east.openai.azure.com/openai'
+    protocol: 'http'
+    type: 'Single'
+    circuitBreaker: {
+      rules: [{
+        name: 'aoai-east-rule'
+        failureCondition: {
+          count: 1
+          interval: 'PT10S'
+          statusCodeRanges: [
+            { min: 429, max: 429 }
+            { min: 500, max: 503 }
+          ]
+        }
+        tripDuration: 'PT10S'
+        acceptRetryAfter: true   // honors AOAI's Retry-After header
+      }]
+    }
+  }
+}
+
+resource aoaiWest 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
+  parent: apim
+  name: 'aoai-west'
+  properties: {
+    url: 'https://contoso-aoai-west.openai.azure.com/openai'
+    protocol: 'http'
+    type: 'Single'
+    circuitBreaker: {
+      rules: [{
+        name: 'aoai-west-rule'
+        failureCondition: {
+          count: 1
+          interval: 'PT10S'
+          statusCodeRanges: [
+            { min: 429, max: 429 }
+            { min: 500, max: 503 }
+          ]
+        }
+        tripDuration: 'PT10S'
+        acceptRetryAfter: true
+      }]
+    }
+  }
+}
+
+resource llamaVllm 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
+  parent: apim
+  name: 'llama-vllm'
+  properties: {
+    url: 'https://llama.internal.contoso.com'
+    protocol: 'http'
+    type: 'Single'
+    circuitBreaker: {
+      rules: [{
+        name: 'llama-rule'
+        failureCondition: {
+          count: 3, interval: 'PT30S'
+          statusCodeRanges: [{ min: 500, max: 599 }]
+        }
+        tripDuration: 'PT30S'
+      }]
+    }
+  }
+}
+
+resource aiPool 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
+  parent: apim
+  name: 'ai-credit-decision-pool'
+  properties: {
+    description: 'Credit decisioning routing pool'
+    type: 'Pool'
+    pool: {
+      services: [
+        { id: aoaiEast.id, priority: 1, weight: 70 }
+        { id: aoaiWest.id, priority: 1, weight: 30 }
+        { id: llamaVllm.id, priority: 2 }   // fallback tier
+      ]
+    }
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Bicep composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/api-management/backends" target="_blank">backends</a> and <a href="https://techcommunity.microsoft.com/blog/fasttrackforazureblog/using-azure-api-management-circuit-breaker-and-load-balancing-with-azure-openai-/4041003" target="_blank">Microsoft's published OpenAI-at-scale architecture</a>. The <code>acceptRetryAfter: true</code> on AOAI backends synchronizes circuit recovery with AOAI's own rate-limit recovery signal — well-engineered for AI traffic.</div>
+
+<p>The companion policy XML on the credit-decision API:</p>
+
+<div class="code-wrap"><div class="code-lang">XML</div><pre>&lt;policies&gt;
+  &lt;inbound&gt;
+    &lt;base /&gt;
+    &lt;set-backend-service backend-id=&quot;ai-credit-decision-pool&quot; /&gt;
+
+    &lt;!-- AOAI-specific token enforcement, keyed by subscription --&gt;
+    &lt;azure-openai-token-limit
+        tokens-per-minute=&quot;200000&quot;
+        counter-key=&quot;@(context.Subscription.Id)&quot;
+        estimate-prompt-tokens=&quot;true&quot;
+        retry-after-header-name=&quot;Retry-After&quot; /&gt;
+
+    &lt;!-- Tenant-tier override: route tier-A explicitly to East --&gt;
+    &lt;choose&gt;
+      &lt;when condition=&quot;@(context.Request.Headers.GetValueOrDefault(&amp;quot;X-Tenant-Tier&amp;quot;,&amp;quot;&amp;quot;) == &amp;quot;A&amp;quot;)&quot;&gt;
+        &lt;set-backend-service backend-id=&quot;aoai-east&quot; /&gt;
+      &lt;/when&gt;
+    &lt;/choose&gt;
+
+    &lt;authentication-managed-identity resource=&quot;https://cognitiveservices.azure.com/&quot; /&gt;
+  &lt;/inbound&gt;
+  &lt;backend&gt;
+    &lt;retry condition=&quot;@(context.Response.StatusCode == 429
+                       || context.Response.StatusCode &gt;= 500)&quot;
+           count=&quot;3&quot; interval=&quot;1&quot; max-interval=&quot;10&quot; delta=&quot;2&quot;
+           first-fast-retry=&quot;true&quot;&gt;
+      &lt;forward-request /&gt;
+    &lt;/retry&gt;
+  &lt;/backend&gt;
+  &lt;outbound&gt;
+    &lt;azure-openai-emit-token-metric namespace=&quot;Contoso/AI&quot;&gt;
+      &lt;dimension name=&quot;tier&quot;
+        value=&quot;@(context.Request.Headers.GetValueOrDefault(&amp;quot;X-Tenant-Tier&amp;quot;,&amp;quot;default&amp;quot;))&quot; /&gt;
+    &lt;/azure-openai-emit-token-metric&gt;
+    &lt;base /&gt;
+  &lt;/outbound&gt;
+&lt;/policies&gt;</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/api-management/set-backend-service-policy" target="_blank">set-backend-service</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/retry-policy" target="_blank">retry</a>, <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-token-limit-policy" target="_blank">azure-openai-token-limit</a>, and <a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-emit-token-metric-policy" target="_blank">azure-openai-emit-token-metric</a>. The <code>choose</code>/<code>when</code> construct is the standard idiom for tenant-aware routing override.</div>
+
+<h3>What APIM is genuinely strong at — and the AI-specific gap</h3>
+
+<p>Reading the Bicep + policy together, several things stand out as genuinely well-engineered:</p>
+
+<ul>
+<li><strong>Circuit breaker semantics for AOAI traffic.</strong> <code>acceptRetryAfter: true</code> is a thoughtful piece of design. It synchronizes circuit recovery with AOAI's own quota recovery signal, which means the pattern handles AOAI's rate-limit behavior correctly without the operator having to tune trip durations against AOAI's quota refresh cadence.</li>
+<li><strong>Pool semantics with priority groups.</strong> The two-dimensional model (priority for failover, weight for distribution within priority) is exactly the right shape for production AI routing. The fintech scenario at the top of this blog could be expressed cleanly in this model.</li>
+<li><strong>Retry policy with first-fast-retry.</strong> The <code>first-fast-retry="true"</code> attribute is genuinely well-tuned for AI traffic — the first retry happens immediately, subsequent retries back off exponentially. This handles transient failures fast without amplifying load on degraded backends.</li>
+<li><strong>Composition with token-limit and emit-token-metric.</strong> One policy XML document handles routing, enforcement, and attribution. For teams that already write APIM policy fluently, this is excellent leverage.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest caveat — latency-aware routing</div>
+  <p>Latency-aware routing — choosing a backend based on observed time-per-output-token, the metric that actually matters for streaming LLMs — is not a first-class APIM strategy. It can be implemented through policy expressions reading custom variables populated from cached metrics, but the implementation is the customer's, not the platform's. For an AI workload where TPOT-aware routing is the right strategy (which it often is — streaming UX is what users perceive), this is a meaningful gap. The fintech scenario at the top of this blog is exactly this gap landing on a production team.</p>
+</div>
+
+<p>The architectural fact that produces both the strengths and the gap is the same: <em>Azure's routing surface is a composition of strong primitives, all expressed through policy XML and ARM resources</em>. For traditional API governance and for routing strategies that map cleanly to the existing primitives, the composition is excellent. For AI-specific routing patterns that require a different abstraction — like TPOT-aware routing — the customer ends up implementing the abstraction inside policy expressions. The result works, but the work is custom rather than platform-provided.</p>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: virtual models as the application contract</span></div>
+
+<p>TrueFoundry's <a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">virtual model</a> is one concept, and that one concept produces the operational difference. A virtual model is a stable, application-facing endpoint with a name. The application calls it by name; the platform decides which provider/model fulfills the call based on the routing policy attached to that virtual model.</p>
+
+<p>The architectural choice that shapes the operating model is that <em>routing logic lives beneath the virtual model abstraction</em>. The application code references the virtual model name; everything underneath — providers, weights, fallback behavior, latency-aware shifts, retry semantics, circuit breakers — is platform-team config that does not appear in application code or in any policy the application consumes.</p>
+
+<h3>Layer 1 — Virtual models as the contract</h3>
+
+<p>A virtual model in TrueFoundry has a name (e.g., <code>credit-decision-prod</code>), a mode (<code>chat-completions</code>, <code>embeddings</code>, <code>completions</code>), and a routing configuration. Applications call the virtual model the way they would call a model from any OpenAI-compatible provider — same SDK, same API shape, same parameter names. The only thing that's different is the <code>model</code> parameter is the virtual model name rather than a provider model name like <code>gpt-4o</code>.</p>
+
+<p>This is the contract: <strong>the application binds to a name, not to a backend</strong>. The platform team can swap the model underneath, change the provider, ramp a canary, shift traffic based on observed latency, fall back on rate-limit — all without the application changing at all.</p>
+
+<h3>Layer 2 — Routing strategies as first-class primitives</h3>
+
+<p>The <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">routing configuration</a> documents the strategies the platform exposes:</p>
+
+<ul>
+<li><strong>Weighted.</strong> Same as APIM's pool weight semantics. Distributes traffic across backends in proportion to weight values.</li>
+<li><strong>Priority.</strong> Same as APIM's priority groups. Higher-priority backends are used first; lower-priority backends are fallback.</li>
+<li><strong>Latency-aware.</strong> First-class strategy. The gateway tracks observed time-per-output-token per backend over a configurable window; when one backend's p99 TPOT exceeds the configured threshold, the strategy shifts traffic toward the lower-latency backend automatically. <em>This is the strategy that, in the fintech scenario at the top, would have prevented the production incident.</em></li>
+<li><strong>Metadata-driven.</strong> Routing rules can match on request metadata (tenant, environment, region, custom fields). The <code>when: { metadata.tier: "A" }</code> shape replaces APIM's <code>choose</code>/<code>when</code> policy expressions with declarative routing rules.</li>
+</ul>
+
+<h3>Layer 3 — Retry and circuit breaker per virtual model</h3>
+
+<p>Both retry-with-backoff and circuit-breaker semantics are configured per virtual model rather than per backend. The retry config specifies status codes, max attempts, and backoff parameters. The circuit-breaker config specifies failure threshold and recovery duration. When the breaker opens, the gateway routes around the failing backend (using the priority/weighted/latency-aware strategy on the remaining backends) until the recovery duration elapses.</p>
+
+<p>The semantics are similar to APIM's; the configuration locus is different. On TrueFoundry, the retry and circuit-breaker config sits on the virtual model alongside the routing strategy — one declarative document. On Azure, retry is a policy on the API and circuit breaker is a property of the backend resource — two configuration locations that have to be coordinated.</p>
+
+<h3>The TrueFoundry routing topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry routing topology — virtual model as application contract">
+<defs>
+  <linearGradient id="bgTf4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf4sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf4" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+  <marker id="arTf4F" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#F4C04F"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="560" rx="22" fill="url(#bgTf4)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry routing — virtual model as application contract, providers underneath</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">App calls a virtual model name; the platform routes to a provider/model with the configured strategy. Routing changes don't touch the app contract.</text>
+
+<!-- App + virtual model -->
+<rect x="40" y="110" width="160" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tf4sh)"/>
+<text x="120" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application</text>
+<text x="120" y="158" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">model=&quot;credit-</text>
+<text x="120" y="174" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">decision-prod&quot;</text>
+
+<rect x="220" y="100" width="220" height="100" rx="10" fill="#260f08" stroke="#FF5533" stroke-width="2.5" filter="url(#tf4sh)"/>
+<text x="330" y="124" text-anchor="middle" fill="#FFB39C" font-size="11" font-family="IBM Plex Mono, monospace">VIRTUAL MODEL (CONTRACT)</text>
+<text x="330" y="146" text-anchor="middle" fill="#E8EEF8" font-size="14" font-weight="700" font-family="IBM Plex Sans, sans-serif">credit-decision-prod</text>
+<text x="330" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">stable name · app-visible</text>
+<text x="330" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">routing hidden beneath</text>
+
+<line x1="200" y1="150" x2="220" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf4)"/>
+
+<!-- Routing strategy box -->
+<rect x="460" y="100" width="200" height="100" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tf4sh)"/>
+<text x="560" y="124" text-anchor="middle" fill="#FFB39C" font-size="11" font-family="IBM Plex Mono, monospace">ROUTING STRATEGY</text>
+<text x="560" y="146" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">latency-aware</text>
+<text x="560" y="166" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">window: 60s</text>
+<text x="560" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">shift_threshold p99 800ms</text>
+
+<line x1="440" y1="150" x2="460" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf4)"/>
+
+<!-- Primary tier (latency-aware over these) -->
+<rect x="700" y="80" width="540" height="180" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="720" y="106" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PRIMARY TIER — latency-aware shifts within</text>
+
+<rect x="720" y="120" width="240" height="120" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="840" y="144" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">azure-openai gpt-4o-east</text>
+<text x="840" y="164" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">weight: 70 (initial)</text>
+<text x="840" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">observed TPOT: 42 ms</text>
+<text x="840" y="204" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">circuit breaker: 5 fails / 30s</text>
+<text x="840" y="224" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">healthy → traffic ramping up</text>
+
+<rect x="980" y="120" width="240" height="120" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="1100" y="144" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">azure-openai gpt-4o-west</text>
+<text x="1100" y="164" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">weight: 30 (initial)</text>
+<text x="1100" y="184" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">observed TPOT: 51 ms</text>
+<text x="1100" y="204" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">circuit breaker: 5 fails / 30s</text>
+<text x="1100" y="224" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">healthy → steady state</text>
+
+<line x1="660" y1="150" x2="700" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf4)"/>
+
+<!-- Fallback tier -->
+<rect x="700" y="290" width="540" height="170" rx="14" fill="#13070b" stroke="#F4C04F" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="720" y="316" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">FALLBACK TIER — used only when primary unavailable</text>
+
+<rect x="720" y="330" width="500" height="110" rx="10" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="970" y="358" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">self-hosted llama-3-1-70b-vllm</text>
+<text x="970" y="380" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">priority: 2 — used only when both</text>
+<text x="970" y="400" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">east + west circuits open or unhealthy</text>
+<text x="970" y="424" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">excluded from latency-aware comparison</text>
+
+<line x1="560" y1="200" x2="560" y2="290" stroke="#F4C04F" stroke-width="2" marker-end="url(#arTf4F)" stroke-dasharray="6 4"/>
+
+<!-- Bottom annotation -->
+<rect x="40" y="290" width="640" height="180" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="60" y="316" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">CONTRACT SURFACE FOR THE APP</text>
+<text x="60" y="340" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">App calls model="credit-decision-prod".</text>
+<text x="60" y="360" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Routing strategy lives in the virtual-model config (YAML).</text>
+<text x="60" y="384" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">Routing change → tfy apply → NATS sync → live.</text>
+<text x="60" y="404" fill="#9AABBF" font-size="11" font-family="IBM Plex Sans, sans-serif">No application-side change. No policy redeploy.</text>
+<text x="60" y="430" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ latency-aware (TPOT-based) routing</text>
+<text x="60" y="446" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ first-class strategy, not custom expression</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry routing topology — application binds to the virtual model name; routing strategy (latency-aware over a primary tier with TPOT thresholds, priority fallback to self-hosted) lives beneath the contract surface.</div>
+
+<h3>What the operator writes — virtual model definition + application contract</h3>
+
+<p>The YAML below defines the same routing scenario the Bicep above expressed: 70/30 weighted split between AOAI East and West with latency-aware shifting, fallback to self-hosted Llama, tenant-tier override, retry, and circuit breaker. Note that this is one document, applied through one CLI command:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative virtual model with all routing concerns in one document
+# Source: TrueFoundry virtual-model + load-balancing-configuration docs
+type: virtual-llm-model
+name: credit-decision-prod
+mode: chat-completions
+
+# Routing rules — evaluated top-to-bottom
+routing:
+  # Tenant-tier override — explicit routing for tier-A
+  - when: { metadata.tenant_tier: "A" }
+    target: { provider: azure-openai, model: gpt-4o-east, priority: 1 }
+
+  # Default — latency-aware over the primary tier, fallback to self-hosted
+  - default:
+      strategy: latency-aware
+      latency_window_seconds: 60
+      shift_threshold_p99_ms: 800
+      backends:
+        - { provider: azure-openai, model: gpt-4o-east, weight: 70, priority: 1 }
+        - { provider: azure-openai, model: gpt-4o-west, weight: 30, priority: 1 }
+        - { provider: self-hosted, model: vllm/llama-3-1-70b, priority: 2 }
+
+# Retry — same status codes as APIM, similar backoff semantics
+retry:
+  on_status: [429, 500, 502, 503, 504]
+  max_attempts: 3
+  backoff: { initial_ms: 1000, max_ms: 10000, multiplier: 2.0 }
+  honor_retry_after: true   # honor provider Retry-After header
+
+# Per-backend circuit breaker (default applies to all; per-backend overrides supported)
+circuit_breaker:
+  failure_threshold: 5
+  failure_window_seconds: 30
+  recovery_after_seconds: 30
+
+# Token enforcement (covered in Blog 6)
+budget:
+  scope: workspace
+  monthly_usd: 50000
+
+rate_limits:
+  - { scope: virtual_account, tokens_per_minute: 200000 }</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative virtual model definition consistent with <a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">virtual-model docs</a> and <a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">routing configuration</a>. The latency-aware strategy tracks per-backend TPOT and shifts traffic when observed p99 exceeds the threshold. Apply through <code>tfy apply</code>; NATS propagates the change to gateway pods in seconds.</div>
+
+<p>The application's view of the world is unchanged regardless of routing strategy. The same client code calls the same virtual model name; the metadata header drives the tenant-tier override; everything else happens beneath the contract:</p>
+
+<div class="code-wrap"><div class="code-lang">Python</div><pre>from openai import OpenAI
+
+# Application binds to the virtual model name. Provider/strategy choice is platform-side.
+client = OpenAI(
+    base_url="https://gateway.contoso.com/api/llm/api/inference/openai",
+    api_key=os.environ["TFY_GATEWAY_TOKEN"],
+)
+
+response = client.chat.completions.create(
+    model="credit-decision-prod",      # virtual model — stable contract
+    messages=[
+        {"role": "system", "content": "You are a credit-decisioning assistant..."},
+        {"role": "user", "content": user_prompt},
+    ],
+    # Optional metadata steers the routing rule
+    extra_headers={
+        "x-tfy-metadata": json.dumps({
+            "tenant_tier": tenant.tier,    # drives the tenant-tier routing rule
+            "request_id": req_id,
+        }),
+    },
+)</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Application-side call remains constant across routing changes. Standard OpenAI SDK shape; the only difference is the <code>base_url</code> and the <code>x-tfy-metadata</code> header that the gateway consumes for metadata-driven routing.</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>Routing experiments don't require application redeploys.</strong> The fintech scenario at the top of this blog — switching from weighted to latency-aware — is a YAML edit on one virtual model definition, applied through <code>tfy apply</code>, propagated through NATS to gateway pods. No PR on the application code, no APIM redeploy, no policy XML diff to review. (2) <strong>Provider/model swaps are config-only.</strong> The same virtual model can have its provider changed from AOAI to Anthropic or to a self-hosted model without the application contract changing. (3) <strong>Latency-aware routing is a platform-provided strategy, not a custom policy expression.</strong> The TPOT measurement, the window, and the shift logic are platform code; the operator picks parameters. (4) <strong>Hot-path routing decisions are in-memory.</strong> The gateway pod holds the routing config and the per-backend latency observations in memory; routing decisions are made without external lookups (Blog 1's gateway plane architecture).</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Four routing scenarios compared</h2>
+
+<p>The most useful way to compare these routing models is to walk concrete operational scenarios and identify the time-to-deploy for each routing change. The four scenarios below are realistic patterns drawn from production AI engineering practice. Each is shown side by side under both products.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">Switch from weighted to latency-aware routing under production pressure</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The fintech scenario from the opening. The team has a 70/30 weighted split running in production; observed TPOT differences are causing customer-visible latency degradation; they need to switch to latency-aware routing to shift traffic away from the slower backend automatically.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Latency-aware is not a first-class strategy. The team must (1) implement TPOT measurement — typically by emitting a custom metric from the policy on response, populating Application Insights, and aggregating per-backend; (2) build a cache lookup that reads the per-backend TPOT from a backing store; (3) write a policy expression in <code>set-backend-service</code> that picks a backend based on the cached TPOT values; (4) review and deploy the policy XML changes through the standard pipeline. Achievable but custom. <em>Time-to-deploy for the scenario: hours to days, depending on how much TPOT measurement infrastructure already exists.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Latency-aware is a first-class strategy. The team edits one field in the virtual model YAML — change <code>strategy: weighted</code> to <code>strategy: latency-aware</code>, set <code>latency_window_seconds</code> and <code>shift_threshold_p99_ms</code> — runs <code>tfy apply</code>, NATS propagates the change to gateway pods, and the gateway begins making latency-aware decisions immediately. <em>Time-to-deploy: minutes.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">Multi-region failover — primary region's AOAI deployment trips circuit</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">Production AI traffic flows primarily to AOAI in the team's home region. The home-region AOAI instance hits an extended quota issue (or a regional incident); circuit breaker trips; traffic should automatically fail over to a secondary-region AOAI deployment without any manual intervention.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p><span class="check">✅</span> This scenario is exactly what APIM's pool semantics are designed for. Both regions are backends in a pool with priority 1 (home) and priority 2 (secondary); each has a circuit breaker; <code>acceptRetryAfter: true</code> synchronizes circuit recovery with AOAI's quota-recovery signal. When the primary trips, the pool routes to priority 2 backends. When the trip duration elapses (or the <code>Retry-After</code> from AOAI passes), traffic automatically returns to priority 1. Battle-tested pattern. <em>Time-to-deploy: zero (already covered by initial setup).</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p><span class="check">✅</span> Same outcome through priority-based routing in the virtual model config. Both regions defined as backends with <code>priority: 1</code> (home) and <code>priority: 2</code> (secondary); circuit breaker per backend; <code>honor_retry_after: true</code> on retry config. Architecturally identical to Azure's pattern. <em>Time-to-deploy: zero.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Add a 10% canary to a new provider for quality A/B</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">An AI program runs production on AOAI and wants to add Anthropic Claude as a 10% canary on one workload to evaluate quality differences. The 10% needs to ramp to 30% over two weeks if quality holds, then to 50% if approved.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Add Anthropic as an APIM backend (with bearer-token auth instead of managed identity). Add it to the existing pool with weight 10. Each ramp step is a Bicep change to the pool composition + ARM apply. The application doesn't change — it still calls the APIM API endpoint — but every weight change is a pool edit. <em>Time-to-deploy per ramp step: a config-change PR, Bicep diff review, ARM apply. Not slow, but a coordination cost per step.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Add Anthropic as a backend in the virtual model with weight 10. Each ramp step is a YAML edit on the virtual model definition + <code>tfy apply</code>. Same outcome with the same coordination but the change surface is one document rather than ARM + policy. For an AI team running multiple canary experiments simultaneously, the cumulative coordination cost is meaningfully lower. <em>Time-to-deploy per ramp step: one YAML edit, one apply.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 4</span><span class="blast-title">Tenant-aware routing — top-10 customers to provisioned-throughput</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A SaaS company sends its top-10 highest-paying customers to a dedicated AOAI provisioned-throughput deployment, and the rest of the tenant base to a shared standard-tier deployment. The list of top-10 customers changes monthly based on revenue.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The conditional routing is a <code>choose</code>/<code>when</code> policy expression that reads a tenant ID from a header and maps it to a backend. Implementing the actual top-10 list as a maintainable data structure is the operational question — APIM named values can hold the list but updating them is a separate workflow; storing the list externally (Cosmos DB, App Configuration) requires an API call from the policy. Achievable, but the moving-list-of-tenants pattern has multiple workable shapes and the team has to pick one. <em>Time-to-deploy per monthly update: depends on the chosen pattern.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The conditional routing is a metadata-driven rule on the virtual model. The list of top-10 tenants can live in the virtual model's metadata config (updated through <code>tfy apply</code>), or the application can pass a tier header that the rule matches on. Both shapes are first-class in the routing config; either is a single-document edit per monthly update. <em>Time-to-deploy per monthly update: one YAML edit.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The routing comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>Routing property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>Weighted distribution</strong></td><td><span class="check">✅</span> Pool with <code>weight</code> per service.</td><td><span class="check">✅</span> Routing rule with weighted backends.</td><td>Standard production pattern; both first-class.</td></tr>
+<tr><td><strong>Priority groups for failover</strong></td><td><span class="check">✅</span> Pool with priority groups; lower priority used only when higher unavailable.</td><td><span class="check">✅</span> Per-backend priority with same semantics.</td><td>Architecturally identical; both work.</td></tr>
+<tr><td><strong>Latency-aware (TPOT-based)</strong></td><td><span class="partial">◐</span> Achievable through policy expressions reading cached metrics; not platform-provided.</td><td><span class="check">✅</span> First-class <code>strategy: latency-aware</code> with TPOT window.</td><td>The metric that matters for streaming LLMs.</td></tr>
+<tr><td><strong>Metadata-driven steering</strong></td><td><span class="check">✅</span> <code>choose</code>/<code>when</code> on policy expressions.</td><td><span class="check">✅</span> First-class <code>when: { metadata.* }</code> routing rules.</td><td>Tenant tier, region, environment routing.</td></tr>
+<tr><td><strong>Retry with backoff</strong></td><td><span class="check">✅</span> <code>retry</code> policy with <code>first-fast-retry</code> and exponential backoff.</td><td><span class="check">✅</span> Configurable backoff per virtual model.</td><td>Both standard.</td></tr>
+<tr><td><strong>Circuit breaker</strong></td><td><span class="check">✅</span> First-class backend property; <code>acceptRetryAfter</code> well-engineered for AOAI.</td><td><span class="check">✅</span> Per virtual model; <code>honor_retry_after</code> equivalent.</td><td>Both first-class with similar semantics.</td></tr>
+<tr><td><strong>Application-binding unit</strong></td><td>APIM API endpoint (one indirection from backend)</td><td>Virtual model name (zero indirection from app's view)</td><td>Determines whether routing changes are policy-only or visible to apps.</td></tr>
+<tr><td><strong>Routing-change surface</strong></td><td>Bicep + policy XML (two surfaces)</td><td>YAML virtual model (one surface)</td><td>Change-coordination cost per routing edit.</td></tr>
+<tr><td><strong>Routing-change propagation</strong></td><td>ARM apply + APIM deploy</td><td><code>tfy apply</code> + NATS sync (seconds)</td><td>How fast a routing change reaches gateway pods.</td></tr>
+<tr><td><strong>Policy DSL maturity (general API)</strong></td><td><span class="check">✅</span> APIM policy XML is best-in-class for traditional API governance.</td><td><span class="partial">◐</span> Routing config is AI-focused; less expressive for general API transformations.</td><td>For workloads that need rich policy logic beyond AI-routing.</td></tr>
+<tr><td><strong>AOAI-specific policies</strong></td><td><span class="check">✅</span> <code>azure-openai-token-limit</code>, <code>azure-openai-emit-token-metric</code>, <code>azure-openai-semantic-cache-*</code>.</td><td><span class="partial">◐</span> Equivalent capabilities expressed differently (Blog 5, Blog 6).</td><td>Both produce equivalent outcomes; surface is different.</td></tr>
+<tr><td><strong>Multi-region active-active</strong></td><td><span class="check">✅</span> APIM Premium multi-region + Front Door / App Gateway in front.</td><td><span class="check">✅</span> Multi-cluster gateway deployment with shared NATS.</td><td>Both architectures handle this well.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">APIM's routing surface is genuinely one of the most mature in the industry. Backend pools with priority and weight, circuit breakers as first-class backend properties with the well-engineered <code>acceptRetryAfter</code> semantics for AOAI, the <code>retry</code> policy with <code>first-fast-retry</code>, and the AOAI-specific policies (<code>azure-openai-token-limit</code>, <code>azure-openai-emit-token-metric</code>) compose into a credible AI-routing implementation. For traditional API governance and for routing strategies that map cleanly to the existing primitives, APIM is best-in-class. The institutional muscle a team builds operating APIM is real; the documented patterns from Microsoft's architecture guidance are battle-tested.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> the team already operates APIM, AI workloads sit inside an existing API Management estate, the routing patterns the workload needs map to weighted/priority/metadata-driven, and policy-XML edits as part of routing changes are acceptable cost.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">Virtual models as the application contract make routing experiments cheap. Latency-aware routing as a first-class strategy matches the metric that actually matters for streaming LLMs — and the fintech scenario at the top of this blog is exactly the kind of incident that virtual-model abstraction structurally prevents. NATS-driven config propagation makes routing changes safe to make often. For AI programs where routing strategy evolves weekly — provider mix tuning, latency-aware fallback, cost-aware steering, tenant-aware routing — the cumulative reduction in coordination cost is the value the abstraction delivers.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> AI engineering teams need to do many routing experiments, latency-aware routing is the right strategy for the workload, app-stable routing changes are an explicit operational requirement, or the team prefers one declarative document for routing strategy rather than two coordinated surfaces.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that the architectures optimize for different sides of the same trade-off. Azure's routing surface composes strong primitives expressed through mature configuration languages — policy XML and ARM Bicep. The composition is excellent and well-engineered for traditional API governance, including AI workloads that fit the established primitives. TrueFoundry's routing surface compresses the same capabilities into a virtual-model abstraction tuned specifically for AI workloads. The compression buys an application-stable contract and a single edit surface for routing changes; it pays the cost of a less expressive policy DSL for non-routing concerns.</p>
+
+<p>For most AI workloads, the right answer depends on whether the workload's routing strategy is set-once-and-forget or evolves with the program. Set-once routing — pool to two AOAI regions with circuit breaker, retry, and a tier-aware override — both products handle equally well; the architectures look similar at the matrix level. Evolving routing — weekly experiments, latency-aware tuning, canary rollouts, tenant-list updates — is where the abstraction TrueFoundry chose pays off, and where the architecture's editorial argument lands.</p>
+
+<p>The next blog (<a href="05-truefoundry-vs-azure-caching-exact-semantic-prompt.html">Caching: Exact, Semantic, and Provider Prompt Caching</a>) walks the second hot-path dimension. There are three caches in any AI request path; the comparison framework needs to account for all three.</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/backends" target="_blank">Microsoft Learn — Backends in API Management (load-balanced pools, circuit breakers, priority + weight semantics)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/set-backend-service-policy" target="_blank">Microsoft Learn — set-backend-service policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/retry-policy" target="_blank">Microsoft Learn — retry policy (first-fast-retry, exponential backoff)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/forward-request-policy" target="_blank">Microsoft Learn — forward-request policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-token-limit-policy" target="_blank">Microsoft Learn — azure-openai-token-limit policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/azure-openai-emit-token-metric-policy" target="_blank">Microsoft Learn — azure-openai-emit-token-metric policy</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities" target="_blank">Microsoft Learn — AI gateway capabilities overview</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-properties" target="_blank">Microsoft Learn — Named values</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-deploy-multi-region" target="_blank">Microsoft Learn — Multi-region deployment for APIM Premium</a></li>
+  <li><a href="https://techcommunity.microsoft.com/blog/fasttrackforazureblog/using-azure-api-management-circuit-breaker-and-load-balancing-with-azure-openai-/4041003" target="_blank">Microsoft Tech Community — APIM circuit breaker + load balancing for Azure OpenAI</a></li>
+  <li><a href="https://techcommunity.microsoft.com/blog/appsonazureblog/openai-at-scale-maximizing-api-management-through-effective-service-utilization/4240317" target="_blank">Microsoft Tech Community — OpenAI at scale: APIM circuit breaker and load balancing architecture</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">TrueFoundry Docs — Virtual Models</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-overview" target="_blank">TrueFoundry Docs — Load Balancing Overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/load-balancing-configuration" target="_blank">TrueFoundry Docs — Load Balancing Configuration (weighted, priority, latency-aware)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/fallback-strategies" target="_blank">TrueFoundry Docs — Fallback Strategies</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/retries" target="_blank">TrueFoundry Docs — Retries and circuit breakers</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/gateway-plane-architecture" target="_blank">TrueFoundry Docs — Gateway Plane Architecture (in-memory routing, NATS config sync)</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 4 of 12 · April 2026 · <a href="03-truefoundry-vs-azure-deployment-data-residency-sovereignty.html">← Blog 3 — Deployment</a> · <a href="05-truefoundry-vs-azure-caching-exact-semantic-prompt.html">Blog 5 — Caching →</a>
+</p>
+</body>
+</html>
