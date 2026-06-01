@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="Foundry Agent Service's MCP integration with the canonical tool definition (server_label, server_url, allowed_tools, require_approval), Foundry Toolboxes for multi-tool bundling with centrally-managed Entra authentication, and the documented infrastructure constraints (50-second non-streaming timeout, Network Secured Foundry caveat, ACA-coupled private MCP topology) — vs TrueFoundry's gateway-centric MCP runtime with the four-hook guardrail engine applying Pre-Tool and Post-Tool inspection at the boundary, workspace-scoped MCP registry, and cross-cutting policies as single platform operations. The agent-centric vs gateway-centric governance question that decides operational fit at MCP scale."/>
+<title>MCP Tool Governance &amp; Agent Runtime: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement IV · Agentic + operational</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 11 of 12</span>
+</div>
+
+<h1>MCP Tool Governance &amp; Agent Runtime: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 32 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Agent Engineering · Platform Security · MCP</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for Foundry Agent Service MCP integration (the MCP tool definition with <code>server_label</code>, <code>server_url</code>, <code>allowed_tools</code>, <code>require_approval</code>, the public-vs-private MCP server distinction, the documented 50-second non-streaming timeout, the Network Secured Foundry caveat that excludes private MCP servers in the same VNet), Foundry Toolboxes preview (the multi-tool bundle exposed as a single MCP-compatible endpoint, centrally-managed Entra authentication), the agent-development-lifecycle versioning model from <a href="10-truefoundry-vs-azure-prompt-management-versioning.html">Blog 10</a>, and Microsoft's own honest caveat: <em>"Microsoft doesn't test or verify these servers. Microsoft has no responsibility to you or others in relation to your use of any non-Microsoft services."</em> The TrueFoundry side is grounded in the AI Gateway MCP overview, the four-hook guardrail model from <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Blog 7</a> applied at MCP boundaries (Pre-Tool and Post-Tool hooks), and the workspace-scoped governance model. Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog opens Movement IV and assumes the four-hook guardrail engine from Blog 7 and the identity model from Blog 2.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Both products now integrate with Model Context Protocol — Foundry Agent Service announced MCP support in preview at Build 2025, and TrueFoundry has had MCP server governance as a first-class platform primitive since 2024. The integration-availability comparison is a tie. The architectural question that decides operational fit is one level deeper: <strong>how does the platform govern MCP tool calls at the boundary between the agent and the MCP server</strong>, and what does the runtime model look like for organizations operating tens or hundreds of MCP servers across teams? Two structural differences shape the answer. <strong>(1)</strong> Azure's MCP integration is agent-centric — agents reference MCP servers as tool definitions, with <code>allowed_tools</code> and <code>require_approval</code> as the per-agent governance primitives, and Foundry Toolboxes as the multi-tool bundling mechanism. The runtime model centers on the agent as the unit of governance. <strong>(2)</strong> TrueFoundry's MCP governance is gateway-centric — MCP servers are workspace-scoped registry entries, the gateway sits in the call path between agent and MCP server, and the four-hook guardrail engine (Blog 7) applies pre-tool and post-tool inspection as platform primitives. The runtime model centers on the gateway as the unit of governance. Both architectures are coherent; both produce working MCP-enabled agentic systems; the operational properties of each differ in ways that matter for organizations operating MCP at scale.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">An MCP server compromise that becomes a governance question</div>
+<p>A financial-services firm in Singapore operates a portfolio of 40+ internal AI agents across product teams — customer-onboarding agents, KYC research agents, regulatory-filing agents, internal-IT agents. Each agent has access to a subset of 18 MCP servers the platform team operates: an internal customer-data MCP server, a market-data MCP server, several SaaS integrations (Confluence, Jira, GitHub, ServiceNow), an Azure DevOps MCP, and a few specialized ones the data team built. The architecture works well operationally — agent teams onboard quickly, they pull MCP servers from the platform's catalog, the platform team handles MCP server uptime and versioning.</p>
+<p>On a Wednesday morning, the firm's security team forwards an alert. One of the third-party SaaS integrations the team uses — a relatively obscure project-management tool's MCP server — has had a security incident upstream. The vendor disclosed that an attacker may have compromised credentials capable of issuing MCP responses with crafted payloads. The vendor's recommendation: pause all MCP traffic to their server until they complete remediation, expected to take 18-36 hours. The platform team needs to make this happen across 40 agents that may be using the affected MCP server, and they need to do it in minutes, not hours.</p>
+<p>The platform team's investigation maps the dependency graph. Of the 40 agents, 11 currently include the affected MCP server in their <code>allowed_tools</code> configuration. Some include it actively; some included it during early development and haven't removed it. The platform team's central registry of which agents reference which MCP servers is an out-of-band spreadsheet maintained when registrations happen, not a runtime-queried platform fact. Verifying which agents are <em>actually</em> calling the MCP server in the past 24 hours requires querying observability data across all agent runs, joining to the agent registry, and producing a dependency report. The investigation takes 90 minutes. The actual remediation — updating the MCP server's allow-list config or revoking the credential — is in some sense the easy part once the dependency graph is established.</p>
+<p>The remediation procedure runs to completion three hours after the security alert arrived. The team's incident postmortem captures three architectural lessons. First, <em>per-agent allow-list configuration produces a dependency graph that lives in the agents</em> — knowing which agents reference an MCP server requires querying the agent definitions, not querying the MCP server's consumer registry. Second, <em>governance configured per-agent doesn't compose into platform-wide policy</em> — there's no single place to say "no agent in this firm can use that MCP server right now." Third, <em>real-time inspection of MCP calls (parameter validation, response inspection) is not a first-class capability of the agent-runtime layer</em> — the platform team would have liked to put a temporary inspection rule in front of all calls to the affected MCP server while diagnosis continued, but the agent-centric model makes this an out-of-band operation. The team's followup architecture work: build a custom MCP gateway in front of all MCP servers, route all agent-to-MCP traffic through it, implement centralized allow-listing and inspection at the gateway. The remediation works but the platform team has built — at meaningful engineering cost — what their agent-runtime should arguably provide as a primitive. The architectural lesson the team takes from the incident is one this blog is about: <em>at MCP scale, governance has to be at the boundary between agent and MCP server, not inside each agent's configuration</em>.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Both products integrate with MCP.</strong> Foundry Agent Service announced MCP support at Microsoft Build 2025; the integration is in preview as of early 2026 with a documented MCP tool definition (<code>server_label</code>, <code>server_url</code>, <code>allowed_tools</code>, <code>require_approval</code>). TrueFoundry has had MCP governance as a platform primitive since 2024.</li>
+    <li><strong>Azure's runtime model is agent-centric.</strong> MCP servers are referenced from agent definitions; <code>allowed_tools</code> and <code>require_approval</code> are per-agent governance primitives; Foundry Toolboxes (preview) bundle multiple tools (Web Search, Code Interpreter, File Search, Azure AI Search, MCP servers, OpenAPI tools, Agent-to-Agent) into a single MCP-compatible endpoint with centrally-managed Entra authentication. Public vs private MCP servers have different infrastructure requirements (private requires Standard Agent Setup + dedicated MCP subnet delegated to <code>Microsoft.App/environments</code>).</li>
+    <li><strong>TrueFoundry's runtime model is gateway-centric.</strong> MCP servers are workspace-scoped registry entries; the gateway sits in the call path; the four-hook guardrail engine from <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Blog 7</a> applies <strong>MCP Pre-Tool</strong> (parameter validation before tool execution) and <strong>MCP Post-Tool</strong> (response inspection before next-turn context) as platform primitives. Identity propagation, FinOps attribution, and observability inherit from the workspace boundary.</li>
+    <li><strong>Operationally consequential constraints in both architectures.</strong> Azure documents a 50-second non-streaming timeout for MCP tool calls and the Network Secured Foundry caveat that excludes private MCP servers in the same VNet. TrueFoundry has the K8s deployment shape's normal constraints — node selectors, GPU-pool sizing, etc.</li>
+    <li><strong>Microsoft is honest about the trust boundary.</strong> The documentation states explicitly: <em>"Microsoft doesn't test or verify these servers. Microsoft has no responsibility to you or others in relation to your use of any non-Microsoft services."</em> Both products treat MCP servers as untrusted-by-default; the architectural difference is where the inspection and governance happens.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when the agent-as-unit-of-governance model fits the team's structure, when Foundry Toolboxes' multi-tool bundling with centrally-managed Entra authentication is operationally valuable, when the Azure DevOps MCP / Microsoft Learn MCP / and other Microsoft-provided MCP servers are mission-critical, or when the existing Azure-anchored agent platform is institutional muscle.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when MCP traffic needs gateway-policy inspection at the tool boundary, when MCP server governance needs to be platform-wide rather than per-agent, when the four-hook guardrail engine's MCP Pre-Tool and Post-Tool hooks are decisive for security/compliance, or when the same workspace boundary used for identity, FinOps, and observability should also bound MCP server access.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Agent-centric vs gateway-centric</div>
+    <div class="qp-desc">For organizations operating 5-10 MCP servers and 5-10 agents, both architectures work fine. For organizations operating 20+ MCP servers across many teams, the architectural question shifts: where does platform-wide governance live? Per-agent configuration scales by N×M (agents × servers); gateway-policy governance scales by M (just the servers).</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Why MCP governance is a boundary problem</a></li>
+    <li><a href="#azure">§2 — Azure: Foundry Agent Service + MCP tool + Toolboxes</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: gateway-centric MCP with Pre-Tool / Post-Tool hooks</a></li>
+    <li><a href="#scenarios">§4 — Three MCP-runtime scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — Why MCP governance is a boundary problem</h2>
+
+<p class="intro-lead">Model Context Protocol's architectural design has converged the industry on a clean separation: agents speak MCP; tools are exposed by MCP servers; the protocol handles discovery, invocation, and response. The convergence is genuinely valuable — Microsoft, Anthropic, Google, and most of the agent-platform vendor space have converged on MCP as the integration standard, which means tools written once can be consumed by any compliant agent runtime. The architectural question MCP doesn't answer is what platform sits at the boundary between agent and MCP server, and how that boundary is governed.</p>
+
+<p>The boundary matters because MCP servers are by design third-party (or third-team) capabilities that an agent calls into. Even MCP servers operated by trusted internal teams are <em>different trust domains</em> from the agent — different deployment cadences, different on-call rotations, different security postures, different rate of change. A compromised MCP server, a misbehaving MCP server, or just an MCP server that needs temporary access restrictions during incident response is a normal operational pattern, not an exotic edge case. The platform that handles MCP at scale needs governance at this boundary as a first-class capability.</p>
+
+<h3>Three governance questions the boundary must answer</h3>
+
+<ol>
+<li><strong>Allow-listing.</strong> Which MCP servers can a particular agent call? Which tools within those servers? The traditional answer is per-agent configuration — each agent's definition lists allowed servers and tools. This works at small scale; at large scale it produces a dependency graph that lives in N×M agent configurations rather than as a queryable platform fact.</li>
+<li><strong>Real-time inspection.</strong> What happens to the parameters the LLM constructs for an MCP tool call before they reach the MCP server? What happens to the response from the MCP server before it's added to the agent's next-turn context? These are the questions Blog 7's four-hook model addresses; for MCP specifically, they are the Pre-Tool and Post-Tool hooks.</li>
+<li><strong>Cross-cutting policies.</strong> How does the platform express "no agent in this org can call MCP server X right now" as a single policy change? How does it express "all calls to MCP server Y must be audit-logged"? How does it express "calls from production agents to MCP server Z require approval, calls from dev agents don't"? Per-agent configuration doesn't compose to these policies cleanly; gateway-policy governance does.</li>
+</ol>
+
+<h3>Why MCP at scale changes the architectural choice</h3>
+
+<p>The question of agent-centric vs gateway-centric governance is not architecturally interesting at small scale. A team with 3 agents and 4 MCP servers can operate either model effectively — the per-agent configuration is small enough to manage, and the policy expressiveness needed is minimal. The architectural choice gets interesting at the 20+ MCP servers × 50+ agents scale that organizations operating mature agentic AI programs reach. At that scale:</p>
+
+<ul>
+<li>Per-agent allow-list maintenance becomes a coordination problem across many agent teams.</li>
+<li>Cross-cutting MCP server policies (security incident response, compliance constraints) need to be expressible at one place.</li>
+<li>The dependency graph between agents and MCP servers needs to be queryable in real time, not derivable from agent configurations.</li>
+<li>Real-time inspection at the tool boundary becomes the natural place for centralized parameter validation, sensitive-data redaction, and tool-call audit logging.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>Foundry Agent Service's MCP integration is genuinely well-engineered. Foundry Toolboxes (preview) is a strong pattern for centralizing tool authentication and bundling — it explicitly addresses the "configure each tool separately on every agent" problem the per-agent model has at scale, and it does it in an MCP-native way (the toolbox itself is an MCP-compatible endpoint). The <code>require_approval</code> field is a sensible primitive for high-risk operations. The integration with Microsoft Entra for centrally-managed authentication is the right architectural choice. The argument is not that Azure's MCP integration is poorly designed; it is that <em>the agent is the unit of governance in Foundry's runtime model</em>, which produces different operational properties than gateway-centric governance at large MCP scale. Foundry Toolboxes mitigate this for tool bundling specifically; for cross-cutting MCP server policies, the difference remains structural.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks Azure's Foundry Agent Service MCP integration — the MCP tool definition with <code>server_label</code>, <code>server_url</code>, <code>allowed_tools</code>, and <code>require_approval</code>; the public-vs-private MCP server topology; Foundry Toolboxes as the multi-tool bundling mechanism; the documented constraints (50-second timeout, Network Secured caveat); and the authentication options — with a working agent definition. §3 walks TrueFoundry's gateway-centric MCP model — workspace-scoped registry, the four-hook guardrail engine applied to MCP boundaries, the platform-wide policy primitives, and identity/FinOps/observability inheritance from workspace — with a working configuration. §4 walks three concrete MCP-runtime scenarios side-by-side. §5 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: Foundry Agent Service + MCP tool + Toolboxes</span></div>
+
+<p>Azure's MCP integration sits inside <strong>Foundry Agent Service</strong> — the managed agent runtime that handles agent definition, conversation threads, tool invocation, and persistent state. MCP is one tool type among several (the others include Code Interpreter, File Search, Azure AI Search, Bing grounding, OpenAPI tools, Agent-to-Agent connections, and Foundry Toolboxes). The integration has matured rapidly through 2025, with the preview announcement at Build 2025 followed by GA-track stabilization through late 2025 and early 2026.</p>
+
+<h3>Layer 1 — The MCP tool definition</h3>
+
+<p>The MCP tool is a structured object on an agent definition. From <a href="https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/model-context-protocol" target="_blank">Microsoft's MCP documentation</a>, the four canonical fields:</p>
+
+<ul>
+<li><strong><code>server_url</code></strong> — the URL of the remote MCP server (e.g., <code>https://api.githubcopilot.com/mcp/</code> for GitHub's MCP server, or <code>https://learn.microsoft.com/api/mcp</code> for the Microsoft Learn MCP).</li>
+<li><strong><code>server_label</code></strong> — a unique identifier for this MCP server within the agent (used to disambiguate tool calls when multiple MCP servers are attached).</li>
+<li><strong><code>allowed_tools</code></strong> — optional allow-list of specific tools within the MCP server that this agent can use. If omitted, all tools the MCP server exposes are available.</li>
+<li><strong><code>require_approval</code></strong> — controls the approval workflow. Values include <code>"always"</code> (every tool call requires approval), <code>"never"</code> (no approval needed), or a specific tools list.</li>
+</ul>
+
+<p>At runtime, the MCP tool is invoked as part of the agent's tool-use cycle: the LLM decides to call an MCP tool, the Agent Service runtime forwards the call to the MCP server (after applying the <code>allowed_tools</code> filter and the <code>require_approval</code> check), the MCP server executes and returns a response, the response is added to the conversation thread, and the agent continues. The runtime handles header injection (for authentication), thread storage, and the approval flow.</p>
+
+<h3>Layer 2 — Public vs private MCP server topology</h3>
+
+<p>The infrastructure shape of the MCP server determines which deployment options are available:</p>
+
+<ul>
+<li><strong>Public endpoints.</strong> Any publicly accessible remote MCP server works with both Basic and Standard agent setups. This includes SaaS MCP servers (Zapier, Linear, Notion, etc.), Microsoft-provided MCPs (Microsoft Learn MCP, Azure DevOps MCP), and any MCP server an organization exposes publicly.</li>
+<li><strong>Private endpoints.</strong> MCP servers not exposed to the public internet require Standard Agent Setup with private networking and a dedicated MCP subnet. The subnet must be delegated to <code>Microsoft.App/environments</code> (Azure Container Apps), which is the recommended deployment target for private MCP servers per Microsoft's documentation.</li>
+</ul>
+
+<p>The architectural fact: <em>private MCP servers are infrastructure-coupled to Azure Container Apps</em>. The recommendation is operationally clean for organizations already running ACA; for organizations running their MCP servers on AKS, EKS, GKE, or other K8s, the recommended path requires either migrating those MCP servers to ACA or accepting the Network Secured Foundry caveat documented next.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The Network Secured Foundry caveat</div>
+  <p>Per Microsoft Learn: <em>"When you use a Network Secured Microsoft Foundry, you can't use private MCP servers deployed in the same virtual network. You can only use publicly accessible MCP servers."</em> This is a real and significant constraint for organizations with strong network-isolation requirements — a Network Secured Foundry deployment cannot consume MCP servers deployed inside the same VNet, only public MCP servers. The architectural workaround is to expose internal MCP servers via Azure Front Door or another public-facing fronting service, which adds the cost of an extra hop and a public attack surface for an internal capability. Microsoft documents this honestly; the constraint is the constraint.</p>
+</div>
+
+<h3>Layer 3 — Foundry Toolboxes for multi-tool bundling</h3>
+
+<p><a href="https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/tool-catalog" target="_blank">Foundry Toolboxes</a> (preview as of early 2026) is Microsoft's answer to the "configure each tool separately on every agent" scaling problem. A Toolbox bundles multiple tools — Web Search, Code Interpreter, File Search, Azure AI Search, MCP servers, OpenAPI tools, Agent-to-Agent connections — into a single MCP-compatible endpoint. Agents point to the Toolbox endpoint as a single MCP server; the Toolbox handles discovery and routing to the underlying tools.</p>
+
+<p>Operationally, this is genuinely valuable for organizations operating mature agent platforms: tool authentication is centralized at the Toolbox layer, agents authenticate to the Toolbox using Microsoft Entra (typically <code>DefaultAzureCredential</code> with the agent's identity or the project's managed identity), and individual tool credentials don't need to be passed by each agent. The Toolbox is itself MCP-compatible, so any MCP-capable runtime can consume it (not just Foundry's).</p>
+
+<p>The architectural fact: <em>Foundry Toolboxes turn N tool registrations into 1 toolbox registration per agent</em>, which mitigates the per-agent allow-list scaling problem at the tool-config level. What it doesn't change is the agent-as-unit-of-governance model — each agent still references the Toolbox as a per-agent tool configuration, and cross-cutting policies still need to be expressed per-agent (or constructed externally on top of the Toolbox).</p>
+
+<h3>Layer 4 — Authentication options</h3>
+
+<p>Four authentication patterns are documented for MCP servers behind Agent Service:</p>
+
+<ul>
+<li><strong>Key-based authentication</strong> — function keys (<code>x-functions-key</code>) for Azure Functions-hosted MCP servers, or generic API keys for third-party MCP servers. Stored as project connections in Foundry, not embedded in agent code.</li>
+<li><strong>Microsoft Entra identities</strong> — agent identity or project managed identity (recommended for Microsoft-hosted services and internal MCP servers). Integrates with the Entra-backed identity model from <a href="02-truefoundry-vs-azure-identity-multi-tenancy-zero-trust.html">Blog 2</a>.</li>
+<li><strong>OAuth identity passthrough</strong> (OBO — On-Behalf-Of) — for MCP servers that need to act on behalf of the end user. The user's token is passed through to the MCP server, which then operates with the user's permissions. Used for SaaS integrations like Azure DevOps that have OAuth-scoped permissions.</li>
+<li><strong>Unauthenticated</strong> — supported for limited scenarios (typically dev/test) but explicitly not recommended for production. Microsoft documents this as a possible option while strongly steering away from it.</li>
+</ul>
+
+<h3>Layer 5 — Documented operational constraints</h3>
+
+<p>A handful of constraints production teams need to design around:</p>
+
+<ul>
+<li><strong>Non-streaming MCP tool call timeout: 50 seconds.</strong> If the MCP server takes longer than 50 seconds to respond, the call fails. This is a real constraint for MCP servers that perform complex operations — databases queries, large-document processing, long-running computations. Microsoft's recommendation is to ensure MCP servers respond within this limit; for genuinely long-running operations, the streaming pattern (which has different timeout semantics) is the alternative.</li>
+<li><strong>Microsoft's untested-server caveat.</strong> The documentation explicitly states: <em>"Microsoft doesn't test or verify these servers. Microsoft has no responsibility to you or others in relation to your use of any non-Microsoft services."</em> This is honest; it's also the operational fact that makes governance at the boundary essential.</li>
+<li><strong>Azure API Center registration is optional.</strong> Teams that want a private organizational tool catalog can register MCP servers in API Center, which provides a discovery surface within the Foundry portal. Without API Center registration, MCP servers are configured per-agent without centralized cataloging.</li>
+</ul>
+
+<h3>The Azure MCP runtime topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure MCP runtime topology">
+<defs>
+  <linearGradient id="bgAz11" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az11sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAz11" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgAz11)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure MCP runtime — agent-centric governance with Toolboxes for bundling</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Each agent references MCP servers as per-agent tool configs. Toolboxes mitigate the bundling scale problem. Cross-cutting policy is per-agent.</text>
+
+<!-- Multiple agents -->
+<rect x="40" y="110" width="180" height="60" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.4"/>
+<text x="130" y="132" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Agent A: KYC research</text>
+<text x="130" y="152" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">tools: [mcp1, mcp2, toolbox1]</text>
+
+<rect x="40" y="180" width="180" height="60" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.4"/>
+<text x="130" y="202" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Agent B: Reg filing</text>
+<text x="130" y="222" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">tools: [mcp1, mcp3]</text>
+
+<rect x="40" y="250" width="180" height="60" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.4"/>
+<text x="130" y="272" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Agent C: Onboard</text>
+<text x="130" y="292" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">tools: [toolbox1, mcp2]</text>
+
+<text x="40" y="334" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">... 40+ agents, each</text>
+<text x="40" y="350" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">with own tool config</text>
+
+<!-- Tool resolution -->
+<line x1="220" y1="140" x2="290" y2="380" stroke="#7CC2FF" stroke-width="1.4" marker-end="url(#arAz11)"/>
+<line x1="220" y1="210" x2="290" y2="380" stroke="#7CC2FF" stroke-width="1.4" marker-end="url(#arAz11)"/>
+<line x1="220" y1="280" x2="290" y2="380" stroke="#7CC2FF" stroke-width="1.4" marker-end="url(#arAz11)"/>
+
+<!-- Foundry Agent Service runtime -->
+<rect x="290" y="370" width="220" height="80" rx="10" fill="#0a1830" stroke="#7CC2FF" stroke-width="2"/>
+<text x="400" y="394" text-anchor="middle" fill="#7CC2FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">FOUNDRY AGENT SERVICE</text>
+<text x="400" y="414" text-anchor="middle" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">runtime + MCP client</text>
+<text x="400" y="432" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">allowed_tools · require_approval</text>
+
+<polyline points="510,410 575,410 575,350" fill="none" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz11)"/>
+
+<!-- MCP servers -->
+<rect x="560" y="110" width="320" height="240" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="580" y="136" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">MCP SERVERS — public + private paths</text>
+
+<rect x="580" y="156" width="280" height="38" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="600" y="178" fill="#E8EEF8" font-size="12" font-family="IBM Plex Mono, monospace">Public: GitHub MCP, MS Learn MCP, ...</text>
+<text x="600" y="190" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Basic + Standard agent setups</text>
+
+<rect x="580" y="200" width="280" height="50" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="600" y="222" fill="#E8EEF8" font-size="12" font-family="IBM Plex Mono, monospace">Private: ACA-hosted on dedicated subnet</text>
+<text x="600" y="236" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Microsoft.App/environments delegation</text>
+<text x="600" y="248" fill="#FFE0A0" font-size="10" font-family="IBM Plex Mono, monospace">⚠ Standard Agent Setup required</text>
+
+<rect x="580" y="256" width="280" height="40" rx="6" fill="#1a0a08" stroke="#ff4757" stroke-width="1.4"/>
+<text x="600" y="276" fill="#ff4757" font-size="11" font-family="IBM Plex Mono, monospace">⚠ Network Secured Foundry caveat:</text>
+<text x="600" y="290" fill="#ff4757" font-size="10" font-family="IBM Plex Mono, monospace">cannot use private MCP in same VNet</text>
+
+<rect x="580" y="302" width="280" height="40" rx="6" fill="#1a1200" stroke="#F4C04F" stroke-width="1.2"/>
+<text x="600" y="322" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">⚠ 50-sec non-streaming timeout</text>
+<text x="600" y="336" fill="#F4C04F" font-size="10" font-family="IBM Plex Mono, monospace">long ops require streaming</text>
+
+<!-- Foundry Toolboxes -->
+<rect x="900" y="110" width="340" height="240" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="1.6"/>
+<text x="920" y="136" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">FOUNDRY TOOLBOXES (preview)</text>
+<text x="920" y="158" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">bundle exposed as MCP-compatible endpoint</text>
+
+<rect x="920" y="174" width="300" height="28" rx="4" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="940" y="192" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Web Search · Code Interpreter</text>
+
+<rect x="920" y="206" width="300" height="28" rx="4" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="940" y="224" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">File Search · Azure AI Search</text>
+
+<rect x="920" y="238" width="300" height="28" rx="4" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="940" y="256" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">MCP servers (multiple)</text>
+
+<rect x="920" y="270" width="300" height="28" rx="4" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="940" y="288" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">OpenAPI tools · A2A connections</text>
+
+<text x="920" y="318" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ Centrally-managed Entra auth</text>
+<text x="920" y="334" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ Mitigates per-agent tool registration scale</text>
+
+<!-- Cross-cutting policy panel -->
+<rect x="290" y="470" width="950" height="100" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="310" y="496" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">CROSS-CUTTING POLICY (where it lives)</text>
+
+<rect x="310" y="510" width="900" height="40" rx="6" fill="#1a1200" stroke="#F4C04F" stroke-width="1"/>
+<text x="760" y="530" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">"Pause MCP server X" requires updating allowed_tools across N agents — operation dependency on per-agent config</text>
+<text x="760" y="546" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Toolboxes mitigate per-agent tool count, but each agent still references the Toolbox by per-agent config</text>
+</svg>
+</div>
+<div class="img-caption">Azure MCP runtime topology — agents reference MCP servers via per-agent tool configurations. Foundry Toolboxes bundle multiple tools into a single MCP-compatible endpoint with centrally-managed Entra authentication. The runtime model centers on the agent as the unit of governance; cross-cutting MCP server policies are expressed per-agent.</div>
+
+<h3>What the operator writes — Foundry Agent with MCP tool</h3>
+
+<p>The Python below shows a working Foundry Agent definition with an MCP tool referencing the Microsoft Learn MCP server, plus a Foundry Toolbox bundling multiple internal tools, with allow-listing and approval workflow. The pattern follows Microsoft's documented quickstart:</p>
+
+<div class="code-wrap"><div class="code-lang">Python</div><pre># Illustrative Foundry Agent with MCP tool + Toolbox + approval workflow
+from azure.ai.agents.models import MessageTextContent, McpTool, ToolboxTool
+from azure.ai.projects import AIProjectClient
+from azure.identity import DefaultAzureCredential
+
+project_client = AIProjectClient(
+    endpoint=PROJECT_ENDPOINT,
+    credential=DefaultAzureCredential(),
+)
+
+# MCP tool — Microsoft Learn MCP for documentation grounding
+ms_learn_mcp = McpTool(
+    server_label="microsoft_learn",
+    server_url="https://learn.microsoft.com/api/mcp",
+    allowed_tools=["microsoft_docs_search"],   # restricted allow-list
+)
+
+# MCP tool — internal customer-data MCP server (private, ACA-hosted)
+customer_data_mcp = McpTool(
+    server_label="customer_data",
+    server_url="https://customer-data-mcp.internal.contoso.com/mcp",
+    allowed_tools=["lookup_customer", "list_accounts"],   # explicit allow-list
+)
+
+# Foundry Toolbox — bundle of internal capabilities exposed as one MCP endpoint
+internal_toolbox = ToolboxTool(
+    server_label="contoso_internal",
+    project_connection_id="conn_internal_toolbox",
+    # Toolbox handles centrally-managed Entra auth, credential injection,
+    # token refresh, and policy enforcement at runtime
+)
+
+# Create the agent with the MCP tools + toolbox attached
+with project_client:
+    agent = project_client.agents.create_agent(
+        model="gpt-4o-mini",
+        name="kyc-research-agent",
+        instructions=(
+            "You research customer information for KYC compliance. "
+            "Use Microsoft Learn for product documentation. "
+            "Use customer_data tools for internal lookups. "
+            "Always cite the source of any factual claim."
+        ),
+        tools=ms_learn_mcp.definitions
+              + customer_data_mcp.definitions
+              + internal_toolbox.definitions,
+    )
+
+# Create thread + run with require_approval for sensitive operations
+thread = project_client.agents.threads.create()
+project_client.agents.messages.create(
+    thread_id=thread.id,
+    role="user",
+    content="Look up customer 12345 and summarize their account history.",
+)
+
+# Resource configuration: require approval for write operations
+mcp_resources = customer_data_mcp.resources
+mcp_resources.set_approval_mode("always")  # require approval for every tool call
+
+run = project_client.agents.runs.create(
+    thread_id=thread.id,
+    agent_id=agent.id,
+    tool_resources=mcp_resources,
+)
+# ... approval handling loop, run polling, response retrieval ...</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for the <a href="https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/model-context-protocol" target="_blank">MCP integration in Foundry Agent Service</a> and <a href="https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/tool-catalog" target="_blank">Foundry Toolboxes</a>. The agent has three tool configurations — two direct MCP servers and one Toolbox bundle. The <code>allowed_tools</code> lists provide per-server tool allow-listing; <code>set_approval_mode("always")</code> requires approval for every customer-data tool call (recommended for the high-risk write operations that customer-data MCP exposes).</div>
+
+<h3>What Azure is genuinely strong at — and the agent-centric caveat</h3>
+
+<p>What Foundry Agent Service's MCP integration does well is real:</p>
+
+<ul>
+<li><strong>The MCP integration is mature and well-documented.</strong> The MCP tool definition with <code>server_label</code>, <code>server_url</code>, <code>allowed_tools</code>, and <code>require_approval</code> is the right shape. The integration with Microsoft Entra for centrally-managed authentication aligns with the institutional identity model.</li>
+<li><strong>Foundry Toolboxes is a strong pattern.</strong> Bundling multiple tools into a single MCP-compatible endpoint with centralized authentication is the right architectural move for organizations that want to reduce per-agent tool configuration overhead. The fact that the Toolbox itself is MCP-compatible means it composes with MCP-capable runtimes beyond Foundry.</li>
+<li><strong>The approval workflow is thoughtful.</strong> The <code>require_approval</code> field with <code>"always"</code>, <code>"never"</code>, or specific tools list is the right primitive for high-risk operations. Combined with logging of approvals and tool calls, it's a sensible governance pattern at the agent level.</li>
+<li><strong>Microsoft is honest about the trust boundary.</strong> The explicit caveat that Microsoft doesn't test third-party MCP servers is honest engineering communication. The recommendation to use trusted servers, allow-list tools, require approval for writes, and review data shared with MCP servers is sound guidance.</li>
+<li><strong>Azure DevOps MCP / Microsoft Learn MCP / and other Microsoft-provided MCP servers</strong> integrate cleanly through Foundry Toolboxes' organizational catalog. For organizations using Microsoft tooling extensively, this is real time-savings.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest caveats</div>
+  <p>(1) <strong>Cross-cutting MCP server policies are agent-distributed.</strong> "Pause MCP server X across all agents" requires updating <code>allowed_tools</code> on every agent that references X — the operation depends on the per-agent dependency graph, which lives in the agent definitions rather than as a queryable platform fact. (2) <strong>Real-time inspection at the tool boundary is not a first-class capability of the Agent Service runtime.</strong> Parameter validation, sensitive-data redaction in tool responses, and tool-call audit at the boundary require external middleware or are limited to the <code>require_approval</code> pause-and-review flow. (3) <strong>The Network Secured Foundry caveat</strong> excludes private MCP servers in the same VNet, forcing teams with strong network-isolation requirements to expose internal MCP capabilities publicly. (4) <strong>The 50-second non-streaming timeout</strong> bounds what MCP servers can do synchronously. (5) <strong>Foundry Toolboxes mitigate the per-agent tool count problem, but each agent still references the Toolbox per-agent</strong> — the agent-as-unit-of-governance shape remains.</p>
+</div>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: gateway-centric MCP with Pre-Tool / Post-Tool hooks</span></div>
+
+<p>TrueFoundry's MCP runtime model places the gateway in the call path between the agent and the MCP server. Every agent-to-MCP call traverses the gateway; the four-hook guardrail engine from <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Blog 7</a> applies <strong>MCP Pre-Tool</strong> (parameter validation before tool execution) and <strong>MCP Post-Tool</strong> (response inspection before next-turn context) as platform primitives at the boundary. MCP servers are workspace-scoped registry entries; the agent's MCP access is governed at the workspace and gateway-policy level, not in the agent's own configuration. The architectural fact this produces: <em>cross-cutting MCP server policies live in one place</em>, and the dependency graph between agents and MCP servers is a queryable platform fact rather than a property of N×M agent configurations.</p>
+
+<h3>Layer 1 — MCP servers as workspace-scoped registry entries</h3>
+
+<p>The <a href="https://www.truefoundry.com/docs/ai-gateway/mcp-overview" target="_blank">MCP overview</a> describes the model: an MCP server is a registered platform object in a workspace (the same workspace boundary that bounds identity, FinOps, and observability per Blogs 2, 6, 8). The registration captures: the server's URL, authentication credentials (managed as platform secrets, not embedded in agent code), the allowed-tools list at the workspace level, the rate-limit policies, and the guardrail bindings.</p>
+
+<p>The architectural implication: <em>agents in a workspace inherit access to whatever MCP servers the workspace registers</em>. There's no per-agent allow-listing in the agent's own definition; the agent has access to the workspace's registered MCP servers (subject to gateway-policy filtering). Adding a new agent to a workspace is faster (no per-agent MCP configuration); pausing an MCP server across all agents is faster (one workspace-level config change).</p>
+
+<h3>Layer 2 — The four-hook guardrail engine applied to MCP boundaries</h3>
+
+<p>The four hooks from Blog 7 — LLM Input, LLM Output, MCP Pre-Tool, MCP Post-Tool — apply at the appropriate boundaries. For MCP traffic specifically, two hooks matter most:</p>
+
+<ul>
+<li><strong>MCP Pre-Tool hook</strong> — inspects the tool invocation the LLM has constructed before the gateway forwards it to the MCP server. Guardrails attached here see: tool name, parameters, calling agent identity, calling user (when OAuth identity passthrough is in use), and surrounding context. Common policies: parameter validation (employee_id must match calling user's reporting chain), tool allow-listing per role, sensitive-value detection, rate-limit-per-tool enforcement.</li>
+<li><strong>MCP Post-Tool hook</strong> — inspects the tool's response before the gateway returns it into the LLM's next-turn context. Guardrails attached here see: full tool response, response structure, tool name, and calling identity. Common policies: PII redaction, secret detection (prevent API keys from round-tripping), internal-identifier redaction, response-content auditing.</li>
+</ul>
+
+<p>The hooks are <em>platform primitives</em>, not application-side code. The team configures them once at the workspace or virtual-model level; every agent in scope inherits the inspection. New agents inherit the policies automatically; updates to the policies apply to all agents in scope without per-agent updates.</p>
+
+<h3>Layer 3 — Identity propagation and FinOps inheritance</h3>
+
+<p>The workspace boundary that bounds MCP server access is the same boundary that bounds identity, FinOps, and observability. This is operationally meaningful:</p>
+
+<ul>
+<li><strong>Identity propagation.</strong> Calls from agents in <code>workspace-research</code> to MCP servers carry the workspace's identity context. OIDC / Entra integration from Blog 2 means the gateway can pass through user identity for OAuth scenarios, or use the workspace's service identity for system-level calls. The agent doesn't manage credentials; the platform does.</li>
+<li><strong>FinOps attribution.</strong> MCP tool calls are accounted to the calling workspace's budget, with the metadata-driven attribution from Blog 6. A team operating multiple agents in a workspace gets the aggregate MCP cost as a single attribution dimension; cross-workspace MCP cost is the sum across workspaces.</li>
+<li><strong>Observability uniformity.</strong> MCP tool calls emit OTel telemetry through the same pipeline as other gateway calls (Blog 8). Trace context propagates from the agent through the MCP call and back; the trace stitches into the customer's existing observability backend.</li>
+</ul>
+
+<h3>Layer 4 — Cross-cutting policies as one operation</h3>
+
+<p>The architectural payoff of the gateway-centric model is the cross-cutting policy operation. The opening scenario's "pause MCP server X across all agents" is a single workspace-level config change: update the MCP server's registration to set <code>state: paused</code> (or similar), the change propagates through NATS config sync to all gateway pods within seconds, and every subsequent call to that MCP server fails closed (or routes to an audit-only path) until the registration is re-enabled.</p>
+
+<p>Other cross-cutting patterns the gateway-centric model handles cleanly:</p>
+
+<ul>
+<li><strong>Rate-limit per MCP server</strong> across all consuming agents — the gateway enforces a single rate limit at the boundary regardless of how many agents are calling.</li>
+<li><strong>Per-MCP-server audit logging</strong> — every call to a sensitive MCP server is logged with full request/response, regardless of which agent initiated it.</li>
+<li><strong>Schema validation</strong> — the gateway can validate that tool calls match expected MCP server schemas, catching misconfigured agents before requests reach the server.</li>
+<li><strong>Sensitive-data filtering</strong> — PII redaction, secret detection, and similar policies apply uniformly to all calls to a given MCP server through the Mutate-mode hooks.</li>
+</ul>
+
+<h3>The TrueFoundry MCP runtime topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry MCP runtime topology">
+<defs>
+  <linearGradient id="bgTf11" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf11sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf11" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+  <marker id="arTf11G" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#50fa7b"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgTf11)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry MCP runtime — gateway-centric, four-hook governance</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">All agent-to-MCP traffic traverses the gateway. Cross-cutting policies live in one place. Pre-Tool/Post-Tool hooks inspect at the boundary.</text>
+
+<!-- Multiple agents -->
+<rect x="40" y="110" width="180" height="60" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.4"/>
+<text x="130" y="132" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Agent A: KYC research</text>
+<text x="130" y="152" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">workspace: research</text>
+
+<rect x="40" y="180" width="180" height="60" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.4"/>
+<text x="130" y="202" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Agent B: Reg filing</text>
+<text x="130" y="222" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">workspace: research</text>
+
+<rect x="40" y="250" width="180" height="60" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.4"/>
+<text x="130" y="272" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Agent C: Onboard</text>
+<text x="130" y="292" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">workspace: customer-ops</text>
+
+<text x="40" y="334" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">No per-agent MCP config —</text>
+<text x="40" y="350" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">workspace defines access</text>
+
+<line x1="220" y1="140" x2="290" y2="290" stroke="#FF8866" stroke-width="1.4" marker-end="url(#arTf11)"/>
+<line x1="220" y1="210" x2="290" y2="290" stroke="#FF8866" stroke-width="1.4" marker-end="url(#arTf11)"/>
+<line x1="220" y1="280" x2="290" y2="290" stroke="#FF8866" stroke-width="1.4" marker-end="url(#arTf11)"/>
+
+<!-- Gateway -->
+<rect x="290" y="270" width="240" height="90" rx="10" fill="#260f08" stroke="#FF5533" stroke-width="2.5"/>
+<text x="410" y="294" text-anchor="middle" fill="#FFB39C" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">TRUEFOUNDRY GATEWAY</text>
+<text x="410" y="316" text-anchor="middle" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">in the call path</text>
+
+<rect x="306" y="324" width="100" height="28" rx="4" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="356" y="342" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Pre-Tool</text>
+
+<rect x="416" y="324" width="100" height="28" rx="4" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="466" y="342" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Post-Tool</text>
+
+<line x1="530" y1="315" x2="580" y2="315" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf11)"/>
+
+<!-- MCP Server Registry -->
+<rect x="580" y="110" width="320" height="240" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.4"/>
+<text x="600" y="136" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">MCP SERVER REGISTRY</text>
+<text x="600" y="154" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">workspace-scoped, single source of truth</text>
+
+<rect x="600" y="170" width="280" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="620" y="190" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">customer-data-mcp</text>
+<text x="800" y="190" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">enabled</text>
+
+<rect x="600" y="206" width="280" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="620" y="226" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">market-data-mcp</text>
+<text x="800" y="226" fill="#50fa7b" font-size="10" font-family="IBM Plex Mono, monospace">enabled</text>
+
+<rect x="600" y="242" width="280" height="32" rx="4" fill="#1a1200" stroke="#F4C04F" stroke-width="1"/>
+<text x="620" y="262" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">third-party-pm-mcp</text>
+<text x="800" y="262" fill="#FFE0A0" font-size="10" font-family="IBM Plex Mono, monospace">paused</text>
+
+<rect x="600" y="278" width="280" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="620" y="298" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">github-mcp · jira-mcp · ...</text>
+
+<text x="600" y="328" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Pause / unpause = single config change</text>
+
+<!-- Cross-cutting policy panel -->
+<rect x="920" y="110" width="320" height="240" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="2"/>
+<text x="940" y="136" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">CROSS-CUTTING POLICIES</text>
+
+<rect x="940" y="156" width="280" height="32" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="960" y="176" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Pause MCP X → 1 op, ~3 sec propagation</text>
+
+<rect x="940" y="192" width="280" height="32" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="960" y="212" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Param-validate (Pre-Tool hook)</text>
+
+<rect x="940" y="228" width="280" height="32" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="960" y="248" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">PII redact (Post-Tool hook, Mutate)</text>
+
+<rect x="940" y="264" width="280" height="32" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="960" y="284" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Audit-log every call to sensitive MCP</text>
+
+<text x="940" y="318" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">All policies live at gateway-policy layer</text>
+<text x="940" y="334" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Apply uniformly without per-agent updates</text>
+
+<!-- Inheritance panel -->
+<rect x="40" y="380" width="1200" height="180" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="60" y="406" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">WORKSPACE INHERITANCE — same boundary as Blogs 2, 6, 8</text>
+
+<rect x="60" y="424" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="80" y="446" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Identity (Blog 2)</text>
+<text x="80" y="466" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">workspace identity propagates to MCP calls</text>
+
+<rect x="450" y="424" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="470" y="446" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">FinOps (Blog 6)</text>
+<text x="470" y="466" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">MCP cost attributed to workspace budget</text>
+
+<rect x="840" y="424" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="860" y="446" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Observability (Blog 8)</text>
+<text x="860" y="466" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">OTel trace continuity across MCP boundary</text>
+
+<text x="60" y="510" fill="#9AABBF" font-size="12" font-family="IBM Plex Mono, monospace">No new boundary to learn for MCP — workspace is the unit across all four concerns: identity, FinOps, observability, MCP access.</text>
+<text x="60" y="530" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">The dependency graph between agents and MCP servers is workspace-membership × workspace-MCP-registration — queryable platform fact.</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry MCP runtime topology — workspace-scoped MCP registry; gateway in the call path with Pre-Tool and Post-Tool hooks; cross-cutting policies live at the gateway-policy layer; identity, FinOps, and observability inherit from the same workspace boundary used elsewhere in the platform.</div>
+
+<h3>What the operator writes — workspace MCP registration with hooks</h3>
+
+<p>The YAML below shows a working configuration: a workspace with three MCP server registrations (one paused after a security alert), Pre-Tool and Post-Tool hooks applied with parameter validation, PII redaction, and audit logging:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative workspace-scoped MCP server registry
+type: workspace-mcp-config
+workspace: research
+servers:
+  # MCP server 1 — internal customer data (high-sensitivity)
+  - name: customer-data-mcp
+    url: https://customer-data-mcp.internal.contoso.com/mcp
+    state: enabled
+    auth:
+      type: managed_identity     # workspace's service identity
+      target: customer-data-api.contoso.com
+    rate_limit:
+      requests_per_minute: 1000  # workspace-wide; enforced at gateway
+    allowed_tools: [lookup_customer, list_accounts, get_account_history]
+
+  # MCP server 2 — market data (medium-sensitivity)
+  - name: market-data-mcp
+    url: https://market-data.contoso.internal/mcp
+    state: enabled
+    auth: { type: managed_identity, target: market-data.contoso.internal }
+    rate_limit: { requests_per_minute: 5000 }
+    allowed_tools: ["*"]         # all tools allowed
+
+  # MCP server 3 — third-party PM tool (PAUSED after security incident)
+  - name: third-party-pm-mcp
+    url: https://saas-pm.example.com/mcp
+    state: paused                # blocks all calls platform-wide
+    state_reason: "Security incident upstream; vendor remediation in progress"
+    state_changed_at: 2026-04-30T08:14:00Z
+
+---
+# Hooks applied at the MCP boundary — workspace-scoped policy
+type: mcp-guardrails
+workspace: research
+hooks:
+  # Pre-Tool — parameter validation BEFORE the MCP server sees the call
+  - hook: mcp_pre_tool
+    mode: validate           # parallel; cancel-on-fail
+    strategy: enforce
+    applies_to:
+      - server: customer-data-mcp
+        tool: lookup_customer
+    checks:
+      - type: parameter_validation
+        rules:
+          - param: customer_id
+            rule: must_match_pattern: "^CUST-[0-9]{8}$"
+          - param: customer_id
+            rule: must_be_in_business_unit_of: ${request.user.business_unit}
+
+      - type: tool_allowlist_per_role
+        rules:
+          - role: kyc_analyst
+            allowed: [lookup_customer, list_accounts]
+          - role: relationship_manager
+            allowed: [lookup_customer, list_accounts, get_account_history]
+
+  # Post-Tool — response inspection and redaction BEFORE next-turn context
+  - hook: mcp_post_tool
+    mode: mutate             # sequential; layered modifications
+    strategy: enforce
+    applies_to:
+      - server: customer-data-mcp
+    checks:
+      - type: pii_redaction
+        priority: 1
+        fields_to_redact: [ssn, full_dob, phone, email]
+      - type: secret_detection
+        priority: 2
+        action: block        # block any response containing apparent secrets
+
+  # Audit logging — applies to all calls to high-sensitivity MCP servers
+  - hook: mcp_pre_tool
+    mode: validate
+    strategy: audit          # observe-only; never blocks
+    applies_to:
+      - server: customer-data-mcp
+    checks:
+      - type: audit_log
+        log_request: full
+        log_response: redacted</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition consistent with TrueFoundry's <a href="https://www.truefoundry.com/docs/ai-gateway/mcp-overview" target="_blank">MCP overview docs</a> and the four-hook guardrail model from <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Blog 7</a>. The pattern shown is what the financial-services scenario from §0 needs: a single <code>state: paused</code> change pauses the third-party MCP across all consuming agents instantly. Pre-Tool parameter validation prevents customer_id manipulation; Post-Tool PII redaction prevents sensitive fields from round-tripping into next-turn context. Audit logging applies uniformly to all sensitive-MCP traffic.</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>The opening scenario's incident-response time becomes minutes, not hours.</strong> The "pause MCP server X across all agents" operation is a single workspace config change with ~3-second propagation through NATS config sync. The 90-minute investigation to map the dependency graph becomes unnecessary; the 18 affected agents are simply all agents in the workspaces that registered the MCP server, queryable in real time. (2) <strong>Cross-cutting MCP policies compose cleanly.</strong> Adding a new policy ("audit-log every call to MCP server X") affects all consuming agents at once; new agents inherit the policies automatically. (3) <strong>Real-time inspection at the tool boundary is a platform primitive.</strong> Pre-Tool parameter validation, Post-Tool response inspection, and audit logging apply at the gateway-policy layer rather than requiring application-side middleware. (4) <strong>One boundary, four concerns.</strong> Workspace bounds identity (Blog 2), FinOps (Blog 6), observability (Blog 8), and MCP server access — same boundary, same RBAC, same operational model. Teams don't learn a new boundary concept for MCP. (5) <strong>The dependency graph is queryable.</strong> "Which agents call MCP server X?" is "agents in workspaces that register X" — a platform fact, not a derivation from N×M agent configurations.</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Three MCP-runtime scenarios compared</h2>
+
+<p>The three scenarios below walk concrete moments where MCP runtime architecture decides the operational outcome. Each is shown side by side under both products.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">Emergency MCP server pause across 40+ agents during security incident</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The opening scenario closes here. A third-party SaaS MCP server has had a security incident; the platform team needs to pause all agent-to-MCP traffic to that server within minutes while diagnosis continues.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The team queries observability data + agent definitions to find the 11 of 40 agents that reference the MCP server in <code>allowed_tools</code>. Updates each agent definition to remove the affected server from the allow-list — 11 agent updates. For agents using Foundry Toolboxes that include the server, updates the Toolbox config. Each agent update is a configuration deploy through the agent management API; the propagation is bounded by Foundry's agent-config update timing. Total elapsed including dependency mapping: ~90-180 minutes. <em>Workable but operationally heavy. The team's incident-response time on MCP issues is dominated by the dependency-graph mapping cost.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>One workspace-level config change: <code>state: paused</code> on the MCP server registration. NATS config sync propagates to all gateway pods in ~3 seconds. Every subsequent call to the MCP server fails closed (or routes through audit-only depending on policy choice). The dependency graph is implicit: agents in workspaces that registered the MCP server are the affected agents, queryable as a platform fact. Total elapsed: under 10 seconds for the pause; the dependency-mapping cost from the Azure path is essentially zero. <em>Direct fit; the architecture's strongest scenario for incident response. Cross-cutting MCP server policies are a single platform operation rather than an N-agent coordinated change.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">Multi-tool agent with bundled capabilities and approval workflow</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A team is building a customer-support agent that needs access to: Microsoft Learn MCP for product docs, an internal knowledge-base MCP, code interpreter, file search over support tickets, and Azure DevOps MCP for creating tickets. Sensitive operations (creating tickets, escalating to engineering) require approval.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p><span class="check">✅</span> Foundry Toolboxes is exactly designed for this. The team configures a Toolbox bundling Web Search, Code Interpreter, File Search, Microsoft Learn MCP, internal-KB MCP, and Azure DevOps MCP into a single MCP-compatible endpoint. Centralized Entra authentication at the Toolbox layer. <code>require_approval</code> on Azure DevOps MCP for ticket creation. Microsoft DevOps MCP is a Microsoft-provided server with documented integration patterns. The agent points at the Toolbox; one tool reference covers all six capabilities. <em>Best-in-class fit. Foundry Toolboxes is genuinely the right architectural pattern for multi-tool bundling within Azure.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Same architectural shape, different mechanism. The team registers the six MCP servers (or HTTP capabilities) in the workspace; the agent, by virtue of workspace membership, has access to all six. Pre-Tool hooks enforce per-role allow-listing if needed. Approval workflow is implemented through the same Pre-Tool hook with <code>require_approval</code> mode for Azure DevOps MCP write operations. The bundling happens at the workspace level rather than as an explicit Toolbox primitive — same operational outcome (one registration boundary covers all capabilities) achieved through workspace inheritance rather than explicit bundling. <em>Equivalent outcome. The Toolboxes-as-MCP-endpoint primitive is a real Azure advantage for organizations that want explicit bundling; workspace-as-implicit-bundle is a real TrueFoundry advantage for organizations that want governance-by-membership.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Network-isolated deployment with private MCP servers</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A healthcare provider operates AI workloads behind strong network isolation. All compute runs in a private VNet (Azure) or VPC (AWS); data-residency rules require that internal MCP servers (patient-data MCP, billing MCP, EHR MCP) cannot be exposed to the public internet. The agent platform must consume these private MCP servers without forcing them to be public-facing.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The team deploys MCP servers to Azure Container Apps with internal-only ingress on a dedicated MCP subnet delegated to <code>Microsoft.App/environments</code>. Standard Agent Setup with private networking is required. <em>If</em> the Foundry deployment uses Network Secured Foundry (the strongest network-isolation posture), the documented caveat applies: <em>"you can't use private MCP servers deployed in the same virtual network. You can only use publicly accessible MCP servers"</em> — which forces the team to choose between Network Secured Foundry's network posture and consuming private MCP servers, or to expose internal MCP servers via Front Door (adding a public attack surface for internal capabilities). <em>Workable for non-Network-Secured deployments; constrained for Network Secured Foundry. The infrastructure-coupling to ACA forces a deployment choice for internal MCP servers.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>MCP servers deploy to whatever K8s cluster is appropriate — same deployment shape as any other workload (Blog 9). The gateway runs in the same private network; trusts internal MCP server endpoints over private DNS or service-mesh; no public exposure required. Network isolation is the default; private MCP servers are first-class. The same <code>state: paused</code> pattern from Scenario 1 applies; the same Pre-Tool / Post-Tool hooks apply. <em>Direct fit; the K8s-native architecture handles network-isolated MCP deployment without special configuration. For organizations with strong network-isolation requirements, this is structurally simpler than the Azure Container Apps path with the Network Secured Foundry caveat.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The MCP runtime comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>MCP runtime property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>MCP standard support</strong></td><td><span class="check">✅</span> Foundry Agent Service (preview, GA-track)</td><td><span class="check">✅</span> First-class platform primitive since 2024</td><td>Both integrate with the open MCP standard.</td></tr>
+<tr><td><strong>Per-agent allow-listing</strong></td><td><span class="check">✅</span> <code>allowed_tools</code> on agent definition</td><td><span class="check">✅</span> Pre-Tool hook with role-based rules</td><td>Both first-class.</td></tr>
+<tr><td><strong>Approval workflow for high-risk ops</strong></td><td><span class="check">✅</span> <code>require_approval</code> field</td><td><span class="check">✅</span> Pre-Tool hook with approval mode</td><td>Both first-class.</td></tr>
+<tr><td><strong>Multi-tool bundling</strong></td><td><span class="check">✅</span> Foundry Toolboxes (preview) — explicit MCP-compatible bundle</td><td><span class="partial">◐</span> Workspace-as-implicit-bundle</td><td>Toolboxes is a strong Azure-specific primitive.</td></tr>
+<tr><td><strong>Cross-cutting policy expressiveness</strong></td><td><span class="cross">✕</span> Per-agent (or per-Toolbox) configuration</td><td><span class="check">✅</span> Single workspace-level operation</td><td>Decisive at large MCP scale.</td></tr>
+<tr><td><strong>Dependency graph queryability</strong></td><td><span class="cross">✕</span> Derived from per-agent configs</td><td><span class="check">✅</span> Workspace-membership × workspace-MCP-registration as platform fact</td><td>For incident response and audit.</td></tr>
+<tr><td><strong>Real-time inspection (parameter validation)</strong></td><td><span class="partial">◐</span> Through approval workflow or external middleware</td><td><span class="check">✅</span> Pre-Tool hook is platform primitive</td><td>The structural Blog 7 argument applied.</td></tr>
+<tr><td><strong>Real-time inspection (response sanitization)</strong></td><td><span class="cross">✕</span> Not a first-class capability</td><td><span class="check">✅</span> Post-Tool hook (Mutate mode) is platform primitive</td><td>For PII / secret leakage prevention.</td></tr>
+<tr><td><strong>Authentication options</strong></td><td><span class="check">✅</span> Key, Entra, OAuth passthrough, unauthenticated</td><td><span class="check">✅</span> Workspace identity, OAuth passthrough, key</td><td>Both comprehensive.</td></tr>
+<tr><td><strong>Public MCP servers</strong></td><td><span class="check">✅</span> Basic + Standard agent setups</td><td><span class="check">✅</span> Default</td><td>Both first-class.</td></tr>
+<tr><td><strong>Private MCP servers</strong></td><td><span class="partial">◐</span> ACA-coupled with dedicated MCP subnet; Network Secured caveat applies</td><td><span class="check">✅</span> Native K8s deployment shape</td><td>For network-isolated workloads.</td></tr>
+<tr><td><strong>Network Secured deployments + private MCP</strong></td><td><span class="cross">✕</span> Documented caveat: cannot use private MCP in same VNet</td><td><span class="check">✅</span> No analogous constraint</td><td>For organizations with strict network isolation.</td></tr>
+<tr><td><strong>Non-streaming tool call timeout</strong></td><td><span class="partial">◐</span> 50-sec documented limit</td><td>Customer-controlled (gateway timeout config)</td><td>For long-running MCP tool operations.</td></tr>
+<tr><td><strong>Microsoft DevOps MCP / Microsoft Learn MCP integration</strong></td><td><span class="check">✅</span> First-party Microsoft-provided servers in catalog</td><td><span class="check">✅</span> Configurable as any HTTP/MCP backend</td><td>For Microsoft-tooling-heavy organizations.</td></tr>
+<tr><td><strong>Identity / FinOps / Observability inheritance</strong></td><td><span class="partial">◐</span> Per-agent or Foundry-project-scoped</td><td><span class="check">✅</span> Workspace boundary unifies all four (Blogs 2, 6, 8 + this)</td><td>Operational simplicity at scale.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">Foundry Agent Service's MCP integration is well-engineered for its design intent. The MCP tool definition with <code>server_label</code>, <code>server_url</code>, <code>allowed_tools</code>, and <code>require_approval</code> is the right shape for per-agent governance. Foundry Toolboxes (preview) is a strong architectural pattern for multi-tool bundling — exposing multiple capabilities as a single MCP-compatible endpoint with centrally-managed Entra authentication mitigates the per-agent tool count problem within the agent-centric model. The integration with Microsoft-provided MCP servers (Azure DevOps MCP, Microsoft Learn MCP) is genuinely valuable for Microsoft-tooling-heavy organizations. The honest documentation about the trust boundary, the 50-second timeout, the Network Secured caveat, and the untested-server caveat is clear and operationally useful. For organizations operating moderate MCP scale with the agent-as-unit-of-governance model, this is best-in-class.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> the agent-as-unit-of-governance model fits the team's structure, Foundry Toolboxes' multi-tool bundling with centrally-managed Entra authentication is operationally valuable, the Microsoft-provided MCP servers (Azure DevOps, Microsoft Learn) are mission-critical, the Foundry Agent Service runtime is the institutional choice for agent operations, or the MCP scale is moderate enough that per-agent allow-list maintenance is operationally tractable.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">The gateway-centric MCP runtime with the four-hook guardrail engine produces a different operating model. MCP servers are workspace-scoped registry entries; cross-cutting policies are single platform operations; the dependency graph between agents and MCP servers is a queryable platform fact rather than a property of N×M agent configurations. Pre-Tool and Post-Tool hooks apply real-time inspection at the boundary as platform primitives — parameter validation, sensitive-data redaction, audit logging are configured once at the workspace level and apply uniformly. The same workspace boundary that bounds identity (Blog 2), FinOps (Blog 6), and observability (Blog 8) also bounds MCP server access, so teams operate one boundary concept across all four concerns. For organizations operating MCP at scale (20+ servers across many teams), the architectural value is real: incident-response time on MCP issues drops from hours to minutes; cross-cutting policies are one operation rather than N coordinated changes; real-time inspection is a primitive rather than custom middleware.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> MCP traffic needs gateway-policy inspection at the tool boundary, MCP server governance needs to be platform-wide rather than per-agent, the four-hook guardrail engine's Pre-Tool and Post-Tool hooks are decisive for security/compliance posture, network-isolated deployments with private MCP servers are required without the Network Secured Foundry caveat, or the operational simplicity of one workspace boundary across identity, FinOps, observability, and MCP is institutionally valuable.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that the two architectures encode different unit-of-governance assumptions. Azure's Foundry Agent Service treats the agent as the unit — agents reference MCP servers via per-agent tool configurations, governance primitives like <code>allowed_tools</code> and <code>require_approval</code> live on the agent, and Foundry Toolboxes bundle tools at the configuration layer to mitigate per-agent scaling problems. TrueFoundry treats the workspace and the gateway as the units — MCP servers are registered platform objects, agents inherit access via workspace membership, and gateway-policy hooks apply real-time inspection. Both architectures are coherent within their assumption.</p>
+
+<p>The MCP-scale dimension is what makes the choice operationally consequential. At 5-10 agents and 5-10 MCP servers, both architectures work fine and the differences are theoretical. At 20-50 agents and 15-30 MCP servers (which is the scale enterprise agentic AI programs are reaching as of early 2026), the architectural differences become operational realities — incident response time, cross-cutting policy expressiveness, and dependency-graph queryability all show up as concrete operational metrics. For organizations approaching that scale, the gateway-centric model's properties are real value.</p>
+
+<p>The Microsoft-provided MCP servers (Azure DevOps MCP, Microsoft Learn MCP, and others Microsoft is rolling out) are a genuine Foundry advantage. Microsoft is investing in first-party MCP server quality for the tooling its customers care about; teams operating heavily on Microsoft's stack get those integrations as part of the institutional package. The integration is excellent for Microsoft-tooling-heavy organizations. For organizations whose MCP server portfolio is dominated by internal-built or third-party servers, the integration advantage is smaller; for those organizations, the gateway-centric governance model is what determines fit.</p>
+
+<p>For most teams the right answer is shaped by MCP scale and the existing platform institutional posture. Moderate-MCP-scale Azure-anchored organizations should use Foundry Agent Service with Toolboxes — the integration is mature, the Microsoft-provided MCPs are valuable, and the agent-centric model is operationally tractable at the scale. Large-MCP-scale organizations or organizations with strong network-isolation requirements should consider the gateway-centric model — the cross-cutting policy expressiveness and the real-time-inspection primitives are decisive at scale, and the K8s-native MCP deployment path avoids the Network Secured Foundry caveat.</p>
+
+<p>The next blog (<a href="12-truefoundry-vs-azure-gitops-policy-as-code-platform-governance.html">GitOps &amp; Policy-as-Code</a>) closes Movement IV and the series. How do platforms support policy-as-code, GitOps-driven configuration management, and the operational shape that ties together everything from architecture (Blog 1) through MCP governance (this blog) into one coherent platform-engineering practice?</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/model-context-protocol" target="_blank">Microsoft Learn — Connect to MCP Server Endpoints for agents (server_label, server_url, allowed_tools, require_approval, public-vs-private topology)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/tool-catalog" target="_blank">Microsoft Learn — Agent tools overview for Foundry Agent Service (Foundry Toolboxes, A2A, OpenAPI)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry/mcp/build-your-own-mcp-server" target="_blank">Microsoft Learn — Build and register a Model Context Protocol server (Azure Functions, Azure API Center registration)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/agent-framework/user-guide/model-context-protocol/using-mcp-with-foundry-agents" target="_blank">Microsoft Learn — MCP and Foundry Agents (Python and .NET SDK code samples)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/tools-classic/model-context-protocol-samples" target="_blank">Microsoft Learn — MCP tool code samples (Preview)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/development-lifecycle" target="_blank">Microsoft Learn — Agent development lifecycle (the agent_name:version reference scheme)</a></li>
+  <li><a href="https://devblogs.microsoft.com/foundry/announcing-model-context-protocol-support-preview-in-azure-ai-foundry-agent-service/" target="_blank">Microsoft Foundry Blog — Announcing Model Context Protocol Support in Foundry Agent Service (Build 2025)</a></li>
+  <li><a href="https://devblogs.microsoft.com/foundry/integrating-azure-ai-agents-mcp/" target="_blank">Microsoft Foundry Blog — Introducing MCP in Azure AI Foundry: Create an MCP Server with Azure AI Agent Service</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/network-isolation" target="_blank">Microsoft Learn — Agent tools with network isolation (private MCP subnet requirements)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/mcp-overview" target="_blank">TrueFoundry Docs — MCP overview (workspace-scoped registry)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry Docs — Guardrails overview (four-hook engine, Blog 7 reference)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrail-modes" target="_blank">TrueFoundry Docs — Guardrail Modes (Validate vs Mutate)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrail-strategies" target="_blank">TrueFoundry Docs — Guardrail Strategies (Enforce / EBIE / Audit)</a></li>
+  <li><a href="https://modelcontextprotocol.io/specification/" target="_blank">Model Context Protocol — Specification</a></li>
+  <li><a href="https://modelcontextprotocol.io/" target="_blank">Model Context Protocol — Open standard for AI tool integration</a></li>
+  <li><a href="https://github.com/modelcontextprotocol/servers" target="_blank">MCP — Reference servers (community catalog)</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 11 of 12 · April 2026 · <a href="10-truefoundry-vs-azure-prompt-management-versioning.html">← Blog 10 — Prompt Management</a> · <a href="12-truefoundry-vs-azure-gitops-policy-as-code-platform-governance.html">Blog 12 — GitOps &amp; Policy-as-Code →</a>
+</p>
+</body>
+</html>
