@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="Azure Foundry's two-category model split (sold-directly-by-Azure with fungible PTU + partners-and-community with managed compute via AI Hub), nine deployment types matrix (Global / Data Zone / Regional × Standard / Provisioned / Batch + Developer), vs TrueFoundry's provider-agnostic catalog with K8s-native self-hosted inference (vLLM, TGI, NIM, custom containers) using the same deployment shape as every other workload — the operating-model continuity question that decides time-to-deploy and day-two operations."/>
+<title>Model Catalog &amp; Self-Hosted Inference: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement III · Platform surface</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 9 of 12</span>
+</div>
+
+<h1>Model Catalog &amp; Self-Hosted Inference: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 30 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Platform Engineering · ML Infrastructure</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for the Foundry Models overview (the "sold directly by Azure" vs "partners and community" distinction with their respective support and integration models), the Deployment Options page (managed compute vs serverless deployments split, AI Hub vs Foundry resource requirements), the Deployment Types page (the nine deployment types: Global Standard, Global Provisioned, Global Batch, Data Zone Standard, Data Zone Provisioned, Data Zone Batch, Standard, Regional Provisioned, Developer), the Provisioned Throughput page (PTU as the unit, fungibility across sold-by-Azure models, per-model-version PTU requirements), and the Developer deployment caveat (fixed 24-hour lifetime, no SLA, no residency guarantees). The TrueFoundry side is grounded in the Model Catalog documentation (provider-agnostic catalog, virtual model abstraction from <a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html">Blog 4</a>), the Self-Hosted Inference / vLLM deployment documentation, the deployment-overview page, and the K8s deployment integration documentation. Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog assumes the deployment topology from <a href="03-truefoundry-vs-azure-deployment-data-residency-sovereignty.html">Blog 3</a> and the routing model from <a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html">Blog 4</a>.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Model catalog comparisons that walk model counts find both products competitive — Foundry has <strong>1,800+</strong> models in its catalog as of early 2026; TrueFoundry routes to every major closed provider plus self-hosted inference. The count comparison misses the architectural question. The question that decides which platform fits a workload is <strong>what the deployment shape of inference looks like</strong>, and there are two structural axes on which the products differ. <strong>(1)</strong> Azure's deployment surface is rich and Azure-anchored — nine documented serverless deployment types (Global / Data Zone / Regional × Standard / Provisioned / Batch, plus Developer), the managed-compute option through AI Hub, the PTU-as-fungible-capacity model. The deployment shape is institutional Azure infrastructure with deep Azure-Monitor integration. <strong>(2)</strong> TrueFoundry's deployment surface is K8s-anchored and provider-agnostic — closed providers integrate as backends behind virtual models; self-hosted inference (vLLM, TGI, NIM, custom) deploys to customer K8s as part of the same deployment-overview platform that handles other workloads. The deployment shape is customer-controlled K8s with provider-agnostic abstraction. Both are coherent; the question is which architecture's deployment shape fits the workload.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A model migration that becomes a deployment-shape question</div>
+<p>A pharmaceutical research team in Boston has been operating a domain-specific LLM workload — molecular-property reasoning over a private dataset — on Azure since early 2024. The original deployment shape is canonical Azure: a fine-tuned <code>gpt-4o-mini</code> through Azure OpenAI on a Provisioned Throughput Unit reservation, called through APIM with the standard policy stack. The workload runs at 800 RPS during active research hours, 50 RPS overnight. The PTU reservation costs $42K/month for the 250 PTUs the team allocated.</p>
+<p>In Q4 2025, the team's research lead identifies an opportunity. A newer open-weights model — one of the recent reasoning-tuned variants of Llama trained on scientific literature — outperforms <code>gpt-4o-mini</code> on the team's specific molecular-property benchmark by 14%. The model is 70B parameters; it's not in Azure's "sold directly by Azure" catalog (which is the only set of models that get PTU-fungible deployment) but it's available in the broader Foundry catalog as a "partners and community" model deployable to managed compute. The team's CFO sees the open-weights option as potentially cheaper than the PTU reservation. The team's compliance officer wants the inference to remain in their Azure tenant for residency reasons. The platform team is asked to evaluate the migration.</p>
+<p>The Azure-native path is real but layered. Managed Compute deployment requires an AI Hub-based project (not just a Foundry resource) — that's a different resource type than the team currently uses. Compute quota for the GPU SKUs needed to host a 70B model (likely <code>Standard_NC96ads_A100_v4</code> or similar) has to be requested through Azure's quota process, which can take days for new SKUs. The model is "from partners and community" — meaning the support model is third-party rather than Microsoft's enterprise SLA, and the model is not on the fungible PTU reservation. Billing shifts from per-token (the current PTU pattern) to per-VM-hour (managed compute) — which the CFO needs to model carefully because a 70B model on dedicated compute that's underutilized at night could cost more than the existing PTU reservation rather than less. The team estimates 3-4 weeks to do this migration cleanly, including capacity planning, quota procurement, and the parallel running period before cutover.</p>
+<p>The TrueFoundry-evaluated alternative, looked at in parallel, has a different shape. The model is deployable as self-hosted inference (vLLM on Hugging Face open weights) to the team's existing AKS cluster — the same cluster that already runs their data pipelines, their RAG retrieval service, and their evaluation harness. The deployment is the same workload-deployment shape as everything else the team operates: a Helm-based deploy to their cluster, a service exposed at an in-cluster endpoint, the gateway's virtual model bound to that endpoint. No new resource type to learn. No quota request beyond the team's existing K8s GPU node pool. Same operational surface as their other workloads. Estimated 5-7 days to do the migration including the eval harness work — most of which is the eval, not the deployment.</p>
+<p>The team's decision depends on factors beyond what this blog can predict — CFO modeling of per-token vs per-VM-hour, compliance read on third-party model support, organizational appetite for a multi-platform AI stack. But the architectural lesson the platform team writes up after the evaluation is what this blog is about: <em>deployment shape determines time-to-deploy, the operating model on day-2, and the long-tail of platform-support coordination</em>. Azure's deployment surface is mature and well-engineered for workloads that fit its specific shapes; TrueFoundry's deployment surface is a thinner abstraction — deploy to K8s, route through virtual model, measure and iterate. Different optimization targets; different fits for different workloads.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Azure has the larger first-party catalog with deep integration.</strong> 1,800+ models in Foundry as of 2026; the "sold directly by Azure" subset (Azure OpenAI flagship models + Azure DeepSeek + select others) gets fungible PTU reservations, deep Foundry integration, RAI review, and Microsoft enterprise SLAs. The "partners and community" subset (Llama, Mistral, Anthropic, Hugging Face open weights, etc.) is third-party-supported and uses different deployment paths.</li>
+    <li><strong>Azure has nine documented deployment types.</strong> Global / Data Zone / Regional crossed with Standard / Provisioned / Batch (plus Developer for fine-tuned testing). Each has different residency, throughput, latency-variance, and pricing characteristics. The matrix is rich; choosing correctly requires understanding all nine.</li>
+    <li><strong>TrueFoundry is provider-agnostic with K8s-anchored self-hosted inference.</strong> Closed providers (AOAI, Anthropic, Bedrock, Vertex, OpenAI direct, Cohere, etc.) integrate as backends behind virtual models. Self-hosted inference (vLLM, TGI, NVIDIA NIM, custom containers) deploys to the customer's existing K8s cluster as part of the same deployment-overview platform that handles other workloads — same Helm shape, same K8s namespace, same operational surface.</li>
+    <li><strong>The decisive question is the operating model for self-hosted inference.</strong> Azure's managed compute is a different resource type (AI Hub) with separate compute quota and billing model (per-VM-hour). TrueFoundry's self-hosted inference is the same K8s workload deployment as everything else the team operates. For organizations with mature K8s practice, the latter is structurally simpler.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when the workload uses Azure OpenAI flagship models or other "sold directly by Azure" models, when fungible PTU reservations across a model portfolio are operationally valuable, when the AI Hub managed-compute path is acceptable for the rare self-hosted case, or when the deep Foundry integration (catalog UI, model versioning, leaderboards, automatic content filtering) is institutional muscle for the team.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when self-hosted inference is a primary workload (open-weights models on customer GPUs), when the team already operates Kubernetes and prefers the same deployment shape across all workloads, when provider-agnostic routing across closed providers is decisive, or when the operating-model simplicity of "deploy to K8s like every other service" is operationally valuable.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Catalog vs deployment shape</div>
+    <div class="qp-desc">The catalog count is not the comparison axis that matters. Both platforms route to roughly the same set of providers and open-weights models. The architectural differentiator is what deploying a model actually costs to operate — Azure's nine deployment types with PTU fungibility for the sold-by-Azure subset, vs TrueFoundry's K8s-anchored self-hosted inference with provider-agnostic abstraction.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Why catalog count is not the comparison axis</a></li>
+    <li><a href="#azure">§2 — Azure: Foundry catalog, deployment options, the PTU reservation model</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: provider-agnostic catalog with K8s self-hosted inference</a></li>
+    <li><a href="#scenarios">§4 — Three model-deployment scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — Why catalog count is not the comparison axis</h2>
+
+<p class="intro-lead">Counting the catalog is the first thing teams do when they compare AI platforms, and it is the comparison that matters least. Both products integrate with the major closed providers — OpenAI, Anthropic, Google, Cohere, AI21, Mistral on the closed side. Both products integrate with the major open-weights families — Llama, Mistral, Qwen, DeepSeek, Phi. Both products run any open-weights model the customer wants to self-host. The catalog count comparison correctly finds parity at the model-availability level. The architectural question is one level deeper.</p>
+
+<p>The architectural question is what the platform makes deploying a model actually cost — not in dollars (that's covered in Blog 6) but in operational distance: time-to-first-call, time-to-production, time-to-day-two-operations. Different platforms optimize for different deployment shapes, and the shape that matches a particular workload is what determines whether the model is operationally viable on a given platform. Three sub-questions compose the deployment-shape axis:</p>
+
+<ol>
+<li><strong>How does the model become callable?</strong> A single deploy step that produces an HTTP endpoint? A multi-step process that involves provisioning compute quota, creating a deployment resource, attaching to a hub, configuring an endpoint? An auto-scaling K8s service that the team's existing CD pipeline can deploy?</li>
+<li><strong>What's the operating model on day two?</strong> If the model needs to scale up, who configures it? If it needs to roll back, what's the procedure? If it needs to be replaced with a newer version, what is the migration cost? Is the operating model the same as other workloads the team runs, or is it a separate operational surface to learn?</li>
+<li><strong>What's the deployment shape for self-hosted inference specifically?</strong> Open-weights models on customer GPUs is increasingly a meaningful workload pattern — fine-tuning, domain-specific models, sovereign deployments, cost optimization. The deployment shape for this workload is structurally different on the two platforms, and the structural difference is what matters most for organizations that do significant self-hosted inference.</li>
+</ol>
+
+<h3>Two model-classification axes that shape the discussion</h3>
+
+<p>Microsoft's <a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/foundry-models-overview" target="_blank">Foundry Models overview</a> distinguishes two model categories that shape what deployment options are available and what support/integration shapes apply:</p>
+
+<ul>
+<li><strong>"Sold directly by Azure"</strong> — Azure OpenAI flagship models, Azure DeepSeek, and a select set of partner models that Microsoft has elevated to first-party status. These get: deep Azure integration, RAI review with model transparency reports, fungible PTU reservations across this subset, enterprise SLAs, and the broadest set of deployment types (all nine including Global Provisioned, Data Zone Provisioned, Regional Provisioned).</li>
+<li><strong>"From partners and community"</strong> — the vast majority of catalog models. Llama, Mistral, Qwen, Anthropic, Hugging Face open weights, etc. These get: standard Azure integration, third-party-managed support, deployment as managed compute or serverless API endpoints (regional only for serverless API), and pricing/licensing set by the model provider.</li>
+</ul>
+
+<p>This split is operationally consequential. A team standardizing on Azure OpenAI plus Azure DeepSeek has the cleanest, most-integrated experience available. A team that wants to mix in open-weights models — for cost, for privacy, for fine-tuning, for benchmark performance — works through the partners-and-community path with its different support, deployment, and billing characteristics. Microsoft is honest about this; the documentation notes the distinction clearly. But it shapes the day-two operating model in ways the catalog-count comparison hides.</p>
+
+<h3>The deployment-options split</h3>
+
+<p>Within the Azure model catalog, two distinct deployment options exist:</p>
+
+<ul>
+<li><strong>Serverless deployments</strong> — Microsoft-managed infrastructure, accessed via API, billed per token (or PTU for provisioned tier). The model runs on Microsoft's infrastructure; the customer doesn't see or operate the compute. This is the default and recommended path for most workloads.</li>
+<li><strong>Managed compute</strong> — dedicated Azure VMs in the customer's subscription, billed per VM-hour. The customer provides the GPU compute (subject to quota) and Microsoft Foundry orchestrates the deployment to it. Available only in AI Hub-based projects (not in Foundry resource projects). Required for some open-weights model categories.</li>
+</ul>
+
+<p>The split exists for good reasons — most customers want serverless simplicity for most workloads, and managed compute is the right answer for workloads that need dedicated compute residency or model architectures not available serverless. But the split means the team operating both serverless AOAI and managed-compute Llama operates two different deployment surfaces with two different billing models, two different scaling patterns, and two different operational dashboards.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>Azure's first-party model catalog is genuinely deep and well-integrated. The Foundry portal's catalog UI, model leaderboards, benchmark integration, automatic content filtering attachment, and model-versioning/lifecycle automation are real value for teams that operate primarily within the sold-by-Azure subset. The argument is not that Azure's catalog or deployment surface is poorly designed; it is that <em>the architecture optimizes for institutional Azure consumption</em>. For workloads that fit that consumption pattern, the integration is excellent. For workloads where self-hosted inference, multi-cloud, or provider-agnostic routing is decisive, a thinner provider-agnostic abstraction with K8s-native self-hosted inference fits the operating model more cleanly.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks the Azure model catalog, the two deployment options (managed compute vs serverless), the nine deployment types matrix, the PTU reservation model with fungibility across sold-by-Azure models, and the AI Hub vs Foundry resource distinction — with a working ARM/Bicep deployment shape. §3 walks TrueFoundry's provider-agnostic catalog with virtual models pointing at any backend, the K8s-anchored self-hosted inference deployment pattern, the Helm-based vLLM deployment, and the operating-model continuity with other K8s workloads — with a working YAML configuration. §4 walks three concrete model-deployment scenarios side-by-side. §5 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: Foundry catalog, deployment options, the PTU reservation model</span></div>
+
+<p>Azure's model-catalog surface is shaped by Microsoft's strategic position as both a model provider (through Azure OpenAI) and a model marketplace (through Foundry). The architectural choice that flows through every layer is that <strong>the deepest integration, broadest deployment-type support, and most flexible reservation model are reserved for the "sold directly by Azure" model subset</strong> — and the rest of the catalog gets a thinner, partner-managed integration. For workloads that fit the sold-by-Azure subset, the integration is best-in-class; for workloads that mix open-weights with closed models, the team operates two parallel surfaces.</p>
+
+<h3>Layer 1 — The "sold directly by Azure" vs "partners and community" distinction</h3>
+
+<p>The category split is the first-class architectural fact in Foundry. From <a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/foundry-models-overview" target="_blank">Microsoft's Foundry Models overview</a>:</p>
+
+<ul>
+<li><strong>Sold directly by Azure</strong> — Azure OpenAI in Foundry models (gpt-4o, gpt-4o-mini, o1 family, etc.), Azure DeepSeek, and select partner models elevated to first-party status. Characteristics: deep Azure service integration, internal Microsoft Responsible AI review, transparency reports, enterprise SLAs, and — operationally most important — <strong>fungible Provisioned Throughput</strong> across this subset, meaning a 500-PTU reservation can be split arbitrarily across any sold-by-Azure model.</li>
+<li><strong>From partners and community</strong> — Llama family (Meta), Mistral, Qwen (Alibaba), Anthropic Claude, Cohere Command, Phi (Microsoft Research), Hugging Face open weights, etc. Characteristics: developed and supported by external partners, validated by providers themselves with Azure integration guidelines, standard Azure integration, support and maintenance managed by respective providers. Pricing and licensing set by the model provider.</li>
+</ul>
+
+<p>This split shapes everything downstream. A workload in the sold-by-Azure subset can use any of the nine deployment types; a workload from partners-and-community is typically managed compute or regional serverless API. The PTU reservation is fungible only within the sold-by-Azure subset; partner models don't share the reservation. The support model differs — Microsoft enterprise SLA on one side, provider-managed on the other.</p>
+
+<h3>Layer 2 — Two deployment options: managed compute vs serverless</h3>
+
+<p>Within the catalog, Microsoft documents two distinct deployment options:</p>
+
+<ul>
+<li><strong>Serverless deployments.</strong> Microsoft-managed Azure infrastructure hosts the model; customers access via API; billing is per token. The model runs in Microsoft's compute, not the customer's. This is the default for most catalog models and the only option for many sold-by-Azure models. Two sub-categories: <em>Standard</em> (pay-per-token) and <em>Provisioned</em> (reserved capacity via PTU).</li>
+<li><strong>Managed compute.</strong> Dedicated Azure VMs <em>in the customer's subscription</em>, billed per VM core-hour. The customer provides the GPU SKU compute (subject to compute quota), Foundry orchestrates the model deployment, and a REST API is exposed for inference. <strong>Available only in AI Hub-based projects</strong> — not in newer Foundry resource projects. Required for some open-weights models that aren't available serverless.</li>
+</ul>
+
+<p>The architectural distinction matters because the two deployment options have different operating models. Serverless: the team monitors per-token throughput, manages PTU reservations, scales by adjusting tier or quota. Managed compute: the team monitors VM utilization, manages compute quota for GPU SKUs, scales by adjusting node counts. Different metrics, different procurement processes, different cost-modeling approaches — operated as parallel surfaces by teams that mix both.</p>
+
+<h3>Layer 3 — The nine deployment types matrix</h3>
+
+<p>Within serverless deployment, Foundry exposes <a href="https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/deployment-types" target="_blank">nine documented deployment types</a> arranged on three axes:</p>
+
+<ul>
+<li><strong>Geographic scope:</strong> <em>Global</em> (traffic dynamically routes to any datacenter where the model is deployed), <em>Data Zone</em> (US or EU — traffic stays within the data zone), <em>Regional</em> (traffic stays within the configured region only).</li>
+<li><strong>Capacity model:</strong> <em>Standard</em> (pay-per-token), <em>Provisioned</em> (PTU reservation with guaranteed throughput), <em>Batch</em> (cost-optimized async processing).</li>
+<li><strong>Special purpose:</strong> <em>Developer</em> (fine-tuned model evaluation only — fixed 24-hour lifetime, no SLA, no residency guarantees, automatically deleted after expiration).</li>
+</ul>
+
+<p>The nine concrete types are: Global Standard, Global Provisioned, Global Batch, Data Zone Standard, Data Zone Provisioned, Data Zone Batch, Standard (regional), Regional Provisioned, and Developer. Microsoft's selection-criteria guidance: <em>no restrictions → Global Standard or Global Provisioned; EU data zone → DataZone Standard or DataZone Provisioned in EU region; single region only → Standard or Regional Provisioned; variable bursty traffic → Standard / Global Standard (pay-per-token); consistent high volume → Provisioned types (reserved capacity); large batch jobs → Global Batch / Data Zone Batch.</em></p>
+
+<div class="callout warn">
+  <div class="callout-title">A specific operational caveat — the Developer deployment type</div>
+  <p>Per <a href="https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/deployment-types" target="_blank">Microsoft's deployment-types documentation</a>: <em>"The Developer deployment type is designed for fine-tuned model evaluation only. It provides cost-efficient testing of custom models but doesn't include data residency guarantees or an SLA. Developer deployments have a fixed 24-hour lifetime and are automatically deleted after expiration."</em> This is a real and useful deployment type for the workload it targets — quick eval of a fine-tuned model — but the 24-hour auto-delete and lack of residency/SLA make it unsuitable for any production use. Teams new to Foundry sometimes confuse this with a general lower-cost tier and discover the auto-delete the hard way; the documentation is explicit.</p>
+</div>
+
+<h3>Layer 4 — PTU as fungible reserved capacity (within sold-by-Azure)</h3>
+
+<p>The Provisioned Throughput Unit model is one of Microsoft's distinctive architectural ideas. PTUs are a normalized unit of model processing capacity; each model-version pair has a different per-PTU throughput rating and a different minimum-PTU requirement. The key property — <em>fungibility within the sold-by-Azure subset</em> — means a single PTU reservation can be split across multiple sold-by-Azure models.</p>
+
+<p>From <a href="https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/provisioned-throughput" target="_blank">Microsoft's PTU documentation</a>, the example pattern: a customer with a 500-PTU reservation might use 300 PTUs for an Azure OpenAI model and 200 PTUs for Azure DeepSeek-R1 — the 200 PTUs share the reservation discount automatically. Total reservation usage: 500 PTUs. The customer doesn't pre-commit to which specific models the PTUs will go to; the reservation amortizes across the sold-by-Azure portfolio.</p>
+
+<p>For organizations standardizing on sold-by-Azure models, this is a real operational and financial advantage. The reservation model rewards portfolio-diverse usage and removes the need to predict model mix at procurement time. The architectural fact that matters: <em>this advantage exists only within the sold-by-Azure subset</em>. Partner-and-community models don't share the PTU reservation.</p>
+
+<h3>The Azure model-catalog topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure model catalog topology">
+<defs>
+  <linearGradient id="bgAz9" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az9sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgAz9)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure Foundry catalog — two model categories × two deployment options × nine types</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">"Sold directly by Azure" gets fungible PTU + all 9 types. "Partners and community" uses managed compute or regional serverless API.</text>
+
+<!-- Sold directly by Azure column -->
+<rect x="40" y="100" width="600" height="240" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="2"/>
+<text x="60" y="126" fill="#7CC2FF" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">SOLD DIRECTLY BY AZURE</text>
+<text x="60" y="150" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Azure OpenAI flagship · Azure DeepSeek · select partner</text>
+
+<rect x="60" y="170" width="270" height="44" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="195" y="190" text-anchor="middle" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Microsoft enterprise SLA</text>
+<text x="195" y="206" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">RAI review · transparency reports</text>
+
+<rect x="340" y="170" width="290" height="44" rx="6" fill="#091510" stroke="#50fa7b" stroke-width="1.4"/>
+<text x="485" y="190" text-anchor="middle" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Fungible PTU reservation</text>
+<text x="485" y="206" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">500 PTU split across this subset</text>
+
+<rect x="60" y="222" width="570" height="100" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="244" fill="#7CC2FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">ALL 9 DEPLOYMENT TYPES AVAILABLE:</text>
+<text x="80" y="262" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Global Standard · Global Provisioned · Global Batch</text>
+<text x="80" y="278" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Data Zone Standard · Data Zone Provisioned · Data Zone Batch</text>
+<text x="80" y="294" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Standard (regional) · Regional Provisioned · Developer (24h)</text>
+<text x="80" y="312" fill="#FFE0A0" font-size="10" font-family="IBM Plex Mono, monospace">Geographic × Capacity × Special-purpose dimensions</text>
+
+<!-- Partners and community column -->
+<rect x="660" y="100" width="580" height="240" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="680" y="126" fill="#7CC2FF" font-size="13" font-weight="700" font-family="IBM Plex Mono, monospace">PARTNERS &amp; COMMUNITY</text>
+<text x="680" y="150" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Llama · Mistral · Qwen · Anthropic · HF open-weights · Phi</text>
+
+<rect x="680" y="170" width="540" height="44" rx="6" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="950" y="190" text-anchor="middle" fill="#FFE0A0" font-size="12" font-family="IBM Plex Sans, sans-serif">Provider-managed support · third-party licensing/pricing</text>
+<text x="950" y="206" text-anchor="middle" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">⚠ NOT in PTU fungibility subset</text>
+
+<rect x="680" y="222" width="540" height="100" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="700" y="244" fill="#7CC2FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">DEPLOYMENT PATHS:</text>
+<text x="700" y="262" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">→ Managed compute (AI Hub project required)</text>
+<text x="700" y="278" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">→ Serverless API endpoint (regional only)</text>
+<text x="700" y="296" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">→ Provider chooses; not all support both</text>
+<text x="700" y="314" fill="#FFE0A0" font-size="10" font-family="IBM Plex Mono, monospace">Compute quota for GPU SKUs requested separately</text>
+
+<!-- PTU model panel -->
+<rect x="40" y="360" width="600" height="200" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="1.4"/>
+<text x="60" y="386" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PTU FUNGIBILITY EXAMPLE (sold-by-Azure subset)</text>
+
+<text x="60" y="412" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Customer purchases 500 PTU reservation:</text>
+
+<rect x="60" y="424" width="280" height="34" rx="6" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.2"/>
+<text x="200" y="446" text-anchor="middle" fill="#E8EEF8" font-size="12" font-family="IBM Plex Mono, monospace">300 PTU → Azure OpenAI gpt-4o</text>
+
+<rect x="350" y="424" width="280" height="34" rx="6" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.2"/>
+<text x="490" y="446" text-anchor="middle" fill="#E8EEF8" font-size="12" font-family="IBM Plex Mono, monospace">200 PTU → Azure DeepSeek-R1</text>
+
+<text x="60" y="478" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Both share the reservation discount automatically.</text>
+<text x="60" y="496" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Total: 500 PTU; can rebalance without buying more.</text>
+<text x="60" y="528" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Per-model PTU min/throughput differs by model-version pair.</text>
+<text x="60" y="546" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Llama, Anthropic, etc. don't participate in this reservation.</text>
+
+<!-- Project type panel -->
+<rect x="660" y="360" width="580" height="200" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="680" y="386" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PROJECT TYPE — affects what's deployable</text>
+
+<rect x="680" y="408" width="540" height="60" rx="6" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.2"/>
+<text x="700" y="432" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Foundry resource project (preferred new pattern)</text>
+<text x="700" y="450" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Standard / Provisioned serverless deployments</text>
+<text x="700" y="464" fill="#FFE0A0" font-size="10" font-family="IBM Plex Mono, monospace">⚠ does NOT support managed compute deployment</text>
+
+<rect x="680" y="476" width="540" height="60" rx="6" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.2"/>
+<text x="700" y="500" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">AI Hub-based project (legacy pattern)</text>
+<text x="700" y="518" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Managed compute · serverless API endpoints</text>
+<text x="700" y="532" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Required for self-hosting open-weights catalog models</text>
+
+<text x="40" y="586" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Mixing both project types in one organization is supported but operationally heavier — two surfaces, two billing models, two ops dashboards.</text>
+</svg>
+</div>
+<div class="img-caption">Azure Foundry catalog topology — two model categories with sharply different deployment options and reservation models. Fungible PTU is the sold-by-Azure superpower; managed compute (in AI Hub projects) is the path for partner/community models that need self-hosting.</div>
+
+<h3>What the operator writes — Bicep deployment with PTU reservation</h3>
+
+<p>The Bicep below shows a working deployment: an Azure OpenAI deployment with a Provisioned Throughput tier (drawing from a PTU reservation), wired to APIM as a backend with the AOAI-specific routing and token-limit policies (per Blogs 4 and 6):</p>
+
+<div class="code-wrap"><div class="code-lang">Bicep</div><pre>// Illustrative AOAI deployment using Global Provisioned (Foundry resource project)
+resource foundryAccount 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
+  name: 'contoso-foundry'
+  location: 'eastus'
+  kind: 'AIServices'
+  sku: { name: 'S0' }
+  properties: {
+    customSubDomainName: 'contoso-foundry'
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+// Deploy gpt-4o on Global Provisioned (draws from sold-by-Azure PTU reservation)
+resource gpt4oDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: foundryAccount
+  name: 'gpt-4o-prod'
+  sku: {
+    name: 'GlobalProvisionedManaged'
+    capacity: 300                    // 300 PTU from the 500 PTU reservation
+  }
+  properties: {
+    model: { format: 'OpenAI', name: 'gpt-4o', version: '2024-11-20' }
+    raiPolicyName: 'Microsoft.DefaultV2'    // built-in content safety
+  }
+}
+
+// Deploy Azure DeepSeek-R1 on Global Provisioned (also from sold-by-Azure subset)
+resource deepseekDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: foundryAccount
+  name: 'deepseek-r1-prod'
+  sku: {
+    name: 'GlobalProvisionedManaged'
+    capacity: 200                    // 200 PTU from the same 500 PTU reservation
+  }
+  properties: {
+    model: { format: 'AzureDeepSeek', name: 'DeepSeek-R1', version: '2025' }
+    raiPolicyName: 'Microsoft.DefaultV2'
+  }
+}
+
+// Wire the AOAI deployment as an APIM backend (Blog 4 routing layer)
+resource apimAoaiBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
+  parent: apim
+  name: 'aoai-gpt-4o'
+  properties: {
+    url: '${foundryAccount.properties.endpoint}openai/deployments/gpt-4o-prod'
+    protocol: 'http'
+    type: 'Single'
+    circuitBreaker: {
+      rules: [{
+        name: 'aoai-rule'
+        failureCondition: {
+          count: 1, interval: 'PT10S'
+          statusCodeRanges: [{ min: 429, max: 429 }]
+        }
+        tripDuration: 'PT10S'
+        acceptRetryAfter: true       // honors AOAI's Retry-After (Blog 4)
+      }]
+    }
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/deployments-overview" target="_blank">Foundry deployment options</a>, the <a href="https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/provisioned-throughput" target="_blank">PTU concepts page</a>, and <a href="https://learn.microsoft.com/en-us/azure/api-management/backends" target="_blank">APIM backends</a>. The two GlobalProvisionedManaged deployments share the same fungible 500 PTU reservation purchased separately. The APIM backend wiring uses the routing pattern from Blog 4.</div>
+
+<h3>What Azure is genuinely strong at — and the operating cost</h3>
+
+<p>What Azure's catalog and deployment surface does well is real:</p>
+
+<ul>
+<li><strong>Fungible PTU is a distinctive architectural advantage.</strong> Within the sold-by-Azure subset, the ability to split a reservation across multiple models without recommitting capacity is operationally and financially valuable. Few other model catalogs offer this.</li>
+<li><strong>Global / Data Zone / Regional axis is clean.</strong> The geographic deployment dimension lets teams choose residency posture per workload — Global for performance, Data Zone for EU/US compliance, Regional for strict residency. The matrix is mature and well-documented.</li>
+<li><strong>Deep RAI integration for sold-by-Azure models.</strong> Internal Microsoft review, transparency reports, automatic content-filter attachment — institutional safety story that reduces the team's compliance burden.</li>
+<li><strong>The model leaderboard and benchmark UI in Foundry portal.</strong> Catalog discovery, comparison, and selection tooling is a real time-saver during evaluation.</li>
+<li><strong>Documented deployment-types selection guidance.</strong> Microsoft's selection criteria (no restrictions → Global; EU residency → Data Zone EU; consistent high volume → Provisioned; bursty → Standard) is honest and operationally useful.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest caveats</div>
+  <p>(1) <strong>The two-category split is operationally heavy</strong> for organizations that mix sold-by-Azure with partner/community models. Different deployment options, different support models, different reservation models, different operational dashboards — the team operates two parallel surfaces. (2) <strong>Self-hosted inference for partner/community models requires AI Hub projects with their separate compute-quota process.</strong> Not Azure's strength. (3) <strong>Foundry resource vs AI Hub project distinction</strong> is the kind of thing teams discover at deployment time when they realize their preferred Foundry resource project doesn't support managed compute. The path to fix it is to start a parallel AI Hub project, not to upgrade in place. (4) <strong>The Developer deployment type's 24-hour auto-delete</strong> trips up teams that confuse it with a general lower-cost tier. The documentation is clear but the trip-hazard is real.</p>
+</div>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: provider-agnostic catalog with K8s self-hosted inference</span></div>
+
+<p>TrueFoundry's model catalog is shaped by a different architectural choice. Rather than maintaining a curated catalog with deep first-party integration, the platform makes <em>provider-agnostic routing</em> the contract surface (Blog 4's virtual model abstraction) and treats <em>self-hosted inference as a regular K8s workload deployment</em>. The catalog is whatever the customer wants to deploy; the deployment shape is the same K8s deployment shape used for everything else the team operates. The architecture optimizes for operating-model continuity rather than for catalog curation.</p>
+
+<h3>Layer 1 — Closed providers as backends behind virtual models</h3>
+
+<p>Every closed provider — OpenAI, Anthropic, AOAI, Bedrock, Vertex, Cohere, Mistral, AI21, Together, Fireworks, Groq, Replicate — integrates as a backend behind the virtual model abstraction from Blog 4. The application doesn't know or care which provider serves a given call; the virtual model name is the stable contract; routing strategy underneath chooses among providers based on weighted, priority, latency-aware, or metadata-driven rules.</p>
+
+<p>The architectural implication for the catalog: <em>no curation is required because the provider's catalog is the catalog</em>. When OpenAI ships a new model, it's available to TrueFoundry users as soon as the OpenAI SDK supports it (typically the same day). When Anthropic ships a new Claude model, same. The platform doesn't need to "onboard" the model to its catalog; the catalog is the union of the provider catalogs the platform routes to.</p>
+
+<h3>Layer 2 — Self-hosted inference as a K8s workload</h3>
+
+<p>The <a href="https://www.truefoundry.com/docs/deployments/llm-deployment" target="_blank">self-hosted inference documentation</a> describes the deployment shape: the model is packaged as a vLLM, TGI, NVIDIA NIM, or custom container; deployed to the customer's K8s cluster as a regular K8s Deployment with GPU node selectors and resource requests; exposed as a Service inside the cluster; bound to a virtual model as a backend. The deployment uses the same <code>tfy</code> CLI, the same Helm-based tooling, the same RBAC model as every other workload the customer deploys.</p>
+
+<p>The architectural implication: <strong>self-hosted inference inherits whatever K8s practice the team already has</strong>. If the team operates AKS with Karpenter for GPU node scaling, the inference deployment uses the same Karpenter pools. If the team has a CD pipeline that deploys application workloads via GitOps (Argo CD, Flux), the inference deployment goes through the same pipeline. If the team has cluster-level observability (Prometheus, OTel, Datadog Cluster Agent), the inference deployment is observed through the same stack. There's no "AI hub" resource type to learn, no separate compute-quota path, no parallel ops surface — it's just another K8s workload.</p>
+
+<h3>Layer 3 — The four runtime patterns for self-hosted inference</h3>
+
+<p>The platform supports four documented self-hosted inference patterns:</p>
+
+<ul>
+<li><strong>vLLM</strong> — the most common open-weights serving runtime. High-throughput batched inference for transformer models, supports continuous batching, PagedAttention, tensor parallelism for large models. Deployed as a TrueFoundry Service with a Helm chart that wraps vLLM's container.</li>
+<li><strong>TGI (Text Generation Inference)</strong> — Hugging Face's inference server. Similar capabilities to vLLM with different optimization profile; sometimes preferred for specific HF model architectures.</li>
+<li><strong>NVIDIA NIM</strong> — NVIDIA's optimized inference microservices. Pre-built containers for popular models with TensorRT-LLM optimization. Deployed similarly to other TrueFoundry Services with NIM-specific environment variables.</li>
+<li><strong>Custom containers</strong> — the team's own inference runtime, packaged as a container with a documented HTTP interface. The platform doesn't constrain the runtime; it just routes to whatever HTTP endpoint the container exposes.</li>
+</ul>
+
+<h3>Layer 4 — Operating-model continuity</h3>
+
+<p>The deepest architectural property of TrueFoundry's approach is the operating-model continuity between self-hosted inference and other workloads. A platform team that wants to:</p>
+
+<ul>
+<li><strong>Roll out a new model version</strong> — same blue-green or canary pattern as any other K8s deployment. A new vLLM Service runs the new version; the virtual model's routing strategy ramps traffic from old to new; observability dashboards (the team's existing ones) show the comparison.</li>
+<li><strong>Scale to zero overnight</strong> — same KEDA-based autoscaling pattern as any other K8s workload. The inference Service scales to zero when traffic drops below a threshold; the virtual model fails over to a cloud provider for the rare overnight call.</li>
+<li><strong>Roll back a problematic model</strong> — same K8s Deployment rollback (<code>kubectl rollout undo</code>) as any other workload. No special procedures.</li>
+<li><strong>Move from one cloud's GPU SKUs to another</strong> — same multi-cloud K8s portability story. The inference Deployment's node selectors change; the rest of the architecture is identical.</li>
+</ul>
+
+<p>The catalog-vs-deployment-shape distinction matters most here. Azure's deployment shape for self-hosted inference (managed compute through AI Hub) is its own surface — well-engineered for the workload but separate from how the team operates other things. TrueFoundry's deployment shape for self-hosted inference is the same as the team's other K8s workloads — which means the team's existing K8s muscle memory transfers directly.</p>
+
+<h3>The TrueFoundry model-catalog topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry model catalog topology">
+<defs>
+  <linearGradient id="bgTf9" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf9sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf9" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgTf9)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry catalog — provider-agnostic routing + K8s self-hosted inference</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Closed providers integrate as backends; open-weights models deploy to customer K8s as regular workloads. One operating model across both.</text>
+
+<!-- Application -->
+<rect x="40" y="110" width="180" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tf9sh)"/>
+<text x="130" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application</text>
+<text x="130" y="160" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">model="research-prod"</text>
+<text x="130" y="178" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">virtual model name</text>
+
+<line x1="220" y1="150" x2="270" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf9)"/>
+
+<!-- Virtual model -->
+<rect x="270" y="110" width="220" height="80" rx="10" fill="#260f08" stroke="#FF5533" stroke-width="2.5" filter="url(#tf9sh)"/>
+<text x="380" y="132" text-anchor="middle" fill="#FFB39C" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">VIRTUAL MODEL CONTRACT</text>
+<text x="380" y="152" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">research-prod</text>
+<text x="380" y="170" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">routes to provider OR self-hosted</text>
+
+<line x1="490" y1="150" x2="540" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf9)"/>
+
+<!-- Two backend categories side by side -->
+<!-- Closed provider backends -->
+<rect x="540" y="100" width="340" height="240" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.4"/>
+<text x="560" y="126" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">CLOSED PROVIDER BACKENDS</text>
+<text x="560" y="148" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">No platform "onboarding" — provider's API is the catalog</text>
+
+<rect x="560" y="166" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="634" y="186" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">OpenAI · AOAI</text>
+
+<rect x="716" y="166" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="790" y="186" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Anthropic Claude</text>
+
+<rect x="560" y="206" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="634" y="226" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Bedrock · Vertex</text>
+
+<rect x="716" y="206" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="790" y="226" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Cohere · Mistral</text>
+
+<rect x="560" y="246" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="634" y="266" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Groq · Together</text>
+
+<rect x="716" y="246" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="790" y="266" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Fireworks · AI21</text>
+
+<text x="560" y="306" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ any OpenAI-compatible endpoint</text>
+<text x="560" y="324" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ new models the day the SDK ships</text>
+
+<!-- Self-hosted backends -->
+<rect x="900" y="100" width="340" height="240" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="2"/>
+<text x="920" y="126" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">SELF-HOSTED INFERENCE</text>
+<text x="920" y="148" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Customer K8s · same shape as any other workload</text>
+
+<rect x="920" y="166" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="994" y="186" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">vLLM (most common)</text>
+
+<rect x="1076" y="166" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="1150" y="186" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">TGI (HF)</text>
+
+<rect x="920" y="206" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="994" y="226" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">NVIDIA NIM</text>
+
+<rect x="1076" y="206" width="148" height="32" rx="4" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="1150" y="226" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Custom container</text>
+
+<text x="920" y="266" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">→ deployed via tfy CLI / Helm</text>
+<text x="920" y="284" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">→ exposed as in-cluster Service</text>
+<text x="920" y="302" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ same K8s deployment shape as everything else</text>
+<text x="920" y="320" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ inherits team's K8s practice (CD, autoscaling)</text>
+
+<!-- Operating model continuity panel -->
+<rect x="40" y="360" width="1200" height="200" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="60" y="386" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">OPERATING-MODEL CONTINUITY — same patterns across closed and self-hosted</text>
+
+<rect x="60" y="406" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="80" y="428" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Roll out new model version</text>
+<text x="80" y="448" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Same blue-green/canary pattern as any K8s deploy</text>
+
+<rect x="450" y="406" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="470" y="428" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Scale to zero overnight</text>
+<text x="470" y="448" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Same KEDA autoscaling as any K8s workload</text>
+
+<rect x="840" y="406" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="860" y="428" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Roll back a problematic version</text>
+<text x="860" y="448" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">kubectl rollout undo · same as everything else</text>
+
+<rect x="60" y="476" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="80" y="498" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Move to different cloud's GPUs</text>
+<text x="80" y="518" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Change node selectors · same K8s portability story</text>
+
+<rect x="450" y="476" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="470" y="498" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Observability and alerting</text>
+<text x="470" y="518" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Same OTel pipeline as everything else (Blog 8)</text>
+
+<rect x="840" y="476" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="860" y="498" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">CI/CD &amp; GitOps</text>
+<text x="860" y="518" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Argo/Flux pipeline · same as application services</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry catalog topology — closed providers integrate as virtual-model backends with no platform-side curation; self-hosted inference deploys to customer K8s as regular workloads. The architectural property is operating-model continuity between closed and self-hosted across all day-two operations.</div>
+
+<h3>What the operator writes — vLLM deployment + virtual model binding</h3>
+
+<p>The YAML below shows a working self-hosted vLLM deployment of Llama-3.1-70B to the team's existing AKS cluster, with a TrueFoundry virtual model that routes between the self-hosted backend and AOAI as fallback. Note that the deployment is the same shape as any other K8s Service deployment the team operates:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative TrueFoundry self-hosted inference deployment
+# This is the same deployment shape as any other K8s workload
+type: tfy-service
+name: llama-3-1-70b-vllm
+workspace: research-platform                # K8s namespace + RBAC + budget (Blog 6)
+
+image:
+  type: image
+  image_uri: vllm/vllm-openai:v0.6.3        # standard vLLM container
+
+container:
+  command: |
+    python -m vllm.entrypoints.openai.api_server
+      --model meta-llama/Llama-3.1-70B-Instruct
+      --tensor-parallel-size 4
+      --max-model-len 32768
+      --gpu-memory-utilization 0.92
+      --port 8000
+  env:
+    HF_TOKEN: tfy-secret://research-platform/hf-readonly:token
+
+ports:
+  - port: 8000
+    expose: true
+    protocol: TCP
+    app_protocol: http
+
+resources:
+  cpu_request: 8, cpu_limit: 16
+  memory_request: 64Gi, memory_limit: 128Gi
+  gpu_count: 4
+  gpu_type: A100_80GB                       # node selector for GPU pool
+
+autoscaling:
+  min_replicas: 1
+  max_replicas: 4
+  metrics:
+    - type: custom
+      custom_metric: vllm_requests_in_progress
+      target_value: 8
+
+---
+# Virtual model bound to the self-hosted backend with AOAI fallback
+type: virtual-llm-model
+name: research-prod
+mode: chat-completions
+
+routing:
+  - default:
+      strategy: priority
+      backends:
+        # Priority 1 — self-hosted Llama for cost optimization
+        - provider: self-hosted
+          endpoint: http://llama-3-1-70b-vllm.research-platform.svc.cluster.local:8000/v1
+          model: meta-llama/Llama-3.1-70B-Instruct
+          priority: 1
+          weight: 100
+        # Priority 2 — AOAI fallback when self-hosted is unhealthy or scaled to 0
+        - provider: azure-openai
+          model: gpt-4o-mini
+          priority: 2
+
+# Identity, FinOps, observability inherit from the workspace (Blogs 2, 6, 8)
+metadata:
+  required: [team, project_id, environment]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition consistent with TrueFoundry's <a href="https://www.truefoundry.com/docs/deployments/llm-deployment" target="_blank">LLM deployment documentation</a> and <a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">virtual model docs</a>. The Service deployment uses the same shape as any other K8s workload — no AI-specific resource type, no separate compute-quota path, no parallel ops surface. The virtual model binds the self-hosted backend as priority 1 with AOAI as fallback so calls during scale-to-zero windows still succeed.</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>One deployment shape.</strong> Self-hosted inference uses the same Helm-based deployment shape as application services, RAG retrieval services, evaluation harnesses, and everything else the team operates. The team's existing K8s muscle memory transfers directly. (2) <strong>Catalog is the union of provider catalogs.</strong> No platform-side onboarding latency for new models — the day OpenAI ships a new model, it's available; the day a new open-weights model lands on Hugging Face, the team can deploy it. (3) <strong>Operating-model continuity across providers.</strong> Same workspace, same RBAC, same budget enforcement, same observability pipeline whether the call routes to AOAI, Anthropic, or self-hosted Llama. (4) <strong>Multi-cloud portability.</strong> The K8s deployment shape works on AKS, EKS, GKE, on-prem K8s, or sovereign-cloud K8s without rearchitecture. (5) <strong>Provider/model swap is config-only.</strong> The application doesn't change when the platform team migrates a virtual model from AOAI to self-hosted (or vice versa) — the virtual model name is the stable contract.</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Three model-deployment scenarios compared</h2>
+
+<p>The three scenarios below walk concrete moments where the model-deployment surface decides the time-to-deploy and the day-two operating model. Each is shown side by side under both products.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">Pharma research team migrating from AOAI fine-tune to open-weights</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The opening scenario closes here. The team has a fine-tuned <code>gpt-4o-mini</code> on PTU; an open-weights 70B reasoning model outperforms it by 14% on their benchmark; the migration evaluation is the question.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The migration requires a project type change (Foundry resource → AI Hub project) or operating both project types in parallel. Compute quota for the GPU SKUs (likely <code>Standard_NC96ads_A100_v4</code>) goes through Azure's quota request process — days for new SKUs. The model is "from partners and community" — third-party support, not on PTU fungibility, billed per VM-hour rather than per token. Capacity planning is non-trivial because a 70B model on dedicated compute that's underutilized at night could cost <em>more</em> than the existing PTU reservation. Estimated migration time: 3-4 weeks including capacity planning, quota procurement, parallel running, cutover. <em>Workable; the architecture imposes a different operating model from what the team currently uses.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Same vLLM deployment shape as the team's other K8s workloads — RAG retrieval, eval harness, data pipeline. Existing AKS GPU node pool already sized for similar workloads. Helm-based deploy through the existing CD pipeline. Virtual model gets a new self-hosted backend; AOAI stays as fallback for the scale-to-zero windows. Estimated migration time: 5-7 days, most of which is the eval-harness work, not the deployment. <em>Direct fit; the architecture's operating-model continuity is exactly what this migration shape needs.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">Multi-model portfolio with PTU optimization</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A consumer-products company runs three production AI workloads: customer chatbot (gpt-4o), internal coding assistant (Azure DeepSeek-R1), and product description generator (gpt-4o-mini). Each has different traffic profile but combined throughput is consistent enough to justify a PTU reservation. The team wants the financial benefit of reserved capacity without committing to a per-model split that's hard to rebalance.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p><span class="check">✅</span> This is exactly what fungible PTU is designed for. Purchase a 500 PTU reservation; deploy gpt-4o + Azure DeepSeek-R1 + gpt-4o-mini, each on Global Provisioned Managed; the reservation amortizes across all three. Monthly: rebalance PTU allocation as workload mix shifts (move 100 PTU from chatbot to coding assistant in months when coding traffic is high). The reservation discount applies automatically. <em>Best-in-class fit. Few other platforms offer this kind of cross-model reservation fungibility.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The platform routes to AOAI as a backend; the AOAI deployment underneath can absolutely use a fungible PTU reservation. The PTU advantage is preserved — TrueFoundry doesn't take it away. What's different: the PTU optimization is at the AOAI-deployment layer (managed in Azure), while the workload routing is at the virtual-model layer (managed in TrueFoundry). The team operates two surfaces — the AOAI PTU reservation in Azure portal and the virtual model routing in TrueFoundry. <em>Equivalent financial outcome with two ops surfaces vs Azure's one. For PTU-heavy workloads where the financial advantage is decisive, Azure's single-surface model is simpler; for workloads that mix PTU-eligible and other models, TrueFoundry's routing layer adds value.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Multi-cloud retailer wanting one operating model across AWS + Azure + GCP</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A global retailer runs production AI workloads across three clouds — AWS for the e-commerce stack, Azure for office productivity AI, GCP for their data analytics workloads. Each cloud has its own LLM provider (Bedrock, AOAI, Vertex). The platform team wants one operating model so application teams can deploy to any cloud without retraining.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Azure-anchored architecture. The Azure portion (AOAI) gets the full Foundry catalog and PTU benefits. AWS Bedrock and GCP Vertex are accessed through APIM by configuring them as custom backends — workable but the integration is shallower than for AOAI. Self-hosted inference for AWS/GCP workloads requires either operating AI Hub-style projects in those clouds (not native to those clouds; uses Azure Arc patterns) or building separate gateway infrastructure per cloud. <em>Workable but produces an Azure-anchored operating model that contradicts the multi-cloud posture.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Provider-agnostic by construction. AOAI, Bedrock, and Vertex all integrate as virtual-model backends with the same routing/identity/FinOps semantics. Self-hosted inference deploys to whichever K8s cluster is appropriate — EKS, AKS, GKE, on-prem — with the same Helm chart. One operating model across all three clouds. The platform team builds expertise once; it transfers to every cloud the workload runs on. <em>Direct fit; the multi-cloud-portability story is the architecture's strongest scenario.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The model-catalog comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>Catalog property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>Closed provider coverage</strong></td><td><span class="check">✅</span> Foundry catalog includes most major providers</td><td><span class="check">✅</span> Direct integration with all major providers</td><td>Both cover the major closed providers.</td></tr>
+<tr><td><strong>Open-weights model availability</strong></td><td><span class="check">✅</span> Hugging Face, Llama, Mistral, Qwen, Phi all in catalog</td><td><span class="check">✅</span> Any open-weights model deployable to K8s</td><td>Both cover the major open-weights families.</td></tr>
+<tr><td><strong>First-party model curation</strong></td><td><span class="check">✅</span> "Sold directly by Azure" subset with deep integration</td><td><span class="cross">✕</span> No first-party curation</td><td>For teams that value RAI review and transparency reports.</td></tr>
+<tr><td><strong>Fungible reserved capacity</strong></td><td><span class="check">✅</span> PTU fungibility within sold-by-Azure subset</td><td><span class="cross">✕</span> No equivalent (delegates to provider's reservation model)</td><td>Distinctive Azure advantage for diverse sold-by-Azure portfolios.</td></tr>
+<tr><td><strong>Deployment types matrix</strong></td><td><span class="check">✅</span> 9 documented types (Global / Data Zone / Regional × Standard / Provisioned / Batch + Developer)</td><td><span class="partial">◐</span> Routing strategies (Blog 4) cover Standard/Provisioned per backend; geographic via deployment topology</td><td>Azure's matrix is richer for sold-by-Azure models.</td></tr>
+<tr><td><strong>Self-hosted inference deployment shape</strong></td><td><span class="partial">◐</span> Managed compute via AI Hub project (separate resource type, separate quota path)</td><td><span class="check">✅</span> Same K8s deployment shape as any other workload</td><td>Decisive for organizations that operate K8s and want operating-model continuity.</td></tr>
+<tr><td><strong>vLLM / TGI / NIM support</strong></td><td><span class="partial">◐</span> Through managed compute with appropriate container</td><td><span class="check">✅</span> First-class runtime patterns documented</td><td>Most teams self-hosting open-weights use one of these runtimes.</td></tr>
+<tr><td><strong>Multi-cloud portability</strong></td><td><span class="cross">✕</span> Azure-anchored; cross-cloud requires Arc patterns</td><td><span class="check">✅</span> K8s deploys to any cloud; same operating model</td><td>For multi-cloud postures.</td></tr>
+<tr><td><strong>Time-to-deploy a new closed-provider model</strong></td><td>Days (catalog onboarding cycle) for new providers; same-day for new model versions of existing providers</td><td>Same-day for any OpenAI-compatible provider; same-day for new model versions</td><td>For teams running on the bleeding edge of model availability.</td></tr>
+<tr><td><strong>Time-to-deploy a self-hosted model</strong></td><td>Days to weeks (compute quota + AI Hub project setup + deployment)</td><td>Hours to days (same as other K8s workloads)</td><td>For workflows that involve frequent model evaluation.</td></tr>
+<tr><td><strong>Catalog UX (discovery / leaderboards / benchmarks)</strong></td><td><span class="check">✅</span> Mature Foundry portal UI with leaderboards</td><td><span class="partial">◐</span> Workspace UI for managing virtual models; less catalog-specific tooling</td><td>For teams in active model evaluation.</td></tr>
+<tr><td><strong>RAI integration / Content Safety</strong></td><td><span class="check">✅</span> Automatic for sold-by-Azure; configurable for others (Blog 7)</td><td><span class="check">✅</span> Four-hook guardrail engine (Blog 7) applies uniformly</td><td>Both first-class; architectural shape differs.</td></tr>
+<tr><td><strong>Per-VM-hour vs per-token billing options</strong></td><td><span class="check">✅</span> Both supported (managed compute = per VM-hour; serverless = per token)</td><td><span class="check">✅</span> Both supported (self-hosted = customer's compute cost; provider routing = per token)</td><td>Both support both billing shapes.</td></tr>
+<tr><td><strong>Developer-tier evaluation (24-hour test deployments)</strong></td><td><span class="check">✅</span> Developer deployment type (with caveats: no SLA, no residency, 24h auto-delete)</td><td><span class="partial">◐</span> Equivalent through scale-to-zero workspaces; no platform-imposed lifetime</td><td>For fine-tuning evaluation cycles.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">Azure's first-party model catalog with the sold-by-Azure subset is genuinely deep — Microsoft enterprise SLAs, RAI review, transparency reports, and the distinctive PTU fungibility that lets a single reservation amortize across multiple flagship models. The nine deployment-types matrix (Global / Data Zone / Regional × Standard / Provisioned / Batch + Developer) is mature and well-documented, with selection-criteria guidance that maps cleanly to common workload patterns. The Foundry portal's catalog UI, leaderboards, and benchmark integration are time-savers during evaluation. For organizations standardizing on the sold-by-Azure subset and operating primarily on Azure, the integration is best-in-class.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> the workload uses Azure OpenAI flagship models or other sold-by-Azure models as the dominant case, fungible PTU reservations across the model portfolio are operationally valuable, the deep Foundry integration (catalog UI, automatic RAI, transparency reports) is institutional muscle, or self-hosted inference is a rare exception rather than a primary deployment pattern.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">Provider-agnostic routing means closed-provider catalogs are inherited as the catalog — new models are available the day their SDKs ship. Self-hosted inference is the same K8s deployment shape as any other workload — vLLM, TGI, NIM, or custom containers deploy through the team's existing CD pipeline, scale through their existing autoscaling stack, observe through their existing OTel pipeline. The architectural property is operating-model continuity: the team operates one deployment surface across closed and self-hosted, across single-cloud and multi-cloud, across small open-weights models and 70B-parameter reasoners. For organizations with mature K8s practice and significant self-hosted inference, the cumulative reduction in operational complexity is the value the architecture delivers.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> self-hosted inference is a primary workload, the team already operates K8s and wants the same deployment shape across all workloads, multi-cloud or sovereign-cloud deployments are part of the strategy, or the operating-model simplicity of "deploy to K8s like every other service" is operationally decisive.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that the architectures optimize for different model-deployment patterns. Azure's design assumes the workload's primary deployment is into a managed model service — Foundry's serverless endpoints with Microsoft-operated compute, Azure OpenAI's PTU reservations, the sold-by-Azure curated catalog with deep first-party integration. For workloads that fit that pattern, the depth of integration is exceptional and the PTU fungibility is a distinctive advantage few platforms match. TrueFoundry's design assumes the workload's primary deployment is K8s-native, with closed-provider routing as a complementary capability. For workloads that fit that pattern, the operating-model continuity between self-hosted and closed-provider is the architectural value, and the multi-cloud portability comes for free.</p>
+
+<p>The two-category split in Foundry — sold-by-Azure vs partners-and-community — is the architectural shape that determines the fit. Workloads operating primarily within the sold-by-Azure subset get Azure's full institutional advantages; workloads operating primarily with open-weights or partner models get a thinner, more operationally-segmented experience. TrueFoundry doesn't impose that split: closed providers and self-hosted models share the same operational surface, the same observability pipeline, the same identity and FinOps boundaries.</p>
+
+<p>For most teams the right answer is shaped by the rest of the stack and the workload mix. Heavily Azure-anchored teams with workloads sitting cleanly in the sold-by-Azure subset should use Foundry's deep integration — the PTU fungibility, the RAI integration, and the catalog tooling are real advantages. Multi-cloud teams, K8s-native teams, and teams whose workloads include significant self-hosted inference should consider the OTel-first / K8s-native architecture as structurally simpler for their operating model. Mixed organizations need to weight the proportions.</p>
+
+<p>The next blog (<a href="10-truefoundry-vs-azure-prompt-management-versioning.html">Prompt Management &amp; Versioning</a>) walks the third platform-surface dimension: how prompts get versioned, evaluated, A/B-tested, and rolled out across an AI program — and what the platform's prompt-as-config story looks like across the deployment lifecycle.</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/foundry-models-overview" target="_blank">Microsoft Learn — Microsoft Foundry Models overview (sold-by-Azure vs partners-and-community categorization)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/deployments-overview" target="_blank">Microsoft Learn — Deployment options for Microsoft Foundry Models (managed compute vs serverless deployments)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/deployment-types" target="_blank">Microsoft Learn — Understanding deployment types in Microsoft Foundry Models (the nine deployment types)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/provisioned-throughput" target="_blank">Microsoft Learn — Provisioned Throughput for Foundry Models (PTU fungibility, the 500-PTU example)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/deploy-models-managed" target="_blank">Microsoft Learn — Deploy and inference a managed compute deployment</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/deploy-models-serverless" target="_blank">Microsoft Learn — Deploy Foundry Models with serverless API endpoints</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/configure-managed-network" target="_blank">Microsoft Learn — Managed Network Configuration for AI Hub</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models" target="_blank">Microsoft Learn — Azure OpenAI Service models</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/quotas-limits" target="_blank">Microsoft Learn — Azure OpenAI quotas and limits</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">TrueFoundry Docs — Virtual Models (provider-agnostic contract)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/deployments/llm-deployment" target="_blank">TrueFoundry Docs — LLM Deployment (vLLM, TGI, NIM)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/deployments/service" target="_blank">TrueFoundry Docs — Service deployment (the same shape as other K8s workloads)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/integrations-providers" target="_blank">TrueFoundry Docs — Integrations &amp; providers catalog</a></li>
+  <li><a href="https://github.com/vllm-project/vllm" target="_blank">vLLM — High-throughput inference engine for LLMs</a></li>
+  <li><a href="https://github.com/huggingface/text-generation-inference" target="_blank">Hugging Face — Text Generation Inference (TGI)</a></li>
+  <li><a href="https://docs.nvidia.com/nim/" target="_blank">NVIDIA — NIM Inference Microservices documentation</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 9 of 12 · April 2026 · <a href="08-truefoundry-vs-azure-observability-otel-monitor.html">← Blog 8 — Observability</a> · <a href="10-truefoundry-vs-azure-prompt-management-versioning.html">Blog 10 — Prompt Management →</a>
+</p>
+</body>
+</html>
