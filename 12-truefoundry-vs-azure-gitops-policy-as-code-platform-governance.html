@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="The closing blog of the twelve-part series. Azure's Bicep + ARM + Azure Policy surface (with comprehensive APIM resource coverage, policy fragments as reusability primitive, scheduled compliance scans) vs TrueFoundry's K8s-native CRD model with Argo CD/Flux GitOps and OPA Gatekeeper/Kyverno policy enforcement (continuous drift detection, same tooling as application services). The tooling-coherence question that ties together every architectural choice walked across the twelve dimensions of the series — and the integrated verdict on which platform fits which kinds of organizations."/>
+<title>GitOps &amp; Policy-as-Code: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement IV · Agentic + operational</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div>
+  <span class="tag-pill active">Blog 12 of 12 · Series close</span>
+</div>
+
+<h1>GitOps &amp; Policy-as-Code: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 32 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Platform Engineering · GitOps · Compliance</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for Bicep (the declarative IaC language transpiling to ARM, with explicit guidance on static <code>apiVersion</code> property pinning), the APIM resource provider's Bicep references for policies, policy fragments, named values, version sets, and the broader service/* tree, the Azure Policy governance plane (built-in policies, custom policies, initiatives, compliance scans), and the standard Azure DevOps + GitHub Actions CI/CD patterns. The TrueFoundry side is grounded in Kubernetes-native CRD patterns (the platform exposes its objects as CRDs that GitOps tooling like Argo CD and Flux can manage natively), the OPA Gatekeeper and Kyverno policy ecosystems most K8s teams already operate, and the <code>tfy</code> CLI's <code>apply</code> semantics for declarative configuration. Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog closes Movement IV and the series, and it composes the architectural choices walked through Blogs 1-11 into the final platform-engineering question: which platform's GitOps and policy-as-code surface fits the team's existing infra-engineering practice.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues — and what it closes</div>
+  <p>The series has walked twelve dimensions of architectural difference between TrueFoundry and Azure for AI platform engineering. This final blog argues for the dimension that ties everything together: <strong>how does the platform integrate into the team's existing infra-as-code and policy-as-code practice, and how does the integration shape the day-two operating model across all the other dimensions?</strong> Two structural differences shape the answer. <strong>(1)</strong> Azure's GitOps story is Bicep-and-ARM-anchored — APIM resources, policies, policy fragments, AOAI deployments, Foundry projects, and agent definitions all live in the ARM resource model and are managed through Bicep templates, Azure DevOps pipelines or GitHub Actions, and Azure Policy as the governance plane. The integration is mature, well-documented, and deeply Azure-native. <strong>(2)</strong> TrueFoundry's GitOps story is Kubernetes-native — platform objects (workspaces, virtual models, prompts, MCP server registrations, guardrails, deployments) are exposed as Kubernetes CRDs that any K8s GitOps tool (Argo CD, Flux, etc.) can manage natively, and policy enforcement uses the K8s ecosystem's standard policy engines (OPA Gatekeeper, Kyverno) the platform team already operates. The architectural fact this produces is that GitOps and policy-as-code for the AI platform inherits whatever GitOps and policy-as-code practice the team has for their other workloads — same tooling, same review process, same approval flow, same drift detection. For Azure-anchored teams whose entire infra is Bicep + Azure Policy, Azure's integration is the right fit. For K8s-native teams whose existing infra-engineering muscle is GitOps + OPA, TrueFoundry's integration is the structural fit.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A platform-engineering audit that becomes a tooling-coherence question</div>
+<p>A 4,000-person engineering organization in Munich is running an internal platform audit. The platform team — 12 SREs and platform engineers — operates infrastructure for 200+ application services across the company. The audit's question is straightforward: across all infrastructure, how much of it is managed declaratively through GitOps versus how much is managed through ad-hoc tooling, and where are the gaps in policy enforcement? The audit's findings, written up over two weeks, are a precise map of the existing practice.</p>
+<p>The application services run on AKS clusters managed by Argo CD; every deployment, service, ingress, RBAC binding, and config-map flows from a monorepo of Helm charts and Kustomize overlays through Argo's sync-and-reconcile loop. Policy enforcement uses Kyverno — the team has 47 active Kyverno policies covering image-registry allow-listing, resource-request mandates, security-context defaults, network-policy requirements, and a handful of organization-specific rules around naming and labeling. Drift detection is automatic; Argo's UI shows any out-of-band changes and offers prune/sync actions. The team has invested heavily in this practice over four years; on-call engineers know the patterns; new platform engineers onboard onto the GitOps shape rather than learning ad-hoc operations.</p>
+<p>The AI platform is a different shape. The team's AI workloads run on Azure — APIM in front of AOAI, Foundry projects with managed online endpoints for Prompt Flow deployments, a handful of Foundry Agents in preview. The infrastructure-as-code for these workloads is Bicep (well-engineered) deployed through GitHub Actions; the policy enforcement is Azure Policy with about 14 active policies covering tag mandates, region restrictions, and a small set of custom AI-specific policies the team built. The Bicep practice is solid; the team's senior platform engineer who handles AI infrastructure knows the patterns well. The audit's concern is not that the practice is broken — it isn't — but that the AI workloads operate on a parallel infrastructure-engineering surface from the rest of the company's services, and the parallel-surface cost compounds as the AI portfolio grows.</p>
+<p>The audit's specific findings: (1) <em>two GitOps tools</em> — Argo CD for application services, Bicep + GitHub Actions for AI infrastructure — meaning two operational dashboards, two drift-detection mechanisms, two on-call playbook surfaces, two CI/CD pipeline shapes. (2) <em>Two policy languages</em> — Kyverno for K8s workloads, Azure Policy for Azure resources — meaning policy authors specialize in one or the other, organizational policies that span both have to be written twice (once in each), and the central security team operates two parallel governance dashboards. (3) <em>Drift detection lag</em> — Argo's K8s drift detection is real-time; Azure Policy compliance scans run on a schedule (typically every 24 hours) so out-of-band changes to APIM policies, AOAI deployments, or Foundry agent configurations may go undetected for up to a day. (4) <em>Skills bifurcation</em> — the platform team's 12 engineers know Argo + Kyverno deeply; only 2 of them know Bicep + Azure Policy at production-grade depth, creating bus-factor risk on the AI infrastructure.</p>
+<p>The platform lead's writeup recommends what this blog is about: <em>AI platform infrastructure should integrate into the team's existing GitOps and policy-as-code practice rather than operate as a parallel surface, because parallel infrastructure surfaces compound operational cost as the workload portfolio grows</em>. That isn't a recommendation against Azure — Azure's Bicep and Azure Policy are excellent for organizations whose entire stack lives in Azure ARM. It's a recommendation about tooling coherence: when the team's existing infrastructure muscle is K8s-native GitOps + K8s-native policy engines, AI platform infrastructure that fits into the same surface inherits four years of operational practice rather than requiring a parallel investment. The architectural lesson is the closing argument of the series.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Azure's GitOps surface is Bicep + ARM + Azure Policy.</strong> Mature, well-documented, deeply Azure-native. APIM resources (policies, policy fragments, named values, version sets, products, subscriptions) all have first-class Bicep representations. Azure Policy provides the governance plane with built-in policies, custom policies, initiatives, and compliance dashboards. Standard CI/CD through Azure DevOps Pipelines or GitHub Actions with the <code>azure/arm-deploy</code> action. Microsoft's guidance recommends pinning <code>apiVersion</code> properties for stability across deployments.</li>
+    <li><strong>TrueFoundry's GitOps surface is Kubernetes-native.</strong> Platform objects (workspaces, virtual models, prompts, MCP server registrations, guardrails, deployments) are exposed as K8s CRDs that any K8s GitOps tool can manage. The <code>tfy apply</code> CLI follows kubectl-apply semantics. Argo CD or Flux integrates without special configuration; policy enforcement uses OPA Gatekeeper or Kyverno — the engines K8s teams already operate.</li>
+    <li><strong>Drift detection differs operationally.</strong> Argo CD's K8s drift detection is continuous and real-time — out-of-band changes are visible within seconds. Azure Policy compliance scans run on a schedule (the standard cadence is 24 hours for many policy types, with on-demand scans available); out-of-band changes to APIM policies or Foundry resources may go undetected for up to a day in the default configuration.</li>
+    <li><strong>Tooling coherence is the operational metric.</strong> For organizations whose existing infra-engineering practice is Bicep + Azure Policy, Azure's integration is the right fit and there's no coherence cost. For organizations whose existing infra-engineering practice is K8s-native GitOps (Argo CD/Flux) + K8s-native policy (OPA/Kyverno), TrueFoundry's K8s-CRD integration is the coherent fit and Azure's Bicep surface adds a parallel-tooling cost.</li>
+    <li><strong>This blog closes the series.</strong> It composes the eleven architectural choices walked across Blogs 1-11 into one closing platform-engineering question: which platform's day-two operating model fits the team's existing infrastructure muscle most cleanly?</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when Bicep and Azure Policy are the institutional infra-engineering practice for the rest of the stack, when the team's CI/CD pipelines run on Azure DevOps or GitHub Actions with Azure-native deploy tasks, when Azure Policy initiatives are the central security/compliance governance surface, or when the AI platform should inherit whatever ARM-resource discipline the team applies elsewhere.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when the team's existing GitOps practice runs on Argo CD or Flux against K8s, when policy enforcement uses OPA Gatekeeper or Kyverno, when AI platform infrastructure should integrate into the same single GitOps pipeline as application services, or when tooling coherence (one set of platform-engineering tools across all workloads) is operationally decisive.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Tooling coherence as the closing argument</div>
+    <div class="qp-desc">The series has walked twelve architectural dimensions; this final dimension is how all twelve get operated in production day after day. Tooling coherence — whether the AI platform integrates into existing infra muscle or operates as a parallel surface — is what compounds across the lifetime of an AI program and what determines the cumulative operational cost.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Why tooling coherence is the closing question</a></li>
+    <li><a href="#azure">§2 — Azure: Bicep + ARM + Azure Policy</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: K8s CRDs + Argo/Flux + OPA/Kyverno</a></li>
+    <li><a href="#scenarios">§4 — Three platform-engineering scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict + series close</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — Why tooling coherence is the closing question</h2>
+
+<p class="intro-lead">A platform-engineering team's productivity over the long run is determined less by the individual tools they use than by the coherence of those tools. A team that operates one GitOps engine across all infrastructure is structurally faster than a team that operates two — not because either engine is better than the other, but because the team's expertise compounds in one direction rather than splitting across two. The same applies to policy enforcement, CI/CD pipelines, drift detection, and the broader operating-model shape. Tooling coherence is what makes a small platform team productive at large scale; tooling fragmentation is what makes it slow.</p>
+
+<p>The architectural fact this surfaces for AI platform decisions is that <strong>AI platform integration shouldn't be evaluated in isolation</strong>. The right question is not "which AI platform's GitOps story is best in absolute terms?" but "which AI platform's GitOps story integrates most cleanly with the rest of the team's infra-engineering practice?" The answer depends on what the rest of the team's practice looks like, and for many enterprises the answer flips dramatically based on existing institutional choices.</p>
+
+<h3>The four dimensions of tooling coherence</h3>
+
+<ol>
+<li><strong>Configuration management.</strong> Where does the AI platform's configuration live and how is it managed? Bicep templates committed to a Bicep monorepo, deployed through Azure DevOps? K8s CRDs committed to a Helm/Kustomize monorepo, synced through Argo CD? The choice determines what the team's review process, approval flow, and rollback procedure look like.</li>
+<li><strong>Policy enforcement.</strong> Where do organization-wide policies live? Azure Policy with built-in and custom definitions? OPA Gatekeeper or Kyverno on K8s? The choice determines who writes the policies (security team's tooling specialists), who maintains them, and how cross-cutting compliance reports get generated.</li>
+<li><strong>Drift detection.</strong> When out-of-band changes happen to platform configuration, how quickly does the team learn about them? Continuous reconciliation through Argo CD (seconds to detect)? Scheduled compliance scans through Azure Policy (default 24 hours for many policy types)? The choice determines incident-response time on configuration drift.</li>
+<li><strong>CI/CD pipeline shape.</strong> What do AI platform deployments look like in the team's CI/CD system? An <code>azure/arm-deploy</code> action with Bicep parameters? A standard <code>kubectl apply</code> or <code>argocd app sync</code>? The choice determines whether AI platform deployment looks like everything else the team deploys.</li>
+</ol>
+
+<h3>The institutional split: Azure-anchored vs K8s-native infra practice</h3>
+
+<p>The 2025-2026 enterprise infrastructure landscape has converged on two dominant institutional patterns:</p>
+
+<ul>
+<li><strong>Azure-anchored infra practice.</strong> The team's primary cloud is Azure; the IaC language is Bicep (or ARM JSON, occasionally Terraform with the <code>azapi</code> provider); the governance plane is Azure Policy; the CI/CD system is Azure DevOps or GitHub Actions with Azure-native tasks; the management plane is the Azure Resource Manager. AI platform infrastructure that fits this shape integrates cleanly; AI platform infrastructure that doesn't requires parallel tooling.</li>
+<li><strong>K8s-native infra practice.</strong> The team operates one or more Kubernetes clusters (often multi-cloud — AKS + EKS + GKE, or any combination); GitOps via Argo CD or Flux is the deployment substrate; OPA Gatekeeper or Kyverno is the policy engine; CI/CD pushes Helm charts and Kustomize overlays to a monorepo that Argo or Flux reconciles into the cluster. AI platform infrastructure that exposes K8s CRDs integrates cleanly; AI platform infrastructure that requires non-K8s management surfaces produces parallel tooling.</li>
+</ul>
+
+<p>Both patterns are coherent within themselves. Many large enterprises have one or the other as the institutional choice; some operate both for different workload classes (Azure-anchored for Microsoft-tooling-heavy domains, K8s-native for product-engineering services). The architectural question for AI platform decisions is which institutional shape the AI workloads should integrate with — and the answer should usually be "the institutional shape the team already operates," because tooling coherence within an existing practice compounds operational productivity over the long run.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>Bicep and Azure Policy are genuinely well-engineered platforms. Bicep's declarative syntax, idempotent deployment semantics, type checking through the Bicep extension, and full coverage of Azure resource types — *including all APIM resources from policies to policy fragments to version sets to subscriptions* — are real engineering quality. Azure Policy's built-in policies, custom-policy authoring, initiative composition, and exemption workflow are mature governance primitives. For organizations operating Azure-anchored infrastructure as their dominant practice, the tooling is institutional muscle and the coherence is automatic. The argument is not that Azure's GitOps surface is poorly designed; it is that <em>tooling coherence is a property of the integration with existing practice, not a property of the tool in isolation</em>. For K8s-native organizations, the AI platform that exposes K8s CRDs achieves coherence with their existing practice in a way that an ARM-resource model cannot. Different institutional starting points, different fits.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail and then composes the series-wide closing argument. §2 walks Azure's Bicep + ARM + Azure Policy surface — the APIM resource model with policies and policy fragments as first-class resources, the Azure Policy governance plane, the standard CI/CD shape, the documented drift-detection cadence, and the <code>apiVersion</code> pinning guidance — with a working Bicep module composition. §3 walks TrueFoundry's K8s-native surface — platform objects as CRDs, the <code>tfy apply</code> semantics, Argo CD/Flux integration, OPA/Kyverno policy patterns, and continuous drift detection — with a working GitOps configuration. §4 walks three platform-engineering scenarios. §5 closes the series with the integrated verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: Bicep + ARM + Azure Policy</span></div>
+
+<p>Azure's GitOps and policy-as-code surface is built on three pillars: <strong>Bicep</strong> (the declarative IaC language that transpiles to ARM JSON) for resource provisioning, <strong>ARM (Azure Resource Manager)</strong> as the underlying resource model, and <strong>Azure Policy</strong> as the governance plane. The integration is mature, well-documented, and deeply Azure-native. Every APIM resource — services, APIs, policies, policy fragments, named values, version sets, products, subscriptions, backends, loggers, diagnostic settings, content-safety backend wirings — has a first-class Bicep representation, and the Bicep language is updated as new APIM features ship. For organizations operating Azure-anchored infrastructure, the integration is institutional muscle.</p>
+
+<h3>Layer 1 — Bicep as the IaC language</h3>
+
+<p><a href="https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/overview" target="_blank">Bicep</a> is Microsoft's recommended IaC language for Azure. Key properties:</p>
+
+<ul>
+<li><strong>Declarative and idempotent.</strong> Bicep files describe desired state; deploying the same file repeatedly produces the same resources in the same configuration. Re-deployment is safe.</li>
+<li><strong>Transpiles to ARM JSON.</strong> Bicep is a language layer over ARM; the deployment unit is still ARM. This means everything ARM supports, Bicep supports — including all preview and GA versions of APIM resources.</li>
+<li><strong>Module system for reusability.</strong> A Bicep module is a Bicep file describing a piece of infrastructure in a reusable way. A team can build a library of internal Bicep modules — "deploy a standard APIM API with the standard policy chain", "deploy an AOAI deployment with PTU on the standard reservation" — and compose them into application-specific deployments.</li>
+<li><strong>Type checking and IntelliSense through VS Code extension.</strong> The authoring experience is genuinely strong. Resource property names, types, and required fields are validated at edit time.</li>
+</ul>
+
+<h3>Layer 2 — APIM resources as ARM resource types</h3>
+
+<p>Every APIM resource is a first-class ARM resource type with documented properties and Bicep syntax. The relevant tree for AI gateway scenarios includes:</p>
+
+<ul>
+<li><strong><code>Microsoft.ApiManagement/service</code></strong> — the APIM service itself (gateway flavor: Classic, V2, Consumption, etc., per Blog 1).</li>
+<li><strong><code>Microsoft.ApiManagement/service/apis</code></strong> — APIs hosted on the gateway.</li>
+<li><strong><code>Microsoft.ApiManagement/service/apis/policies</code></strong> — per-API policy XML.</li>
+<li><strong><code>Microsoft.ApiManagement/service/policies</code></strong> — global policy XML at the service level.</li>
+<li><strong><code>Microsoft.ApiManagement/service/policyFragments</code></strong> — reusable policy fragments that can be referenced from multiple policies via <code>&lt;include-fragment fragment-id="..."/&gt;</code>.</li>
+<li><strong><code>Microsoft.ApiManagement/service/namedValues</code></strong> — named values (key-value pairs, optionally backed by Key Vault for secrets).</li>
+<li><strong><code>Microsoft.ApiManagement/service/backends</code></strong> — backend definitions including circuit breakers (Blog 4) and load-balanced pools.</li>
+<li><strong><code>Microsoft.ApiManagement/service/diagnostics</code></strong> — diagnostic settings (Blog 8) including Application Insights integration.</li>
+<li><strong><code>Microsoft.CognitiveServices/accounts/deployments</code></strong> — AOAI / Foundry model deployments referenced by APIM backends.</li>
+</ul>
+
+<p>Microsoft's <a href="https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement" target="_blank">resource reference</a> documents every property of every resource type with all supported API versions. The coverage is comprehensive — there is no APIM feature that exists outside of Bicep representation.</p>
+
+<h3>Layer 3 — Policy fragments as the reusability primitive</h3>
+
+<p>Policy fragments are a particularly important primitive for AI gateway scenarios. The pattern: define a reusable policy snippet (e.g., "the standard token-limit + content-safety + emit-token-metric chain") as a policy fragment; reference it from multiple APIs' policies via <code>&lt;include-fragment fragment-id="standard-llm-chain"/&gt;</code>. Updating the fragment updates all referencing policies on the next deploy.</p>
+
+<p>For an organization with 20+ AI APIs that share a common policy chain, fragments turn N×K policy lines (N APIs × K policies per chain) into K fragment definitions plus N include lines. This is the right pattern for managing policy drift across many APIs; without fragments, teams either copy-paste policies (which produces drift) or write XSLT-like generation scripts.</p>
+
+<h3>Layer 4 — Azure Policy as the governance plane</h3>
+
+<p><a href="https://learn.microsoft.com/en-us/azure/governance/policy/overview" target="_blank">Azure Policy</a> is the cross-resource governance plane. Key concepts:</p>
+
+<ul>
+<li><strong>Built-in policies</strong> — Microsoft-shipped policies covering common compliance requirements (e.g., "AOAI accounts should use customer-managed keys", "APIM should require TLS 1.2", "diagnostic settings should be enabled").</li>
+<li><strong>Custom policies</strong> — organization-specific rules expressed as JSON policy definitions. The expression language has resource-property matching, value comparisons, and a defined effect set (Audit, Deny, Append, Modify, DeployIfNotExists).</li>
+<li><strong>Initiatives (policy sets)</strong> — bundles of related policies grouped for assignment. A single "AI workload baseline" initiative might include 10-15 policies covering tagging, region restrictions, encryption, content-safety configuration, and audit-log requirements.</li>
+<li><strong>Compliance scans</strong> — Azure Policy continuously evaluates resources against assigned policies. Scans run on a schedule with documented latency for non-real-time scenarios; on-demand scans are available through the portal or CLI.</li>
+<li><strong>Exemptions</strong> — formal mechanism for waiving policy compliance for specific resources or scopes with audit trails.</li>
+</ul>
+
+<h3>Layer 5 — The standard CI/CD shape</h3>
+
+<p>Two CI/CD systems are the institutional choices:</p>
+
+<ul>
+<li><strong>Azure DevOps Pipelines</strong> — the historical default for Azure-shop CI/CD. YAML pipelines with the <code>AzureResourceManagerTemplateDeployment</code> task.</li>
+<li><strong>GitHub Actions</strong> — increasingly preferred for new projects, with the <code>azure/arm-deploy</code> action handling Bicep deployments.</li>
+</ul>
+
+<p>The standard deploy pattern: PR opens with a Bicep change; CI runs <code>bicep build</code> and <code>az deployment what-if</code> for a plan-vs-apply preview; PR review covers the diff; merge to main triggers <code>az deployment group create</code> or equivalent; the deployment runs to ARM and ARM provisions the resources. The <code>what-if</code> command is the Azure equivalent of Terraform's <code>plan</code> — it shows what would change without changing it. This pattern is well-documented and widely operated.</p>
+
+<h3>The Azure GitOps/policy-as-code topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure GitOps and policy topology">
+<defs>
+  <linearGradient id="bgAz12" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az12sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAz12" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgAz12)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure GitOps + policy — Bicep + ARM + Azure Policy</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Mature, deeply Azure-native. Coherent with Azure-anchored institutional infra practice; parallel surface to K8s-native infra practice.</text>
+
+<!-- Source -->
+<rect x="40" y="110" width="200" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="140" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Bicep monorepo</text>
+<text x="140" y="158" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">main.bicep · modules/</text>
+<text x="140" y="178" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">parameters/</text>
+
+<line x1="240" y1="150" x2="290" y2="150" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz12)"/>
+
+<!-- CI/CD -->
+<rect x="290" y="110" width="200" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="390" y="132" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">CI/CD</text>
+<text x="390" y="152" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Azure DevOps</text>
+<text x="390" y="170" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">or GitHub Actions</text>
+
+<line x1="490" y1="150" x2="540" y2="150" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz12)"/>
+
+<!-- ARM -->
+<rect x="540" y="110" width="220" height="80" rx="10" fill="#0a1830" stroke="#7CC2FF" stroke-width="2.5"/>
+<text x="650" y="132" text-anchor="middle" fill="#7CC2FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">AZURE RESOURCE MANAGER</text>
+<text x="650" y="152" text-anchor="middle" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">deployment + state</text>
+<text x="650" y="172" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">what-if · idempotent</text>
+
+<line x1="760" y1="150" x2="810" y2="150" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz12)"/>
+
+<!-- Resources -->
+<rect x="810" y="110" width="430" height="80" rx="10" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="830" y="136" fill="#7CC2FF" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">PROVISIONED RESOURCES</text>
+<text x="830" y="156" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">APIM service · APIs · policies · policy fragments</text>
+<text x="830" y="172" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">named values · backends · AOAI deployments · diagnostics</text>
+
+<!-- APIM resource tree -->
+<rect x="40" y="220" width="600" height="170" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="60" y="246" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">APIM ARM RESOURCE TREE — first-class Bicep types</text>
+
+<rect x="60" y="266" width="270" height="34" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="288" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Microsoft.ApiManagement/service</text>
+
+<rect x="60" y="304" width="270" height="34" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="326" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">.../service/policies</text>
+
+<rect x="60" y="342" width="270" height="34" rx="6" fill="#091510" stroke="#50fa7b" stroke-width="1.4"/>
+<text x="80" y="364" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">.../service/policyFragments</text>
+
+<rect x="350" y="266" width="270" height="34" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="370" y="288" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">.../service/apis · /apis/policies</text>
+
+<rect x="350" y="304" width="270" height="34" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="370" y="326" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">.../service/namedValues</text>
+
+<rect x="350" y="342" width="270" height="34" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="370" y="364" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">.../service/backends · /diagnostics</text>
+
+<!-- Azure Policy panel -->
+<rect x="660" y="220" width="580" height="170" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="2"/>
+<text x="680" y="246" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">AZURE POLICY — governance plane</text>
+
+<rect x="680" y="266" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="700" y="288" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Built-in policies (e.g. "AOAI must use CMK")</text>
+
+<rect x="680" y="304" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="700" y="326" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Custom policies (organization-specific)</text>
+
+<rect x="680" y="342" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="700" y="364" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Initiatives (policy bundles) · effects · exemptions</text>
+
+<!-- Drift detection -->
+<rect x="40" y="420" width="600" height="140" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="60" y="446" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">DRIFT DETECTION — scheduled scans</text>
+
+<rect x="60" y="466" width="540" height="34" rx="6" fill="#1a1200" stroke="#F4C04F" stroke-width="1"/>
+<text x="80" y="488" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Azure Policy compliance scans on schedule</text>
+
+<rect x="60" y="506" width="540" height="34" rx="6" fill="#1a1200" stroke="#F4C04F" stroke-width="1"/>
+<text x="80" y="528" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Default cadence: ~24h for many policy types</text>
+
+<text x="60" y="552" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Out-of-band changes detected within scan window</text>
+
+<!-- Coherence -->
+<rect x="660" y="420" width="580" height="140" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="1.4"/>
+<text x="680" y="446" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">COHERENCE FIT</text>
+
+<rect x="680" y="466" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="700" y="488" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ Azure-anchored teams: institutional muscle</text>
+
+<rect x="680" y="506" width="540" height="34" rx="6" fill="#1a1200" stroke="#F4C04F" stroke-width="1"/>
+<text x="700" y="528" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">◐ K8s-native teams: parallel-surface tooling cost</text>
+
+<text x="680" y="552" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Coherence is a function of existing institutional choice</text>
+</svg>
+</div>
+<div class="img-caption">Azure GitOps and policy topology — Bicep monorepo through CI/CD to ARM, with the APIM ARM resource tree as the deployable surface and Azure Policy as the governance plane. Drift detection runs through scheduled compliance scans (default ~24h cadence for many policy types).</div>
+
+<h3>What the operator writes — Bicep modules + Azure Policy initiative</h3>
+
+<p>The Bicep below shows a working modular composition: a reusable policy-fragment module deployed once, an APIM API module that includes the fragment in its policy chain, an Azure Policy custom-policy definition, and an initiative that bundles AI-workload-baseline rules:</p>
+
+<div class="code-wrap"><div class="code-lang">Bicep</div><pre>// modules/llm-policy-fragment.bicep — reusable policy chain as a fragment
+param apimName string
+
+resource apim 'Microsoft.ApiManagement/service@2025-03-01-preview' existing = {
+  name: apimName
+}
+
+resource standardLlmChain 'Microsoft.ApiManagement/service/policyFragments@2025-03-01-preview' = {
+  parent: apim
+  name: 'standard-llm-chain'
+  properties: {
+    description: 'Token-limit + content-safety + emit-token-metric for LLM APIs'
+    format: 'rawxml'
+    value: '''
+&lt;fragment&gt;
+  &lt;llm-content-safety backend-id="content-safety-backend" shield-prompt="true"&gt;
+    &lt;categories output-type="FourSeverityLevels"&gt;
+      &lt;category name="Hate" threshold="4" /&gt;
+      &lt;category name="SelfHarm" threshold="2" /&gt;
+      &lt;category name="Sexual" threshold="4" /&gt;
+      &lt;category name="Violence" threshold="4" /&gt;
+    &lt;/categories&gt;
+  &lt;/llm-content-safety&gt;
+  &lt;azure-openai-token-limit
+      counter-key="@(context.Subscription.Id)"
+      tokens-per-minute="200000" /&gt;
+  &lt;authentication-managed-identity resource="https://cognitiveservices.azure.com/" /&gt;
+&lt;/fragment&gt;
+'''
+  }
+}
+
+// modules/llm-api.bicep — module that uses the fragment
+param apimName string
+param apiName string
+param backendId string
+
+resource apim 'Microsoft.ApiManagement/service@2025-03-01-preview' existing = {
+  name: apimName
+}
+
+resource llmApi 'Microsoft.ApiManagement/service/apis@2025-03-01-preview' = {
+  parent: apim
+  name: apiName
+  properties: {
+    displayName: apiName
+    path: apiName
+    protocols: ['https']
+  }
+}
+
+resource llmApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2025-03-01-preview' = {
+  parent: llmApi
+  name: 'policy'
+  properties: {
+    format: 'rawxml'
+    value: '''
+&lt;policies&gt;
+  &lt;inbound&gt;
+    &lt;base /&gt;
+    &lt;include-fragment fragment-id="standard-llm-chain" /&gt;
+    &lt;set-backend-service backend-id="${backendId}" /&gt;
+  &lt;/inbound&gt;
+  &lt;outbound&gt;
+    &lt;azure-openai-emit-token-metric namespace="Contoso/AI" /&gt;
+    &lt;base /&gt;
+  &lt;/outbound&gt;
+&lt;/policies&gt;
+'''
+  }
+}
+
+// main.bicep — composes the modules
+module fragment 'modules/llm-policy-fragment.bicep' = {
+  name: 'standard-llm-chain'
+  params: { apimName: 'contoso-apim' }
+}
+
+module customerApi 'modules/llm-api.bicep' = {
+  name: 'customer-discovery-api'
+  params: {
+    apimName: 'contoso-apim'
+    apiName: 'customer-discovery'
+    backendId: 'aoai-pool-prod'
+  }
+  dependsOn: [fragment]
+}
+
+module supportApi 'modules/llm-api.bicep' = {
+  name: 'support-summarizer-api'
+  params: {
+    apimName: 'contoso-apim'
+    apiName: 'support-summarizer'
+    backendId: 'aoai-pool-prod'
+  }
+  dependsOn: [fragment]
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/overview" target="_blank">Bicep</a>, the <a href="https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/service/policyfragments" target="_blank">policyFragments resource type</a>, and the <a href="https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/service/apis/policies" target="_blank">apis/policies resource type</a>. The fragment is defined once and referenced from every LLM API's policy chain via <code>&lt;include-fragment fragment-id="standard-llm-chain"/&gt;</code>. Updating the fragment updates all referencing APIs on the next deployment — the right reusability primitive for managing policy drift across many APIs.</div>
+
+<div class="code-wrap"><div class="code-lang">JSON</div><pre># Illustrative Azure Policy custom definition for AI workload baseline
+{
+  "properties": {
+    "displayName": "AI APIs must include the standard LLM policy fragment",
+    "policyType": "Custom",
+    "mode": "All",
+    "metadata": { "category": "AI Governance" },
+    "parameters": {
+      "effect": { "type": "String", "defaultValue": "Audit",
+                  "allowedValues": ["Audit", "Deny"] }
+    },
+    "policyRule": {
+      "if": {
+        "allOf": [
+          { "field": "type",
+            "equals": "Microsoft.ApiManagement/service/apis/policies" },
+          { "not": {
+              "field": "Microsoft.ApiManagement/service/apis/policies/value",
+              "contains": "include-fragment fragment-id=\"standard-llm-chain\""
+            }
+          }
+        ]
+      },
+      "then": { "effect": "[parameters('effect')]" }
+    }
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative custom Azure Policy definition. The policy audits (or denies, depending on parameter) any APIM API policy that doesn't include the standard LLM fragment. Bundled with related policies (tag mandates, encryption requirements, region restrictions) into an "AI Workload Baseline" initiative for assignment at the management-group or subscription scope.</div>
+
+<h3>What Azure is genuinely strong at — and the parallel-surface caveat</h3>
+
+<p>What Azure's GitOps and policy-as-code surface does well is real:</p>
+
+<ul>
+<li><strong>Bicep is well-engineered.</strong> Declarative syntax, idempotent semantics, type checking, full ARM resource coverage, mature module system, what-if preview before deployment. The authoring experience through VS Code is excellent.</li>
+<li><strong>APIM ARM resource coverage is comprehensive.</strong> Every APIM feature has a Bicep representation; new features ship to the ARM resource provider with their Bicep types simultaneously. Microsoft is honest about API version pinning recommendations.</li>
+<li><strong>Policy fragments are the right reusability primitive.</strong> The <code>&lt;include-fragment&gt;</code> pattern handles policy drift across many APIs cleanly.</li>
+<li><strong>Azure Policy is mature governance.</strong> Built-in policies cover most common compliance requirements; custom policy authoring is well-documented; initiatives compose policies into deployable bundles; exemptions provide a formal waiver mechanism with audit trails.</li>
+<li><strong>The CI/CD shape is industry-standard.</strong> Azure DevOps Pipelines and GitHub Actions both have first-class support; the <code>what-if</code> + apply pattern matches Terraform's plan/apply semantics.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest caveats</div>
+  <p>(1) <strong>Drift detection runs on a schedule, not continuously.</strong> Azure Policy compliance scans default to a ~24-hour cadence for many policy types; out-of-band changes to APIM policies or Foundry resources may go undetected within that window unless an on-demand scan is triggered. (2) <strong>The integration is Azure-native.</strong> For organizations whose institutional infra practice is K8s-native (Argo CD/Flux + OPA Gatekeeper/Kyverno), Bicep + Azure Policy is a parallel-tooling surface. The team operates two GitOps engines, two policy languages, two on-call playbooks. (3) <strong>Cross-cloud composition is constrained.</strong> Bicep is Azure-specific; multi-cloud teams using Bicep for Azure plus Terraform for AWS/GCP operate two IaC languages. Some teams use Terraform with the <code>azapi</code> provider for unified IaC, but Microsoft's recommended path is Bicep. (4) <strong>Policy-as-code expressiveness for AI-specific scenarios is custom-built.</strong> Most AI-specific governance (e.g., "all production AI APIs must use the standard guardrail chain") is custom Azure Policy work; Microsoft ships some baseline policies but the AI-specific policy library is institutional.</p>
+</div>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: K8s CRDs + Argo/Flux + OPA/Kyverno</span></div>
+
+<p>TrueFoundry's GitOps and policy-as-code surface is shaped by a deliberate architectural choice: <strong>the platform exposes its objects as Kubernetes Custom Resource Definitions</strong>, which means any K8s-native GitOps tooling (Argo CD, Flux, Rancher Fleet) and any K8s-native policy engine (OPA Gatekeeper, Kyverno) integrate without special configuration. Workspaces, virtual models, prompts, MCP server registrations, guardrails, deployments, secrets — all are CRDs in the customer's K8s cluster. The architectural property this produces: <em>AI platform infrastructure inherits whatever K8s infra-engineering practice the team already has</em>. Same GitOps engine, same policy language, same drift detection, same CI/CD shape, same review process. For organizations whose institutional infra practice is K8s-native, the integration is automatic; for those whose practice is something else, the trade-off is the inverse of the Azure analysis.</p>
+
+<h3>Layer 1 — Platform objects as Kubernetes CRDs</h3>
+
+<p>The CRD model means every TrueFoundry platform object is a regular K8s resource that <code>kubectl get</code> can list, <code>kubectl apply</code> can create or update, and the K8s API can reconcile through the platform's controllers. The relevant CRDs include:</p>
+
+<ul>
+<li><strong>Workspaces</strong> — the workspace boundary that bounds identity (Blog 2), FinOps (Blog 6), observability (Blog 8), MCP access (Blog 11). Mapped to a K8s namespace under the hood.</li>
+<li><strong>Virtual models</strong> — the abstraction from <a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html">Blog 4</a> with routing strategies and backend bindings.</li>
+<li><strong>Prompts</strong> — the versioned prompt objects from <a href="10-truefoundry-vs-azure-prompt-management-versioning.html">Blog 10</a> with alias resolution.</li>
+<li><strong>MCP server registrations</strong> — workspace-scoped MCP server objects from <a href="11-truefoundry-vs-azure-mcp-tool-governance-agent-runtime.html">Blog 11</a>.</li>
+<li><strong>Guardrails</strong> — the four-hook guardrail engine bindings from <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Blog 7</a>.</li>
+<li><strong>Deployments</strong> — Service, Job, Helm, Notebook from <a href="09-truefoundry-vs-azure-model-catalog-self-hosted-inference.html">Blog 9</a>'s deployment-shape continuity argument.</li>
+<li><strong>Secrets and named values</strong> — credentials and named-value pairs, integrated with K8s Secret resources.</li>
+</ul>
+
+<p>The architectural fact: <em>the team's existing K8s muscle applies directly</em>. <code>kubectl get virtualmodels -n research</code> lists virtual models in the research workspace; <code>kubectl describe prompt discovery -n ecommerce</code> shows the prompt object's full spec; <code>kubectl edit mcpserver customer-data</code> opens the MCP server registration in <code>$EDITOR</code>.</p>
+
+<h3>Layer 2 — Argo CD / Flux integration</h3>
+
+<p>K8s GitOps engines (Argo CD, Flux, Rancher Fleet) work by watching a Git repository, comparing the manifests in Git to the live cluster state, and reconciling differences continuously. Because TrueFoundry platform objects are CRDs, Argo CD's reconciliation loop applies to them identically to how it applies to Deployments, Services, and ConfigMaps. The team commits a YAML file describing a virtual model, prompt, or workspace; Argo syncs it into the cluster; the platform's controllers reconcile it into running configuration; if anyone makes an out-of-band change through the UI or CLI, Argo detects the drift in seconds and either auto-prunes or surfaces an alert.</p>
+
+<p>The standard pattern for AI platform GitOps:</p>
+
+<ul>
+<li><strong>Monorepo of Helm charts and Kustomize overlays.</strong> One repo holds the manifests for application services, AI platform objects, and shared infrastructure.</li>
+<li><strong>ApplicationSet or AppProject</strong> patterns in Argo CD scope which manifests sync where (e.g., <code>workspaces/research/*</code> syncs to the research workspace; <code>workspaces/customer-ops/*</code> syncs to customer-ops).</li>
+<li><strong>PR-driven workflow.</strong> Engineer opens a PR with a manifest change; CI runs <code>kubectl diff</code> or Argo's preview feature; PR review covers the diff; merge to main triggers Argo's sync; the change appears in the cluster within seconds.</li>
+<li><strong>Continuous reconciliation.</strong> Out-of-band changes (someone editing a CRD via <code>kubectl edit</code> or the UI) trigger Argo's drift alerts immediately. The team's incident-response time on configuration drift is measured in seconds, not in compliance-scan windows.</li>
+</ul>
+
+<h3>Layer 3 — OPA Gatekeeper / Kyverno as the policy engine</h3>
+
+<p>K8s teams that operate at any scale invariably operate one of <a href="https://open-policy-agent.github.io/gatekeeper/" target="_blank">OPA Gatekeeper</a> or <a href="https://kyverno.io/" target="_blank">Kyverno</a> for policy enforcement. Both engines work as admission controllers — when a manifest is applied (whether through GitOps or direct kubectl), the engine evaluates it against installed policies and either allows, denies, or mutates the request based on policy rules. Both engines have first-class support across all major managed K8s distributions.</p>
+
+<p>For AI platform CRDs, this means policies like:</p>
+
+<ul>
+<li><strong>"All virtual models in production workspaces must have the standard guardrail binding."</strong> A Kyverno ClusterPolicy with a match block on <code>VirtualModel</code> resources in <code>environment=prod</code> namespaces, validating that the spec includes the standard guardrail reference.</li>
+<li><strong>"All MCP server registrations must use managed_identity authentication, not API keys."</strong> A Gatekeeper ConstraintTemplate enforcing the auth-type field on MCP server CRDs.</li>
+<li><strong>"All deployments must specify resource requests and limits."</strong> A standard K8s policy that applies to TrueFoundry deployment CRDs as much as to native Deployments.</li>
+<li><strong>"All prompts in regulated workspaces must include the compliance metadata fields."</strong> A custom policy validating that prompt CRDs in specific workspaces have the required spec fields.</li>
+</ul>
+
+<p>The architectural fact: <em>the policy engine is engine-and-language the team's security team already operates</em>. The same Rego or Kyverno DSL the team uses for K8s-workload policies applies to AI platform CRDs. The same compliance dashboard the team operates for K8s policies covers AI platform compliance. There's no separate AI-policy-language to learn or AI-policy-tool to operate.</p>
+
+<h3>Layer 4 — The <code>tfy apply</code> CLI for kubectl-style ergonomics</h3>
+
+<p>For teams who prefer CLI-driven workflows over GitOps reconciliation, the <code>tfy</code> CLI provides kubectl-style ergonomics. <code>tfy apply -f workspace.yaml</code> applies a workspace manifest; <code>tfy get virtualmodels</code> lists virtual models; <code>tfy describe prompt discovery</code> shows the full spec. The CLI is itself a thin layer over the K8s API — anything <code>tfy</code> can do, <code>kubectl</code> with the right CRD permissions can also do.</p>
+
+<p>This ergonomic continuity matters because it means the team's CI/CD pipelines don't need a TrueFoundry-specific deployment task. A standard <code>kubectl apply -k overlays/prod</code> command (or <code>argocd app sync</code>) deploys application services and AI platform objects in one step. The CI/CD pipeline shape for AI platform is the same as for everything else.</p>
+
+<h3>The TrueFoundry GitOps/policy-as-code topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry GitOps and policy topology">
+<defs>
+  <linearGradient id="bgTf12" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf12sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf12" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgTf12)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry GitOps + policy — K8s CRDs + Argo/Flux + OPA/Kyverno</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Platform objects as CRDs. Same GitOps engine and policy language as the rest of the team's K8s practice. Continuous drift detection.</text>
+
+<!-- Source -->
+<rect x="40" y="110" width="200" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="140" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">K8s manifest monorepo</text>
+<text x="140" y="158" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Helm charts · Kustomize</text>
+<text x="140" y="178" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">app + AI platform together</text>
+
+<line x1="240" y1="150" x2="290" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf12)"/>
+
+<!-- Argo CD -->
+<rect x="290" y="110" width="200" height="80" rx="10" fill="#260f08" stroke="#FF5533" stroke-width="2.5"/>
+<text x="390" y="132" text-anchor="middle" fill="#FFB39C" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">ARGO CD / FLUX</text>
+<text x="390" y="152" text-anchor="middle" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">continuous reconciler</text>
+<text x="390" y="172" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">drift detection: seconds</text>
+
+<line x1="490" y1="150" x2="540" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf12)"/>
+
+<!-- K8s API -->
+<rect x="540" y="110" width="220" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="2"/>
+<text x="650" y="132" text-anchor="middle" fill="#FFB39C" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">KUBERNETES API</text>
+<text x="650" y="152" text-anchor="middle" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">CRD reconciliation</text>
+<text x="650" y="172" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">controllers · admission</text>
+
+<line x1="760" y1="150" x2="810" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf12)"/>
+
+<!-- TrueFoundry CRDs -->
+<rect x="810" y="110" width="430" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="830" y="136" fill="#FFB39C" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">TRUEFOUNDRY CRDs IN CUSTOMER CLUSTER</text>
+<text x="830" y="156" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Workspaces · VirtualModels · Prompts · MCPServers</text>
+<text x="830" y="172" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Guardrails · Deployments · Secrets</text>
+
+<!-- CRD list panel -->
+<rect x="40" y="220" width="600" height="170" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.4"/>
+<text x="60" y="246" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PLATFORM OBJECTS AS CRDs — kubectl-managed</text>
+
+<rect x="60" y="266" width="270" height="34" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="80" y="288" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">tfy.com/v1.Workspace</text>
+
+<rect x="60" y="304" width="270" height="34" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="80" y="326" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">tfy.com/v1.VirtualLLMModel</text>
+
+<rect x="60" y="342" width="270" height="34" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="80" y="364" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">tfy.com/v1.Prompt</text>
+
+<rect x="350" y="266" width="270" height="34" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="370" y="288" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">tfy.com/v1.MCPServer</text>
+
+<rect x="350" y="304" width="270" height="34" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="370" y="326" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">tfy.com/v1.GuardrailBinding</text>
+
+<rect x="350" y="342" width="270" height="34" rx="6" fill="#1f0d08" stroke="#FF5533" stroke-width="1"/>
+<text x="370" y="364" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">tfy.com/v1.Service · Job · Helm</text>
+
+<!-- Policy engines panel -->
+<rect x="660" y="220" width="580" height="170" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="2"/>
+<text x="680" y="246" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">POLICY ENGINES — same as rest of K8s practice</text>
+
+<rect x="680" y="266" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="700" y="288" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">OPA Gatekeeper · Rego policies + ConstraintTemplates</text>
+
+<rect x="680" y="304" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="700" y="326" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Kyverno · YAML-based ClusterPolicy / Policy</text>
+
+<rect x="680" y="342" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="700" y="364" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">Validating + Mutating + Generating policies as admission control</text>
+
+<!-- Drift detection -->
+<rect x="40" y="420" width="600" height="140" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="1.4"/>
+<text x="60" y="446" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">DRIFT DETECTION — continuous</text>
+
+<rect x="60" y="466" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="80" y="488" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Argo CD reconciliation loop runs continuously</text>
+
+<rect x="60" y="506" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="80" y="528" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Out-of-band changes detected within seconds</text>
+
+<text x="60" y="552" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Auto-prune or alert based on Application policy</text>
+
+<!-- Coherence -->
+<rect x="660" y="420" width="580" height="140" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="1.4"/>
+<text x="680" y="446" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">COHERENCE FIT</text>
+
+<rect x="680" y="466" width="540" height="34" rx="6" fill="#0c1d12" stroke="#1e3a2c" stroke-width="0.8"/>
+<text x="700" y="488" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ K8s-native teams: institutional muscle applies directly</text>
+
+<rect x="680" y="506" width="540" height="34" rx="6" fill="#1a1200" stroke="#F4C04F" stroke-width="1"/>
+<text x="700" y="528" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">◐ Azure-anchored teams: K8s practice is the prerequisite</text>
+
+<text x="680" y="552" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Coherence is a function of existing institutional choice</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry GitOps and policy topology — platform objects as Kubernetes CRDs synced through Argo CD or Flux, with K8s-native policy engines (OPA Gatekeeper, Kyverno) providing admission-control enforcement. Continuous reconciliation produces drift detection in seconds.</div>
+
+<h3>What the operator writes — Argo CD ApplicationSet + Kyverno policy</h3>
+
+<p>The YAML below shows a working configuration: an Argo CD Application that syncs AI platform manifests from Git, a Kyverno ClusterPolicy enforcing a guardrail-binding requirement on production virtual models, and example platform CRD manifests:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Argo CD Application — syncs AI platform manifests from Git
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-platform-research
+  namespace: argocd
+spec:
+  project: ai-platform
+  source:
+    repoURL: https://git.contoso.com/platform/ai-monorepo
+    targetRevision: main
+    path: workspaces/research/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ws-research
+  syncPolicy:
+    automated:
+      prune: true              # delete out-of-band resources
+      selfHeal: true           # auto-correct drift
+    syncOptions:
+      - CreateNamespace=true
+
+---
+# Kyverno ClusterPolicy — enforce guardrail binding on prod virtual models
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: virtual-models-need-guardrails
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: production-vm-must-have-guardrails
+      match:
+        any:
+          - resources:
+              kinds:
+                - tfy.com/v1/VirtualLLMModel
+              namespaceSelector:
+                matchLabels:
+                  environment: prod
+      validate:
+        message: |
+          Production virtual models must reference the standard guardrail binding.
+          Add: spec.guardrails.bindingRef: standard-prod-guardrails
+        pattern:
+          spec:
+            guardrails:
+              bindingRef: "standard-prod-guardrails"
+
+---
+# Example virtual model manifest — committed to Git, synced by Argo
+apiVersion: tfy.com/v1
+kind: VirtualLLMModel
+metadata:
+  name: research-prod
+  namespace: ws-research
+  labels:
+    environment: prod
+spec:
+  mode: chat-completions
+  routing:
+    - default:
+        strategy: latency-aware
+        backends:
+          - { provider: azure-openai, model: gpt-4o, weight: 100, priority: 1 }
+  guardrails:
+    bindingRef: standard-prod-guardrails    # required by Kyverno policy
+  metadata:
+    required: [team, project_id, environment]
+
+---
+# Example MCP server registration manifest
+apiVersion: tfy.com/v1
+kind: MCPServer
+metadata:
+  name: customer-data
+  namespace: ws-research
+spec:
+  url: https://customer-data-mcp.internal.contoso.com/mcp
+  state: enabled
+  auth:
+    type: managed_identity
+    target: customer-data-api.contoso.com
+  rate_limit: { requests_per_minute: 1000 }
+  allowed_tools: [lookup_customer, list_accounts, get_account_history]</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition consistent with K8s GitOps standard practice (<a href="https://argo-cd.readthedocs.io/" target="_blank">Argo CD documentation</a>) and the <a href="https://kyverno.io/policies/" target="_blank">Kyverno policy library</a>. The Argo CD Application syncs the prod-research workspace; the Kyverno ClusterPolicy enforces the standard guardrail binding on all production virtual models; the platform CRD manifests are the source of truth for the workspace's configuration. Out-of-band changes through the UI or <code>tfy edit</code> trigger Argo's drift detection within seconds; if the drift violates the Kyverno policy, the admission controller blocks the change at the K8s API level.</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>One GitOps engine across all infrastructure.</strong> Application services and AI platform objects sync through the same Argo CD or Flux instance. The team's existing GitOps muscle applies directly. (2) <strong>One policy language across all infrastructure.</strong> The same Kyverno or OPA policies that cover application K8s workloads cover AI platform CRDs. The security team's policy authors don't specialize in two languages. (3) <strong>Continuous drift detection.</strong> Out-of-band changes are visible in Argo's UI within seconds; auto-prune or auto-heal closes the loop without requiring scheduled compliance scans. (4) <strong>Same CI/CD pipeline.</strong> AI platform deployments use the team's existing Helm chart deployment shape, the same <code>kubectl diff</code> in CI, the same review process, the same approval flow. (5) <strong>Multi-cloud portability.</strong> The K8s GitOps shape works identically on AKS, EKS, GKE, on-prem, and sovereign-cloud clusters. The same manifest deploys to any K8s — the cluster context determines where it lands. (6) <strong>Skills coherence.</strong> A platform engineer who knows Argo CD and Kyverno can operate the AI platform infrastructure without learning a new tool stack. New team members onboard onto the same K8s practice the rest of the team operates.</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Three platform-engineering scenarios compared</h2>
+
+<p>The three scenarios below walk concrete platform-engineering moments where GitOps and policy-as-code architecture decides the operational outcome. Each is shown side by side under both products.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">Out-of-band APIM policy edit during incident response</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A platform engineer responds to an incident at 2 AM and edits an APIM policy directly through the Azure portal to add a temporary rate-limit. The fix works; the engineer goes back to sleep. The team's Bicep monorepo is now out of sync with the live cluster. The team needs to know about the drift quickly.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Azure Policy compliance scans run on a scheduled cadence (default ~24 hours for many policy types). If the team has a policy that audits "APIM policy XML must match the deployed Bicep manifest" — which is non-trivial to express in Azure Policy and requires custom policy authoring — the drift may be detected on the next scan, up to 24 hours after the change. Without such a custom policy, the drift is invisible until someone redeploys the Bicep monorepo and ARM applies the previous configuration, potentially undoing the 2 AM hotfix or producing a confusing diff. The standard mitigation: institutional discipline ("never edit through the portal in production") plus periodic manual reconciliation reviews. <em>Workable but the architecture's drift detection is scheduled rather than continuous.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Argo CD's reconciliation loop runs continuously. The 2 AM portal/CLI edit is detected within seconds — the live CRD state diverges from Git, Argo's UI shows the drift, the team's Slack receives a drift alert. Depending on the Application's sync policy, Argo either auto-prunes (reverts the change) or holds for human review. The platform engineer in the morning sees: "Drift detected: the rate-limit was changed at 2 AM. Approve the change to commit it to Git, or sync to revert." The drift is visible immediately, the resolution path is explicit, and the system never gets to a state where the config-source-of-truth is unclear. <em>Direct fit; the architecture's drift detection is the design intent of K8s GitOps.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">Multi-team rollout of a new organization-wide compliance policy</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The security team needs to roll out a new policy across the entire AI platform: all production AI APIs and virtual models must include the standard guardrail chain (the four-hook engine from Blog 7 with specified content categories). The rollout has to be enforced going forward and audited backward (which existing resources don't comply).</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The security team writes a custom Azure Policy definition (the JSON pattern from §2) checking for the <code>&lt;include-fragment fragment-id="standard-llm-chain"/&gt;</code> reference in APIM policy XML. Bundles it with related policies into an "AI Workload Baseline" initiative. Assigns the initiative at the management-group or subscription scope with effect=Audit initially to discover non-compliant resources, then promotes to effect=Deny once the team has remediated existing non-compliance. The compliance dashboard shows pass/fail per-resource over time. Policy authoring requires the security team's Azure Policy specialists; the policy DSL is JSON-based with limited expressive power compared to Rego or Kyverno. <em>Workable; the architecture's policy primitive is mature for the workloads it targets.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The security team writes a Kyverno ClusterPolicy (the pattern from §3) matching <code>VirtualLLMModel</code> resources in production namespaces, validating that <code>spec.guardrails.bindingRef</code> equals the standard binding. The policy is committed to the policy monorepo Argo syncs; once applied, K8s admission control blocks any new resource that doesn't comply. For backward audit, Kyverno's policy reports show all existing non-compliant resources. The policy language is the same Kyverno DSL the security team already uses for K8s workload policies. <em>Direct fit; the policy authoring is a delta to the team's existing Kyverno practice rather than a separate policy specialty.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">A platform team unifying tooling across 200 services + AI workloads</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The Munich audit scenario closes here. The platform team operates 200 services on K8s through Argo CD + Kyverno, plus AI workloads through Bicep + Azure Policy. The audit recommends consolidating onto one tooling shape. The team needs to decide which way to consolidate.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The team would need to migrate 200 services from Argo CD + Kyverno to Bicep (or Terraform with the <code>azapi</code> provider) + Azure Policy. This migration is a large undertaking — 200 services × four years of accumulated GitOps practice = months of work to redeploy and revalidate. The K8s clusters themselves can be managed through Bicep as Azure resources, but the workloads inside them lose Argo's continuous reconciliation. The team's Kyverno policies would need to be rewritten in Azure Policy. The skills bifurcation reverses: the 12 platform engineers who deeply know Argo + Kyverno would need to learn Bicep + Azure Policy. <em>Theoretically possible; practically a multi-quarter migration that abandons institutional muscle.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The team migrates AI platform infrastructure from Bicep + Azure Policy to K8s CRDs + Argo CD + Kyverno. The migration is bounded — only the AI workloads are affected (~5% of the total infrastructure surface). The 200 services and their K8s practice are unchanged. The 14 Azure Policy rules covering AI workloads are translated to Kyverno policies (mostly mechanical, some require expressivity adjustments). The 12 platform engineers' existing Argo + Kyverno muscle applies directly. The skills bifurcation is resolved in favor of the institutional choice the team already operates at scale. <em>Direct fit; the tooling consolidation aligns with the team's existing institutional practice rather than against it.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The GitOps and policy-as-code comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>GitOps / policy property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>IaC language</strong></td><td><span class="check">✅</span> Bicep (recommended) or ARM JSON or Terraform <code>azapi</code></td><td><span class="check">✅</span> K8s YAML manifests through any K8s tooling (Helm, Kustomize, plain YAML)</td><td>Both first-class; coherence depends on existing institutional choice.</td></tr>
+<tr><td><strong>Resource coverage</strong></td><td><span class="check">✅</span> Comprehensive ARM resource tree for APIM, AOAI, Foundry</td><td><span class="check">✅</span> Comprehensive CRD set for all platform objects</td><td>Both cover the full platform surface.</td></tr>
+<tr><td><strong>Reusable composition primitive</strong></td><td><span class="check">✅</span> Bicep modules + APIM policy fragments</td><td><span class="check">✅</span> Helm charts + Kustomize overlays</td><td>Both first-class for template reuse.</td></tr>
+<tr><td><strong>GitOps engine integration</strong></td><td><span class="partial">◐</span> Through CI/CD push pattern (Azure DevOps, GitHub Actions)</td><td><span class="check">✅</span> Native pull-based reconciliation (Argo CD, Flux)</td><td>Pull-based GitOps is structurally different from push-based CI/CD.</td></tr>
+<tr><td><strong>Drift detection cadence</strong></td><td><span class="partial">◐</span> Scheduled (~24h default for many policy types)</td><td><span class="check">✅</span> Continuous (seconds)</td><td>Decisive for incident-response time on configuration drift.</td></tr>
+<tr><td><strong>Policy engine</strong></td><td><span class="check">✅</span> Azure Policy (built-in + custom + initiatives)</td><td><span class="check">✅</span> OPA Gatekeeper or Kyverno (industry-standard K8s policy engines)</td><td>Both first-class; coherence depends on existing institutional practice.</td></tr>
+<tr><td><strong>Policy DSL expressiveness</strong></td><td><span class="partial">◐</span> JSON-based with documented effect set</td><td><span class="check">✅</span> Rego (Gatekeeper) or YAML-based (Kyverno) — richer expressiveness</td><td>For complex policies; both are mature for common cases.</td></tr>
+<tr><td><strong>Plan/preview before apply</strong></td><td><span class="check">✅</span> <code>az deployment what-if</code></td><td><span class="check">✅</span> <code>kubectl diff</code> + Argo's preview UI</td><td>Both first-class.</td></tr>
+<tr><td><strong>Auto-heal on drift</strong></td><td><span class="cross">✕</span> Not first-class (requires custom remediation actions)</td><td><span class="check">✅</span> Argo's <code>selfHeal: true</code></td><td>For configuration that should always match Git.</td></tr>
+<tr><td><strong>Compliance dashboard</strong></td><td><span class="check">✅</span> Azure Policy compliance dashboard</td><td><span class="check">✅</span> Kyverno policy reports / Gatekeeper violations</td><td>Both first-class.</td></tr>
+<tr><td><strong>Multi-cloud portability</strong></td><td><span class="cross">✕</span> Bicep is Azure-specific</td><td><span class="check">✅</span> K8s manifests work on any cloud's K8s</td><td>For multi-cloud teams.</td></tr>
+<tr><td><strong>Coherence with K8s-native infra practice</strong></td><td><span class="cross">✕</span> Parallel-surface tooling cost</td><td><span class="check">✅</span> Direct integration</td><td>Decisive for K8s-native organizations.</td></tr>
+<tr><td><strong>Coherence with Azure-anchored infra practice</strong></td><td><span class="check">✅</span> Direct integration</td><td><span class="cross">✕</span> Requires K8s practice as prerequisite</td><td>Decisive for Azure-anchored organizations.</td></tr>
+<tr><td><strong>Plan/apply ergonomics</strong></td><td><span class="check">✅</span> Mature; what-if + apply pattern</td><td><span class="check">✅</span> kubectl apply / argocd app sync</td><td>Both well-engineered.</td></tr>
+<tr><td><strong>CI/CD pipeline shape</strong></td><td><span class="check">✅</span> Standard Azure DevOps / GitHub Actions tasks</td><td><span class="check">✅</span> Standard K8s CI/CD (Argo, Flux, or any push-based)</td><td>Both industry-standard for their respective ecosystems.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict + series close</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">For organizations whose institutional infra-engineering practice is Azure-anchored — Bicep as the IaC language, Azure DevOps or GitHub Actions for CI/CD, Azure Policy as the governance plane, ARM as the resource model — Azure's GitOps and policy-as-code surface is institutional muscle. The Bicep module system, the comprehensive APIM ARM resource tree (including policy fragments as the right reusability primitive), Azure Policy's built-in and custom policies with initiative composition, and the standard <code>what-if</code> + apply pattern are all genuinely well-engineered. For teams whose existing infrastructure runs on this shape, AI platform infrastructure that integrates into it inherits the same review process, approval flow, drift detection, and on-call playbook as everything else. The integration is mature and the tooling coherence is automatic.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> Bicep + Azure Policy is the institutional infra-engineering practice for the rest of the stack, the team's CI/CD pipelines run on Azure-native deploy tasks, Azure Policy initiatives are the central security/compliance governance surface, the AI platform should inherit whatever ARM-resource discipline applies elsewhere, or the existing platform-engineering team's depth is in Azure-anchored tooling.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">For organizations whose institutional infra-engineering practice is K8s-native — Argo CD or Flux as the GitOps reconciler, OPA Gatekeeper or Kyverno as the policy engine, K8s CRDs as the resource model — TrueFoundry's GitOps and policy-as-code surface inherits the team's existing practice directly. Platform objects as CRDs means <code>kubectl get/apply/edit/describe</code> works immediately. Argo CD's continuous reconciliation produces drift detection in seconds rather than scheduled scan windows. Kyverno or OPA Gatekeeper applies the same policy DSL the team uses for K8s workload policies. The CI/CD pipeline shape is identical to application services. For K8s-native organizations, the cumulative tooling-coherence advantage compounds across the lifetime of the AI program.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> the team's existing GitOps practice runs on Argo CD or Flux, policy enforcement uses OPA Gatekeeper or Kyverno, AI platform infrastructure should integrate into the same single GitOps pipeline as application services, multi-cloud portability is part of the strategy, or tooling coherence (one set of platform-engineering tools across all workloads) is operationally decisive.</div>
+  </div>
+</div>
+
+<p>The most honest framing is the framing this blog has carried throughout: <em>tooling coherence is a property of the integration with existing institutional practice, not a property of the tool in isolation</em>. Both products' GitOps and policy-as-code surfaces are well-engineered. Bicep is excellent IaC; Azure Policy is mature governance; <code>what-if</code> + apply is a well-designed deployment pattern. Equally, K8s CRDs are first-class resource modeling; Argo CD's reconciliation is well-engineered; Kyverno and OPA Gatekeeper are battle-tested policy engines. The right answer for any specific organization depends on which institutional shape they already operate.</p>
+
+<h3>The series-wide closing argument</h3>
+
+<p>Across twelve blogs, this series has walked twelve dimensions of architectural difference between TrueFoundry and Azure for AI platform engineering. The dimensions composed something coherent. Movement I (Foundations: Architecture, Identity, Deployment) established the structural shape — control plane separations, K8s-native physical isolation versus Azure RBAC scopes, customer-cloud deployment versus Azure-anchored deployment paths. Movement II (Hot path: Routing, Caching, FinOps, Guardrails) walked the request lifecycle's most performance-sensitive pieces — virtual-model abstraction versus APIM backend pools, semantic caching with inverse threshold conventions, six-to-eight dimension FinOps attribution versus Azure Monitor's five-dimension cap, four-hook guardrails versus two-hook content safety. Movement III (Platform surface: Observability, Model Catalog, Prompt Management) walked the platform's developer-facing surface — OTel-first emit versus Azure Monitor anchoring, K8s-native self-hosted inference versus AI Hub managed compute, prompts-as-config versus Prompt-Flow-as-deployment. Movement IV (Agentic + operational: MCP, GitOps + Policy-as-Code) walked the closing operational dimensions — gateway-centric MCP governance versus agent-centric, K8s-native GitOps versus Azure-anchored Bicep.</p>
+
+<p>The pattern across the twelve dimensions is consistent. <strong>Azure's strengths cluster in workloads that fit Azure's institutional shape</strong> — Azure-anchored stacks, sold-by-Azure model portfolios, Microsoft enterprise SLA expectations, Azure-native observability, Azure-Policy governance, ARM-resource discipline. For those workloads, Microsoft has built a deeply integrated, mature, well-engineered platform that few products can match. <strong>TrueFoundry's strengths cluster in workloads that fit K8s-native institutional shape</strong> — multi-cloud or sovereign-cloud deployments, OTel-first observability, mixed closed-and-open-weights model portfolios, deploy-once-and-route-anywhere virtual models, four-hook guardrails for agentic systems, prompt-as-config decoupling, gateway-centric MCP governance, GitOps continuity with the rest of the team's K8s practice. For those workloads, the architectural choices compose into a coherent platform that's structurally simpler to operate than a parallel Azure-anchored surface would be.</p>
+
+<p>The right answer for any specific organization depends on the institutional starting point, the workload portfolio, and the trajectory the AI program is on. There is no universal best — there is best-fit. The most honest framing of the series is the framing the introduction blog promised: not <em>which product is better</em> but <em>which architectural choices fit which kinds of organizations</em>. Twelve dimensions of those choices are the inputs; the team's existing practice and forward strategy are the weights; the answer is whatever the weighted balance produces.</p>
+
+<h3>What we hope the series leaves with the reader</h3>
+
+<p>Three things, distilled. First, an architectural vocabulary for evaluating AI platforms that goes beyond feature checklists — control planes versus runtime planes, virtual models as abstraction primitives, four-hook governance shapes, prompt-as-config patterns, tooling coherence as the operational metric. Second, an honest assessment of where each product is genuinely strong and where each is structurally constrained — Azure's PTU fungibility and Foundry's deep integration are real; TrueFoundry's K8s-native deployment shape and provider-agnostic abstractions are equally real; the trade-offs between them are coherent. Third, a sense of how to connect AI platform decisions to the rest of the team's infrastructure-engineering practice — because tooling coherence compounds, and the platform choice that fits the team's existing institutional muscle is usually the right answer over the long run.</p>
+
+<p>If the series helped clarify which dimensions matter for your organization's AI platform decision — even if it confirmed you should stay on the path you're on — it accomplished what we hoped. Architectural decisions of this scale deserve rigor; the rigor pays off in years of operational productivity rather than in any single deployment.</p>
+
+<p style="margin-top:2.5rem; padding-top:1.5rem; border-top:1px solid var(--border); color:var(--ink-soft); font-style:italic;">Thank you for reading the full series. The complete index of all thirteen entries (Blog 0 introduction + Blogs 1-12) is available in §6 below for reference and for return visits when specific dimensions become relevant.</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+
+<h3>The complete TrueFoundry vs Azure series</h3>
+
+<p>For readers returning to the series for specific dimensions:</p>
+
+<ol class="ref-list">
+  <li><a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html"><strong>Blog 0</strong> — Series Introduction &amp; Master Matrix</a></li>
+  <li><a href="01-truefoundry-vs-azure-architecture-control-planes-runtime-boundaries.html"><strong>Blog 1</strong> — Architecture: Control Planes &amp; Runtime Boundaries</a></li>
+  <li><a href="02-truefoundry-vs-azure-identity-multi-tenancy-zero-trust.html"><strong>Blog 2</strong> — Identity, Multi-Tenancy &amp; Zero Trust</a></li>
+  <li><a href="03-truefoundry-vs-azure-deployment-data-residency-sovereignty.html"><strong>Blog 3</strong> — Deployment, Data Residency &amp; Sovereignty</a></li>
+  <li><a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html"><strong>Blog 4</strong> — Routing, Load-Balancing &amp; Failover</a></li>
+  <li><a href="05-truefoundry-vs-azure-caching-exact-semantic-prompt.html"><strong>Blog 5</strong> — Caching: Exact, Semantic, Prompt</a></li>
+  <li><a href="06-truefoundry-vs-azure-token-governance-finops-attribution.html"><strong>Blog 6</strong> — Token Governance &amp; FinOps Attribution</a></li>
+  <li><a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html"><strong>Blog 7</strong> — Guardrails &amp; the Four-Hook Model</a></li>
+  <li><a href="08-truefoundry-vs-azure-observability-otel-monitor.html"><strong>Blog 8</strong> — Observability: OpenTelemetry &amp; Azure Monitor</a></li>
+  <li><a href="09-truefoundry-vs-azure-model-catalog-self-hosted-inference.html"><strong>Blog 9</strong> — Model Catalog &amp; Self-Hosted Inference</a></li>
+  <li><a href="10-truefoundry-vs-azure-prompt-management-versioning.html"><strong>Blog 10</strong> — Prompt Management &amp; Versioning</a></li>
+  <li><a href="11-truefoundry-vs-azure-mcp-tool-governance-agent-runtime.html"><strong>Blog 11</strong> — MCP Tool Governance &amp; Agent Runtime</a></li>
+  <li><strong>Blog 12</strong> — GitOps &amp; Policy-as-Code <em>(this entry)</em></li>
+</ol>
+
+<h3>References for this entry</h3>
+
+<ol class="ref-list" start="14">
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/overview" target="_blank">Microsoft Learn — What is Bicep?</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement" target="_blank">Microsoft Learn — APIM ARM resource reference (full tree)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/service/policyfragments" target="_blank">Microsoft Learn — APIM policyFragments resource type</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/service/policies" target="_blank">Microsoft Learn — APIM policies resource type</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/governance/policy/overview" target="_blank">Microsoft Learn — Azure Policy overview</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/governance/policy/concepts/definition-structure" target="_blank">Microsoft Learn — Azure Policy definition structure</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/governance/policy/concepts/initiative-definition-structure" target="_blank">Microsoft Learn — Azure Policy initiative structure</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/deploy-what-if" target="_blank">Microsoft Learn — Bicep deployment what-if</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/modules" target="_blank">Microsoft Learn — Bicep modules</a></li>
+  <li><a href="https://argo-cd.readthedocs.io/" target="_blank">Argo CD — GitOps continuous delivery for Kubernetes</a></li>
+  <li><a href="https://fluxcd.io/" target="_blank">Flux CD — GitOps toolkit for Kubernetes</a></li>
+  <li><a href="https://open-policy-agent.github.io/gatekeeper/" target="_blank">OPA Gatekeeper — Policy controller for Kubernetes</a></li>
+  <li><a href="https://kyverno.io/" target="_blank">Kyverno — Kubernetes policy engine</a></li>
+  <li><a href="https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/" target="_blank">Kubernetes — Custom Resources documentation</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/overview" target="_blank">TrueFoundry Docs — Platform overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/cli/tfy-apply" target="_blank">TrueFoundry Docs — tfy apply CLI</a></li>
+  <li><a href="https://www.truefoundry.com/docs/deployments/service" target="_blank">TrueFoundry Docs — Service deployments (K8s-native shape)</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 12 of 12 · April 2026 · <a href="11-truefoundry-vs-azure-mcp-tool-governance-agent-runtime.html">← Blog 11 — MCP &amp; Agent Runtime</a> · <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Series Index →</a>
+</p>
+</body>
+</html>
