@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="APIM's llm-content-safety with Azure AI Content Safety covers two hooks (LLM Input + LLM Output) with best-in-class category models, Prompt Shields, and Groundedness Detection. TrueFoundry's four hooks (LLM Input, LLM Output, MCP Pre-Tool, MCP Post-Tool) close the tool-boundary gap for agentic systems — with Validate/Mutate execution modes and Enforce/EBIE/Audit failure-handling strategies that make new-guardrail rollout safe against real production traffic."/>
+<title>Guardrails &amp; the Four-Hook Model: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement II · Hot path</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 7 of 12</span>
+</div>
+
+<h1>Guardrails &amp; the Four-Hook Model: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 32 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 AI Safety · Platform Security · Agent Engineering</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for the <code>llm-content-safety</code> policy (categories, severity levels, <code>shield-prompt</code>, <code>enforce-on-completions</code>, blocklists, streaming-buffer behavior), the Azure AI Content Safety overview (Hate / SelfHarm / Sexual / Violence categories, FourSeverityLevels and EightSeverityLevels output types, Prompt Shields, Groundedness Detection, Protected Material, Task Adherence, the 10K character per-request limit and 1K character minimum scan length), and the Content Safety "what's new" page documenting Task Adherence as the newest feature. The TrueFoundry side is grounded in the Guardrails documentation (the four hook points: LLM Input, LLM Output, MCP Pre-Tool, MCP Post-Tool), the Guardrail Modes documentation (Validate vs Mutate execution flow), and the Guardrail Strategies documentation (Enforce, Enforce-But-Ignore-On-Error, Audit). Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog closes Movement II and assumes the routing, caching, and FinOps surfaces from Blogs 4-6.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Most safety-policy comparisons walk content categories. Hate, sexual, violence, self-harm — the "what" of harmful content. The "what" matters, but for AI systems that use tools, the more consequential question is the <em>where</em>. <strong>How many points in the request flow can a guardrail intercept?</strong> An AI agent that calls tools has a request lifecycle with at least four enforcement points: the user's prompt before it reaches the LLM (LLM Input), the LLM's text response before it reaches the user (LLM Output), the LLM's tool call before it reaches the tool (MCP Pre-Tool), and the tool's response before it reaches the LLM's next turn (MCP Post-Tool). APIM's <code>llm-content-safety</code> policy covers two — input and output — using Azure AI Content Safety. <strong>TrueFoundry's guardrail engine covers all four hooks as first-class primitives</strong>, with two execution modes (Validate runs guardrails in parallel with cancel-on-fail; Mutate runs them sequentially by priority for content modification) and three failure-handling strategies (Enforce, Enforce-But-Ignore-On-Error, Audit). For text-only LLM workloads the gap is small. For tool-using agents the gap is decisive — and tool-using agents are increasingly the workloads that matter.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A guardrail incident that becomes a hook-coverage question</div>
+<p>An IT-support team at a 12,000-person enterprise rolls out an internal AI assistant in late February. The assistant has access to four tools through MCP: <code>read_ticket</code>, <code>create_ticket</code>, <code>read_kb_article</code>, and — gated behind a feature flag for the team's tier-2 support engineers — <code>read_employee_record</code>. The architecture is competent. Input guardrails through Azure AI Content Safety check user prompts for jailbreak attempts and harmful content; output guardrails check LLM responses before they reach the user; the four content-safety categories are configured at threshold 4. Pen-testing before launch found no exploitable injection paths through prompts or completions. Production rolls out at the end of the month.</p>
+<p>Three weeks later, an internal red-team exercise finds something the pre-launch pen-test missed. The exploit path: a tier-2 engineer (who legitimately has the <code>read_employee_record</code> tool) is socially engineered into pasting an attacker-supplied document into the assistant. The document contains a benign-looking instruction sentence in a context the engineer doesn't realize is adversarial. The LLM, processing the document content, generates a tool call: <code>read_employee_record(employee_id="12345")</code> — for an employee whose record the engineer has no business reason to read. The input guardrail saw the user's prompt: pasting the document. Threshold-4 content categories cleared it. Prompt Shields saw an indirect-injection attempt but rated it below the block threshold. The output guardrail saw the LLM's response: a confirmation message saying the lookup was performed. Threshold-4 content categories cleared that too. <em>Neither guardrail saw the tool call itself</em> — the structured invocation that, in the request lifecycle, sits between the LLM's reasoning step and the actual tool execution.</p>
+<p>The red-team's writeup is precise. The architectural gap is not in the content categories — those did exactly what they were configured to do. The gap is in the hook coverage: input and output are inspected; the tool boundary is not. A guardrail running at the MCP Pre-Tool hook would have inspected the tool call's parameters before execution, applied a parameter-validation policy (employee_id reads must match employee_id from the authenticated user's reporting chain), and either blocked the tool call or routed it to a human reviewer. A guardrail running at the MCP Post-Tool hook would have inspected the tool's response before it returned to the LLM's next turn, applied a sensitive-data policy, and prevented secrets from making the round-trip back into the next prompt. <em>Neither hook exists in the deployed architecture.</em></p>
+<p>The remediation is two months of work. The team builds custom MCP middleware that inspects tool calls before they reach the MCP server and tool responses before they return to the model. They add a parameter-validation step keyed to employee directory data. They add an audit log for every tool invocation with the full call+response captured. They add human-in-the-loop review for sensitive tool calls with privilege escalation. The fix works, but the team has built — at considerable cost — what their AI gateway should have provided as a first-class primitive. The architectural lesson is one this blog is about: <em>guardrail comparisons that walk content categories miss the hook-coverage question, and for tool-using agents the hook-coverage question is the one that decides safety</em>.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Azure: <code>llm-content-safety</code> covers two hooks — input + output.</strong> Backed by Azure AI Content Safety with Hate / SelfHarm / Sexual / Violence categories and configurable severity thresholds (0–7, lower = stricter). Prompt Shields adds jailbreak detection on input. Groundedness Detection adds RAG-grounding evaluation on output. Protected Material and Custom Categories are first-class. <strong>The MCP-tool boundary is not a first-class hook.</strong> Task Adherence (the newest Content Safety feature) is the closest equivalent for tool-call inspection but operates at a different architectural layer.</li>
+    <li><strong>TrueFoundry: four hooks as first-class primitives.</strong> LLM Input, LLM Output, MCP Pre-Tool, MCP Post-Tool. Each hook is a configurable checkpoint that can attach guardrails. Two execution modes: <strong>Validate</strong> (guardrails run in parallel; if any fails, the request is canceled — fast for safety checks) and <strong>Mutate</strong> (guardrails run sequentially by priority order; each can modify the payload — for content rewriting). Three strategies: <strong>Enforce</strong> (block on any failure), <strong>Enforce-But-Ignore-On-Error</strong> (block on policy violation, allow on infrastructure error), <strong>Audit</strong> (never block; emit observability data only).</li>
+    <li><strong>Streaming behavior matters and both products handle it.</strong> APIM's stream handler buffers events in a sliding window and stops forwarding when a violation is detected (no 403 — the stream just terminates). TrueFoundry's hook engine has equivalent streaming semantics for output guardrails.</li>
+    <li><strong>Honest framing.</strong> For text-only chatbot workloads, APIM's two-hook coverage is sufficient and the Azure AI Content Safety integration is genuinely best-in-class — the model quality, the language coverage, the Prompt Shields and Groundedness Detection, the deep integration with Foundry. For tool-using agent workloads, the four-hook architecture is structurally better-fit because the tool boundary is where privilege escalation happens.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when the workload is text-only LLM (no tool use), when Azure AI Content Safety's category coverage and language support are required, when Prompt Shields and Groundedness Detection are mission-critical, or when the team has institutional muscle around Azure AI Content Safety as the safety surface across multiple workloads.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when the workload uses tools (MCP servers, function-calling agents), when the safety review specifically requires guardrails on tool calls and tool responses, or when validate vs mutate semantics with explicit failure-handling strategies are operationally valuable. Especially decisive for agentic systems where the tool boundary is the privilege-escalation surface.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Why this closes Movement II</div>
+    <div class="qp-desc">Guardrails close the hot-path movement because they sit on top of routing, caching, and FinOps — every request that gets routed and metered also has to be inspected. The hook count is the architectural property that determines whether tool-using agents can be operated with the same safety surface as text-only LLMs.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — The hook-coverage question</a></li>
+    <li><a href="#azure">§2 — Azure: <code>llm-content-safety</code> + Azure AI Content Safety</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: four hooks, two modes, three strategies</a></li>
+    <li><a href="#scenarios">§4 — Three guardrail scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — The hook-coverage question</h2>
+
+<p class="intro-lead">Guardrail comparisons that walk content categories find feature parity quickly. Hate, sexual, violence, self-harm — both products cover the four standard categories. Both have jailbreak detection. Both support custom blocklists. Both handle streaming. The category-coverage comparison is correct but skips the architectural question that decides whether the guardrails actually catch the incidents the team is trying to prevent.</p>
+
+<p>The architectural question is <em>where</em>: at how many points in the request lifecycle can a guardrail intercept and act? For a text-only chatbot, two points are sufficient — the user's prompt before the LLM sees it (input), and the LLM's response before the user sees it (output). For a tool-using agent, two points are not enough; the tool boundary is a third and fourth point that need their own enforcement, because tool calls are where structured privilege escalation happens and tool responses are where sensitive data leaves the trust boundary.</p>
+
+<h3>The four hooks of an agentic request lifecycle</h3>
+
+<p>Walking the lifecycle of an agentic request explicitly:</p>
+
+<ol>
+<li><strong>LLM Input hook.</strong> The user's prompt arrives at the gateway. Before the gateway forwards to the LLM, the input hook can inspect: prompt content (harmful categories, blocklist matches), prompt structure (jailbreak patterns, indirect injection in attached documents), and metadata (caller identity, request class). Both products implement this hook.</li>
+<li><strong>LLM Output hook.</strong> The LLM's response arrives at the gateway. Before the gateway returns to the user, the output hook can inspect: response content (harmful categories), response structure (PII leakage, protected material), and grounding (whether RAG-context was correctly used). Both products implement this hook.</li>
+<li><strong>MCP Pre-Tool hook.</strong> The LLM has decided to call a tool. The gateway has parsed the structured tool call from the LLM response. Before the gateway forwards the call to the MCP server, the pre-tool hook can inspect: tool name (allowed tools for this caller), parameters (parameter-validation policies, sensitive-value detection), and reasoning (why is the LLM calling this tool with these args). <em>This hook is the architectural piece that the IT-support red-team scenario at the top required.</em></li>
+<li><strong>MCP Post-Tool hook.</strong> The tool has returned a response to the gateway. Before the gateway returns the response into the LLM's next-turn context, the post-tool hook can inspect: tool response content (sensitive data leakage), response structure (PII, secrets, internal identifiers), and consistency (does the response match what the call requested). <em>This hook is what prevents secret-leakage from tool responses round-tripping back into prompts.</em></li>
+</ol>
+
+<h3>Why hooks 3 and 4 matter even when hooks 1 and 2 are well-configured</h3>
+
+<p>The IT-support scenario at the top of this blog is precisely the failure mode of a two-hook architecture trying to protect a four-hook lifecycle. Input was inspected; the document was not classified as harmful. Output was inspected; the response did not contain harmful content. <em>Neither inspection saw the tool call</em> — and the tool call was where the privilege escalation happened. This is not a failure of the categories; threshold-4 was correct. It is not a failure of Prompt Shields; it caught the indirect-injection attempt but rated it below block-threshold (correctly — it was a benign-looking instruction). The failure is structural: the architecture didn't have a hook at the place where the harmful action occurred.</p>
+
+<p>For an agentic system the rule of thumb is: <strong>the most security-relevant hooks are pre-tool and post-tool, not input and output</strong>. Input and output guardrails catch obviously harmful content. Pre-tool and post-tool guardrails catch privilege escalation, parameter-injection, and sensitive-data exfiltration — the classes of attack that are increasingly dominant as AI workloads move from chat to action.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>Azure has a credible answer to part of this gap: Azure AI Content Safety's newer <strong>Task Adherence</strong> feature inspects LLM behavior to detect misaligned tool invocations and inconsistencies between responses and user intent, and it can block misaligned actions or escalate to human review. This is real and worth naming — Microsoft is clearly aware of the agentic safety question and is building toward it. The architectural fact that this blog is about, however, is that Task Adherence is a Content Safety feature consumed by applications, not an APIM gateway-policy hook. A team using AOAI directly with Foundry's content filter can configure Task Adherence; a team using APIM as the policy boundary doesn't have a corresponding gateway-policy primitive to enforce tool-boundary inspection. The four-hook model is the architectural shape that integrates this kind of inspection at the gateway-policy layer rather than at the application-orchestration layer. Different layer; different fit.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks the Azure guardrail surface — <code>llm-content-safety</code> with Azure AI Content Safety, the four standard categories, severity levels, Prompt Shields, Groundedness Detection, Protected Material, and the streaming-buffer behavior — with a working policy composition. §3 walks TrueFoundry's four-hook model with the Validate vs Mutate modes and the three strategies — with a working configuration that demonstrates each. §4 walks three guardrail scenarios side-by-side. §5 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: <code>llm-content-safety</code> + Azure AI Content Safety</span></div>
+
+<p>APIM's content-safety surface is the gateway-policy front-end for Azure AI Content Safety, Microsoft's standalone safety service. The architectural choice is clean: APIM doesn't reimplement category detection — it routes content to Azure AI Content Safety, applies the policy decision, and either blocks or forwards. Azure AI Content Safety is itself a mature, well-engineered service with category models trained on 8 languages plus working coverage in many more; for what it does, it is genuinely best-in-class.</p>
+
+<h3>Layer 1 — The two hooks: input and output</h3>
+
+<p>The <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-content-safety-policy" target="_blank"><code>llm-content-safety</code> policy</a> is configured in two places in the policy XML:</p>
+
+<ul>
+<li><strong>Inbound section</strong> — checks user prompts before they reach the LLM. This is the LLM Input hook. With <code>shield-prompt="true"</code>, Prompt Shields is enabled to detect jailbreak attempts and indirect injections.</li>
+<li><strong>Outbound section</strong> — checks model completions before they return to the user. This is the LLM Output hook. Alternatively, <code>enforce-on-completions="true"</code> on the inbound configuration extends the inbound check to cover responses as well.</li>
+</ul>
+
+<p>The two-hook coverage matches the two-step request/response lifecycle of a text-only LLM. There is no third or fourth hook in the policy structure. For workloads that don't use tools, this is exactly right; for workloads that do, the gap is where the architectural argument sits.</p>
+
+<h3>Layer 2 — Categories, severity levels, and the threshold convention</h3>
+
+<p>The four standard <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/harm-categories" target="_blank">harm categories</a> are <code>Hate</code>, <code>SelfHarm</code>, <code>Sexual</code>, and <code>Violence</code>. Each is configured with a numeric threshold:</p>
+
+<ul>
+<li><strong>FourSeverityLevels:</strong> output severities in four buckets — 0, 2, 4, 6.</li>
+<li><strong>EightSeverityLevels:</strong> output severities at full granularity — 0 through 7.</li>
+<li><strong>Threshold convention:</strong> <em>"The value must be between 0 (most restrictive) and 7 (least restrictive)"</em> per Microsoft's policy reference. Content with severity below the threshold passes; content at or above the threshold blocks. A threshold of 4 with <code>FourSeverityLevels</code> blocks content at level 4 or 6 and allows 0 or 2.</li>
+</ul>
+
+<p>The threshold convention is important to internalize: <em>raising</em> the threshold raises tolerance (fewer blocks, more content gets through); <em>lowering</em> the threshold raises strictness (more blocks). Most teams new to this confuse it on first deployment.</p>
+
+<h3>Layer 3 — Prompt Shields, Groundedness Detection, and Protected Material</h3>
+
+<p>Three additional capabilities compose with the category model:</p>
+
+<ul>
+<li><strong><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/jailbreak-detection" target="_blank">Prompt Shields</a></strong> — detects jailbreak attempts (User Prompt attacks) and indirect injection attempts (Document Attacks where adversarial content is embedded in a document the user has provided). Activated via <code>shield-prompt="true"</code>. This is the layer that catches "ignore your previous instructions" and similar adversarial patterns.</li>
+<li><strong><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/groundedness" target="_blank">Groundedness Detection</a></strong> — for RAG workloads, evaluates whether the LLM's response is actually supported by the retrieved context. Detects hallucination at the response layer. Available in Central US, East US, France Central, and Canada East.</li>
+<li><strong><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/protected-material" target="_blank">Protected Material</a></strong> — detects copyrighted text (song lyrics, articles) and copyrighted code (against a public-GitHub-repo index, with the documented caveat that the code index is current through April 2023). Useful for chatbot products that must avoid reproducing licensed content.</li>
+</ul>
+
+<p>For text-only workloads, the combination is comprehensive. A chatbot with input categories at threshold 4, Prompt Shields enabled, output categories at threshold 4, Groundedness Detection on RAG responses, and Protected Material checks on completions has a defense-in-depth posture that matches anything available in the industry — for the workload shape it targets.</p>
+
+<h3>Layer 4 — Streaming behavior and the no-403 termination</h3>
+
+<p>One operationally important detail: for streaming responses, the policy reference says <em>"the stream handler buffers events in a sliding window and, if a content safety violation is detected, stops forwarding further events to the client. A 403 error isn't returned in this case."</em> The stream just terminates. Clients consuming streamed responses must handle truncation as a possible safety-block signal — there's no exception code to dispatch on. This is a sensible engineering trade-off (you can't return a 403 mid-stream after data has already been sent), but it shapes how clients code against the streaming API.</p>
+
+<h3>Layer 5 — Capacity, language, and length constraints</h3>
+
+<p>A few constraints that affect production accuracy:</p>
+
+<ul>
+<li><strong>Maximum input length:</strong> 10,000 characters per Content Safety request. Longer content must be chunked at word boundaries and inspected per chunk; if any chunk fails, the whole content is blocked.</li>
+<li><strong>Minimum scan length:</strong> 110 characters for LLM completions (Groundedness Detection). Below this, the scan doesn't run.</li>
+<li><strong>Language coverage:</strong> Native training in Chinese, English, French, German, Spanish, Italian, Japanese, Portuguese; working in many other languages with quality variance. <em>Protected Material, Groundedness Detection, and standard Custom Categories work with English only</em> — a real constraint for global workloads.</li>
+<li><strong>Regional availability for Groundedness Detection:</strong> Central US, East US, France Central, Canada East only.</li>
+</ul>
+
+<h3>The Azure guardrail topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure guardrail topology — two hooks via llm-content-safety">
+<defs>
+  <linearGradient id="bgAz7" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az7sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAz7" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+  <marker id="arAz7G" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#50fa7b"/></marker>
+  <marker id="arAz7R" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#ff4757"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="560" rx="22" fill="url(#bgAz7)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure guardrails — two hooks via llm-content-safety + Azure AI Content Safety</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Input and output guardrails are first-class. The MCP Pre-Tool and Post-Tool hooks are not part of the gateway-policy layer.</text>
+
+<!-- Request flow with hooks -->
+<rect x="40" y="110" width="160" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az7sh)"/>
+<text x="120" y="140" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">User</text>
+<text x="120" y="160" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">prompt + tools available</text>
+<text x="120" y="178" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">→ APIM</text>
+
+<line x1="200" y1="150" x2="240" y2="150" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz7)"/>
+
+<!-- Hook 1: input -->
+<rect x="240" y="110" width="200" height="80" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="2" filter="url(#az7sh)"/>
+<text x="340" y="132" text-anchor="middle" fill="#50fa7b" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">HOOK 1 — INPUT</text>
+<text x="340" y="152" text-anchor="middle" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">llm-content-safety</text>
+<text x="340" y="170" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">inbound section</text>
+<text x="340" y="184" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">categories + Prompt Shields</text>
+
+<line x1="440" y1="150" x2="460" y2="150" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz7)"/>
+
+<!-- LLM -->
+<rect x="460" y="110" width="160" height="80" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az7sh)"/>
+<text x="540" y="140" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">AOAI / LLM</text>
+<text x="540" y="160" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">may emit:</text>
+<text x="540" y="176" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">text · OR · tool call</text>
+
+<!-- Branching: tool path (RED, no hook) vs text path (GREEN, hook 2) -->
+<!-- Tool path (top, no hook) -->
+<rect x="660" y="76" width="240" height="60" rx="10" fill="#1a0a08" stroke="#ff4757" stroke-width="1.8" stroke-dasharray="4 3"/>
+<text x="780" y="98" text-anchor="middle" fill="#ff4757" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">⚠ TOOL CALL PATH</text>
+<text x="780" y="116" text-anchor="middle" fill="#FFC4C4" font-size="10" font-family="IBM Plex Mono, monospace">no gateway-policy hook</text>
+<text x="780" y="130" text-anchor="middle" fill="#FFC4C4" font-size="10" font-family="IBM Plex Mono, monospace">Task Adherence is app-layer</text>
+
+<line x1="620" y1="140" x2="660" y2="110" stroke="#ff4757" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arAz7R)"/>
+<line x1="900" y1="110" x2="1010" y2="135" stroke="#ff4757" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arAz7R)"/>
+
+<!-- Text path (mirrored against TOOL CALL PATH across AOAI center) -->
+<rect x="660" y="164" width="240" height="60" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="2" filter="url(#az7sh)"/>
+<text x="780" y="184" text-anchor="middle" fill="#50fa7b" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">HOOK 2 — OUTPUT</text>
+<text x="780" y="202" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">llm-content-safety · outbound</text>
+<text x="780" y="216" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">categories · Groundedness</text>
+
+<line x1="620" y1="160" x2="660" y2="190" stroke="#50fa7b" stroke-width="2" marker-end="url(#arAz7G)"/>
+<line x1="900" y1="194" x2="1010" y2="170" stroke="#50fa7b" stroke-width="2" marker-end="url(#arAz7G)"/>
+
+<!-- User response -->
+<rect x="1010" y="110" width="240" height="120" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az7sh)"/>
+<text x="1130" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Response to user</text>
+<text x="1130" y="160" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">block: 403 (non-stream)</text>
+<text x="1130" y="178" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">block: stream truncate (no 403)</text>
+<text x="1130" y="200" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">if tool call: forwarded</text>
+<text x="1130" y="216" text-anchor="middle" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">unchecked at gateway</text>
+
+<!-- Categories panel -->
+<rect x="40" y="280" width="600" height="280" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.4"/>
+<text x="60" y="306" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">AZURE AI CONTENT SAFETY — categories + severity levels</text>
+
+<rect x="60" y="324" width="270" height="36" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="348" fill="#E8EEF8" font-size="13" font-family="IBM Plex Mono, monospace">Hate</text>
+<text x="240" y="348" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">threshold 0–7</text>
+
+<rect x="60" y="366" width="270" height="36" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="390" fill="#E8EEF8" font-size="13" font-family="IBM Plex Mono, monospace">SelfHarm</text>
+<text x="240" y="390" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">threshold 0–7</text>
+
+<rect x="60" y="408" width="270" height="36" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="432" fill="#E8EEF8" font-size="13" font-family="IBM Plex Mono, monospace">Sexual</text>
+<text x="240" y="432" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">threshold 0–7</text>
+
+<rect x="60" y="450" width="270" height="36" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="474" fill="#E8EEF8" font-size="13" font-family="IBM Plex Mono, monospace">Violence</text>
+<text x="240" y="474" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">threshold 0–7</text>
+
+<text x="350" y="346" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Prompt Shields (jailbreak/injection)</text>
+<text x="350" y="372" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Groundedness Detection (English-only)</text>
+<text x="350" y="398" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Protected Material (text + code)</text>
+<text x="350" y="424" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Custom Categories</text>
+<text x="350" y="450" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Custom Blocklists</text>
+<text x="350" y="476" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">+ Task Adherence (Content Safety, app-layer)</text>
+
+<text x="60" y="510" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">FourSeverityLevels: 0/2/4/6</text>
+<text x="60" y="528" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">EightSeverityLevels: 0–7 (full granularity)</text>
+<text x="60" y="548" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Lower threshold = stricter (0=most restrictive, 7=least)</text>
+
+<!-- Constraints panel -->
+<rect x="660" y="280" width="580" height="280" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="680" y="306" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">DOCUMENTED CONSTRAINTS</text>
+
+<text x="680" y="332" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Maximum input length: 10,000 chars per request</text>
+<text x="680" y="350" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Longer content must chunk at word boundaries</text>
+
+<text x="680" y="378" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Minimum scan length: 110 chars (Groundedness)</text>
+<text x="680" y="396" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Below this, scan doesn't run</text>
+
+<text x="680" y="424" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Language coverage:</text>
+<text x="680" y="442" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Trained on 8 langs · works in many more (variance)</text>
+<text x="680" y="458" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Protected Material + Groundedness: English only</text>
+
+<text x="680" y="486" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Streaming responses:</text>
+<text x="680" y="504" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Sliding-window buffer · stream truncates on block</text>
+<text x="680" y="520" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">No 403 returned mid-stream — clients must detect</text>
+
+<text x="680" y="548" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Groundedness Detection regions: Central US, East US, France Central, Canada East</text>
+</svg>
+</div>
+<div class="img-caption">Azure guardrail topology — two hooks (input + output) via <code>llm-content-safety</code> backed by Azure AI Content Safety. The tool-call path bypasses the gateway-policy layer; Task Adherence (the closest equivalent for tool oversight) operates at the application layer rather than as a gateway-policy hook.</div>
+
+<h3>What the operator writes — text-only chatbot with full guardrail composition</h3>
+
+<p>The XML below shows a working composition for a customer-facing chatbot: input check with categories at threshold 4, Prompt Shields enabled, blocklists for brand-specific terms, then the standard token-limit + backend-routing chain, and output check with stricter SelfHarm threshold for the customer-facing context:</p>
+
+<div class="code-wrap"><div class="code-lang">XML</div><pre>&lt;policies&gt;
+  &lt;inbound&gt;
+    &lt;base /&gt;
+
+    &lt;!-- HOOK 1 — INPUT — full input check with shield-prompt + blocklists --&gt;
+    &lt;llm-content-safety
+        backend-id=&quot;content-safety-backend&quot;
+        shield-prompt=&quot;true&quot;&gt;
+      &lt;categories output-type=&quot;FourSeverityLevels&quot;&gt;
+        &lt;category name=&quot;Hate&quot; threshold=&quot;4&quot; /&gt;
+        &lt;category name=&quot;SelfHarm&quot; threshold=&quot;2&quot; /&gt;  &lt;!-- stricter for customer-facing --&gt;
+        &lt;category name=&quot;Sexual&quot; threshold=&quot;4&quot; /&gt;
+        &lt;category name=&quot;Violence&quot; threshold=&quot;4&quot; /&gt;
+      &lt;/categories&gt;
+      &lt;blocklists&gt;
+        &lt;id&gt;contoso-brand-terms&lt;/id&gt;
+        &lt;id&gt;contoso-competitor-mentions&lt;/id&gt;
+      &lt;/blocklists&gt;
+    &lt;/llm-content-safety&gt;
+
+    &lt;!-- Routing + token enforcement (Blogs 4 + 6) --&gt;
+    &lt;set-backend-service backend-id=&quot;aoai-pool&quot; /&gt;
+    &lt;azure-openai-token-limit
+        counter-key=&quot;@(context.Subscription.Id)&quot;
+        tokens-per-minute=&quot;200000&quot; /&gt;
+    &lt;authentication-managed-identity resource=&quot;https://cognitiveservices.azure.com/&quot; /&gt;
+  &lt;/inbound&gt;
+
+  &lt;outbound&gt;
+    &lt;!-- HOOK 2 — OUTPUT — categories + groundedness for RAG responses --&gt;
+    &lt;llm-content-safety backend-id=&quot;content-safety-backend&quot;&gt;
+      &lt;categories output-type=&quot;FourSeverityLevels&quot;&gt;
+        &lt;category name=&quot;Hate&quot; threshold=&quot;4&quot; /&gt;
+        &lt;category name=&quot;SelfHarm&quot; threshold=&quot;2&quot; /&gt;
+        &lt;category name=&quot;Sexual&quot; threshold=&quot;4&quot; /&gt;
+        &lt;category name=&quot;Violence&quot; threshold=&quot;4&quot; /&gt;
+      &lt;/categories&gt;
+    &lt;/llm-content-safety&gt;
+
+    &lt;azure-openai-emit-token-metric namespace=&quot;Contoso/AI&quot; /&gt;
+    &lt;base /&gt;
+  &lt;/outbound&gt;
+&lt;/policies&gt;</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/api-management/llm-content-safety-policy" target="_blank">llm-content-safety</a> and <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/overview" target="_blank">Azure AI Content Safety</a>. SelfHarm is set tighter (threshold 2) for customer-facing surfaces; the other three at 4 (the standard "block 4 and above" pattern). Blocklists carry brand-specific terms. The composition is well-engineered for text-only LLM workloads.</div>
+
+<h3>What APIM is genuinely strong at — and what the architecture doesn't cover</h3>
+
+<p>What APIM's content-safety surface does well is real and worth naming explicitly:</p>
+
+<ul>
+<li><strong>Best-in-class category models.</strong> Azure AI Content Safety's category quality is mature — the four standard categories are well-trained, the language coverage is broad (8 native languages plus working coverage in many more), and the integration with Foundry is deep.</li>
+<li><strong>Prompt Shields and Groundedness Detection are operationally valuable.</strong> Indirect-injection detection is genuinely hard to get right; Microsoft's implementation is among the best available. RAG groundedness evaluation is decisive for hallucination-sensitive workloads.</li>
+<li><strong>Streaming-buffer behavior is thoughtful.</strong> The sliding-window buffer for streamed responses is the right engineering trade-off — it doesn't block streaming throughput, but it terminates the stream when a violation is detected.</li>
+<li><strong>The newest features show Microsoft is building toward agentic safety.</strong> Task Adherence specifically targets misaligned tool invocations and tool-input/output consistency — the same problem space the four-hook model addresses. The architectural locus is different (Foundry's content filter rather than an APIM gateway-policy hook) but the engineering investment is real.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest caveat — the agentic gap at the gateway-policy layer</div>
+  <p>For text-only LLM workloads, APIM's two-hook coverage is sufficient. For tool-using agents, the gateway-policy layer doesn't have first-class hooks at the tool boundary. Teams operating MCP servers behind APIM today either (1) build custom middleware in front of the MCP server to do parameter validation and response inspection, (2) implement Task Adherence at the application/Foundry layer and accept that the enforcement is application-side rather than gateway-side, or (3) accept the gap and rely on input/output guardrails to catch what they can. Each approach is workable; none is as clean as a gateway-policy hook. For agentic workloads where the tool boundary is the privilege-escalation surface, this is the architectural shape that determines whether the safety review can be conducted at the gateway.</p>
+</div>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: four hooks, two modes, three strategies</span></div>
+
+<p>TrueFoundry's <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">guardrail engine</a> is structured as a small, orthogonal set of primitives. Four hook points define <em>where</em> in the request lifecycle a guardrail can attach. Two execution modes define <em>how</em> guardrails behave when multiple are attached to the same hook. Three strategies define <em>what</em> happens when a guardrail fails. The combination produces a configuration matrix that covers the full agentic lifecycle — text and tool — without separate mechanisms for separate cases.</p>
+
+<h3>Layer 1 — Four hooks across the request lifecycle</h3>
+
+<p>The four hooks correspond directly to the four lifecycle points enumerated in §1:</p>
+
+<ul>
+<li><strong>LLM Input.</strong> Inspects the prompt before it reaches the LLM. This is the equivalent of APIM's inbound <code>llm-content-safety</code>. Guardrails attached here see the user's prompt, attached documents, system messages, and conversation history.</li>
+<li><strong>LLM Output.</strong> Inspects the LLM's response before it returns to the application. Equivalent to APIM's outbound check. Guardrails attached here see the generated text and any structured outputs.</li>
+<li><strong>MCP Pre-Tool.</strong> Inspects a tool invocation before it reaches the MCP server. Guardrails attached here see the tool name, the parameters the LLM constructed, and the surrounding context. <em>This is the hook that catches privilege escalation through parameter manipulation.</em></li>
+<li><strong>MCP Post-Tool.</strong> Inspects the tool's response before it returns to the LLM's next-turn context. Guardrails attached here see the tool's full response and can mutate or block it. <em>This is the hook that prevents secrets and sensitive data from round-tripping into the next prompt.</em></li>
+</ul>
+
+<p>Each hook is a configurable checkpoint. Multiple guardrails can attach to the same hook. The same guardrail type (e.g., a PII detector) can attach to multiple hooks. The configuration is declarative; the engine handles dispatching to the right hook at the right time.</p>
+
+<h3>Layer 2 — Two execution modes: Validate and Mutate</h3>
+
+<p>Within a hook, multiple guardrails can run. The execution mode defines their concurrency and side-effect semantics:</p>
+
+<ul>
+<li><strong>Validate (parallel, cancel-on-fail).</strong> All guardrails attached to the hook run in parallel. Each is a yes/no check — does this content pass policy? If any guardrail fails, the in-flight checks are canceled and the request is blocked. <em>Optimized for safety checks where any single failure should block.</em> Latency is min(individual check) for the success case; the slowest check determines the success path's wall time.</li>
+<li><strong>Mutate (sequential, by priority).</strong> Guardrails run sequentially in priority order. Each can modify the payload before the next one runs. The output of guardrail N becomes the input of guardrail N+1. <em>Optimized for content modification — PII redaction, prompt rewriting, response normalization.</em> Latency is the sum of individual checks; ordering matters because earlier guardrails see the original content while later ones see the mutated form.</li>
+</ul>
+
+<p>The Validate-vs-Mutate distinction matters operationally because the two have different design constraints. Safety checks should be parallel and fast-failing because any failure means block; content rewriters need to run sequentially because they layer modifications. APIM's <code>llm-content-safety</code> doesn't expose an analogous distinction — the policy is a single check, and chaining multiple safety policies requires composing them in policy XML with the operator manually managing order and behavior.</p>
+
+<h3>Layer 3 — Three strategies: Enforce, Enforce-But-Ignore-On-Error, Audit</h3>
+
+<p>The strategy defines what happens when a guardrail check fails or errors out:</p>
+
+<ul>
+<li><strong>Enforce.</strong> Block on any failure. If the guardrail says fail, the request is blocked. If the guardrail itself errors (the safety service is down, timeout, etc.), the request is also blocked. <em>The right strategy for production safety-critical paths where availability of the guardrail is itself part of the contract.</em></li>
+<li><strong>Enforce-But-Ignore-On-Error.</strong> Block on policy failure, but allow on infrastructure error. If the guardrail says fail, block. If the guardrail errors out, log the error and let the request through. <em>The right strategy for safety checks that should be applied opportunistically without becoming a single point of failure for availability.</em></li>
+<li><strong>Audit.</strong> Never block. Run the check, emit observability data, return the request unchanged. <em>The right strategy for new guardrails being evaluated in production traffic before they're enforced — observe the false-positive rate before flipping to Enforce.</em></li>
+</ul>
+
+<p>The Audit strategy is the operationally important one for rolling out new guardrails safely. A team adding a new content-safety check on a high-traffic endpoint can deploy it in Audit mode for a week, measure the false-positive rate against the actual traffic distribution, tune thresholds based on real data, and then flip to Enforce once the false-positive rate is acceptable. APIM doesn't have a first-class audit-only mode for <code>llm-content-safety</code>; teams achieve similar effect by emitting custom telemetry and accepting the operational cost.</p>
+
+<h3>The TrueFoundry guardrail topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry guardrail topology — four hooks across the agentic lifecycle">
+<defs>
+  <linearGradient id="bgTf7" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf7sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf7" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+  <marker id="arTf7G" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#50fa7b"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="560" rx="22" fill="url(#bgTf7)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry guardrails — four hooks across the agentic request lifecycle</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">LLM Input · LLM Output · MCP Pre-Tool · MCP Post-Tool. Two execution modes (Validate/Mutate). Three strategies (Enforce/EBIE/Audit).</text>
+
+<!-- User -->
+<rect x="40" y="110" width="120" height="60" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tf7sh)"/>
+<text x="100" y="132" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">User</text>
+<text x="100" y="152" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">prompt</text>
+
+<line x1="160" y1="140" x2="200" y2="140" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf7)"/>
+
+<!-- Hook 1: LLM Input -->
+<rect x="200" y="110" width="190" height="60" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="2" filter="url(#tf7sh)"/>
+<text x="295" y="130" text-anchor="middle" fill="#50fa7b" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">HOOK 1 — LLM Input</text>
+<text x="295" y="148" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">categories · jailbreak · PII</text>
+<text x="295" y="162" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Validate · Enforce</text>
+
+<line x1="390" y1="140" x2="430" y2="140" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf7)"/>
+
+<!-- LLM -->
+<rect x="430" y="110" width="120" height="60" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tf7sh)"/>
+<text x="490" y="132" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">LLM</text>
+<text x="490" y="152" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">may emit text/tool</text>
+
+<!-- Branching -->
+<!-- Tool path: Hook 3 + 4 -->
+<rect x="590" y="109" width="190" height="60" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="2" filter="url(#tf7sh)"/>
+<text x="685" y="129" text-anchor="middle" fill="#50fa7b" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">HOOK 3 — MCP Pre-Tool</text>
+<text x="685" y="147" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">param-validate · allow-list</text>
+<text x="685" y="161" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Validate · Enforce</text>
+
+<line x1="550" y1="140" x2="590" y2="125" stroke="#50fa7b" stroke-width="1.8" marker-end="url(#arTf7G)"/>
+
+<rect x="800" y="109" width="160" height="60" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="880" y="129" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">MCP server</text>
+<text x="880" y="147" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">tool execution</text>
+<text x="880" y="161" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">read_employee_record(...)</text>
+
+<line x1="780" y1="139" x2="800" y2="139" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf7)"/>
+
+<rect x="980" y="109" width="200" height="60" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="2" filter="url(#tf7sh)"/>
+<text x="1080" y="129" text-anchor="middle" fill="#50fa7b" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">HOOK 4 — MCP Post-Tool</text>
+<text x="1080" y="147" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">PII redact · secret detect</text>
+<text x="1080" y="161" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Mutate · Enforce</text>
+
+<line x1="960" y1="139" x2="980" y2="139" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf7)"/>
+
+<!-- Loop back to LLM for next turn -->
+<line x1="1080" y1="169" x2="1080" y2="185" stroke="#FF8866" stroke-width="1.5" stroke-dasharray="4 3"/>
+<line x1="1080" y1="185" x2="490" y2="185" stroke="#FF8866" stroke-width="1.5" stroke-dasharray="4 3"/>
+<line x1="490" y1="185" x2="490" y2="170" stroke="#FF8866" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arTf7)"/>
+<text x="800" y="195" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">tool result → next-turn context (after sanitization)</text>
+
+<!-- Text path: Hook 2 -->
+<rect x="590" y="200" width="190" height="60" rx="10" fill="#091510" stroke="#50fa7b" stroke-width="2" filter="url(#tf7sh)"/>
+<text x="685" y="220" text-anchor="middle" fill="#50fa7b" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">HOOK 2 — LLM Output</text>
+<text x="685" y="238" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">categories · groundedness</text>
+<text x="685" y="252" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Validate · Enforce</text>
+
+<line x1="550" y1="170" x2="590" y2="220" stroke="#50fa7b" stroke-width="1.8" marker-end="url(#arTf7G)"/>
+
+<rect x="820" y="200" width="200" height="60" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6"/>
+<text x="920" y="222" text-anchor="middle" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">User response</text>
+<text x="920" y="244" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">block: 4xx · stream: terminate</text>
+
+<line x1="780" y1="230" x2="820" y2="230" stroke="#50fa7b" stroke-width="2" marker-end="url(#arTf7G)"/>
+
+<!-- Modes panel -->
+<rect x="40" y="290" width="600" height="270" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="60" y="316" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">EXECUTION MODES — within a hook</text>
+
+<rect x="60" y="334" width="540" height="100" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.4"/>
+<text x="80" y="358" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Sans, sans-serif">Validate (parallel, cancel-on-fail)</text>
+<text x="80" y="378" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">All guardrails run in parallel. Any single failure cancels the rest and blocks.</text>
+<text x="80" y="394" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Latency: min(check) for fast-fail · max(check) for success</text>
+<text x="80" y="416" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Best for: safety checks (categories, PII detection, jailbreak)</text>
+
+<rect x="60" y="442" width="540" height="100" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.4"/>
+<text x="80" y="466" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Sans, sans-serif">Mutate (sequential, by priority)</text>
+<text x="80" y="486" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Guardrails run in priority order. Each can modify the payload for the next.</text>
+<text x="80" y="502" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Latency: sum(checks) · ordering matters</text>
+<text x="80" y="524" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Best for: PII redaction, prompt rewriting, response normalization</text>
+
+<!-- Strategies panel -->
+<rect x="660" y="290" width="580" height="270" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="680" y="316" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">STRATEGIES — failure handling</text>
+
+<rect x="680" y="334" width="540" height="68" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.4"/>
+<text x="700" y="356" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Sans, sans-serif">Enforce</text>
+<text x="700" y="376" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Block on any failure (policy violation OR infrastructure error)</text>
+<text x="700" y="392" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Best for: production safety-critical paths</text>
+
+<rect x="680" y="408" width="540" height="68" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.4"/>
+<text x="700" y="430" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Sans, sans-serif">Enforce-But-Ignore-On-Error</text>
+<text x="700" y="450" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Block on policy violation; allow on infrastructure error</text>
+<text x="700" y="466" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Best for: safety checks that shouldn't be SPOFs for availability</text>
+
+<rect x="680" y="482" width="540" height="68" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.4"/>
+<text x="700" y="504" fill="#FFB39C" font-size="13" font-weight="700" font-family="IBM Plex Sans, sans-serif">Audit</text>
+<text x="700" y="524" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Never block; emit observability data only</text>
+<text x="700" y="540" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">Best for: rolling out new guardrails before they're enforced</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry guardrail topology — four hooks across the agentic lifecycle (LLM Input, LLM Output, MCP Pre-Tool, MCP Post-Tool), with two execution modes (Validate parallel, Mutate sequential) and three strategies (Enforce, Enforce-But-Ignore-On-Error, Audit) defining within-hook semantics.</div>
+
+<h3>What the operator writes — agentic config with all four hooks</h3>
+
+<p>The YAML below shows a working configuration for the IT-support assistant from the opening scenario, with guardrails attached to all four hooks. Note the per-hook mode/strategy choices: Validate+Enforce for safety checks, Mutate+Enforce for PII redaction at MCP Post-Tool:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative virtual model with full four-hook guardrail config
+type: virtual-llm-model
+name: it-support-agent-prod
+mode: chat-completions
+
+routing:
+  - default:
+      strategy: latency-aware
+      backends:
+        - { provider: azure-openai, model: gpt-4o, weight: 100, priority: 1 }
+
+guardrails:
+  # HOOK 1 — LLM Input — block harmful content + jailbreak attempts
+  - hook: llm_input
+    mode: validate            # parallel; any single failure blocks
+    strategy: enforce
+    checks:
+      - { type: content_categories, hate: 4, self_harm: 2, sexual: 4, violence: 4 }
+      - { type: jailbreak_detection, threshold: 0.85 }
+      - { type: pii_detection, action: block_if_present }
+
+  # HOOK 2 — LLM Output — block harmful completions + check groundedness for RAG
+  - hook: llm_output
+    mode: validate
+    strategy: enforce
+    checks:
+      - { type: content_categories, hate: 4, self_harm: 2, sexual: 4, violence: 4 }
+      - { type: groundedness, source_field: rag_context, threshold: 0.7 }
+
+  # HOOK 3 — MCP Pre-Tool — validate tool params before execution
+  - hook: mcp_pre_tool
+    mode: validate
+    strategy: enforce
+    checks:
+      - type: tool_allowlist
+        allowed_tools_per_role:
+          tier1: [read_ticket, create_ticket, read_kb_article]
+          tier2: [read_ticket, create_ticket, read_kb_article, read_employee_record]
+      - type: parameter_validation
+        rules:
+          - tool: read_employee_record
+            param: employee_id
+            rule: must_be_in_reporting_chain_of: ${request.user.id}
+
+  # HOOK 4 — MCP Post-Tool — redact secrets/PII from tool responses
+  - hook: mcp_post_tool
+    mode: mutate              # sequential; each guardrail can modify payload
+    strategy: enforce
+    checks:
+      - { type: secret_detection, action: redact, priority: 1 }
+      - { type: pii_redaction, fields: [ssn, phone, email], priority: 2 }
+      - { type: internal_id_redaction, patterns: [employee_id, account_id], priority: 3 }</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition consistent with <a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry guardrails overview</a>, <a href="https://www.truefoundry.com/docs/ai-gateway/guardrail-modes" target="_blank">Guardrail Modes</a>, and <a href="https://www.truefoundry.com/docs/ai-gateway/guardrail-strategies" target="_blank">Guardrail Strategies</a>. The IT-support agent scenario from §0 is closed by Hook 3 (parameter validation prevents reading employee records outside the user's reporting chain) and Hook 4 (PII redaction prevents secrets from round-tripping into the next prompt).</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>Tool boundary as a first-class enforcement surface.</strong> The IT-support red-team scenario from §0 is structurally prevented by Hook 3's parameter validation. (2) <strong>One config surface for all four hooks.</strong> Adding a new guardrail at any hook is the same shape of change — declarative, in one place, applied through <code>tfy apply</code>. (3) <strong>Validate vs Mutate is the right semantic distinction.</strong> Safety checks run in parallel and fast-fail; content rewriters run sequentially and layer modifications. The execution model matches the design intent of each guardrail type. (4) <strong>Audit strategy makes new-guardrail rollout safe.</strong> A team can deploy a new check in Audit mode for a week, measure the false-positive rate against real traffic, and only flip to Enforce once tuning is complete. (5) <strong>The architectural primitive matches the workload's lifecycle.</strong> For text-only LLMs, hooks 1 and 2 alone work — the architecture doesn't impose tool overhead on workloads that don't use tools. For agentic systems, hooks 3 and 4 are the structural piece that makes the safety review tractable.</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Three guardrail scenarios compared</h2>
+
+<p>The three scenarios below walk concrete operational moments where guardrail architecture decides the outcome. Each is shown side by side under both products. The scenarios are realistic patterns from production AI engineering practice.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">Customer-facing chatbot — text-only, multilingual</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A consumer-products company runs a customer-support chatbot in 6 languages (English, Spanish, French, German, Italian, Portuguese). Workload is text-only — no tools, no agentic behavior. Safety requirements: standard four content categories, jailbreak detection, brand-blocklist, hallucination detection on RAG responses.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p><span class="check">✅</span> This scenario is exactly what Azure AI Content Safety is designed for. <code>llm-content-safety</code> with all four categories at threshold 4, <code>shield-prompt="true"</code> for jailbreak detection, custom blocklist for brand terms, Groundedness Detection on outbound for RAG-grounded responses (English-only — works for the EN traffic, doesn't apply for the others). The category models work natively in all 6 languages. The team operates one institutional Azure AI Content Safety resource across all chatbot variants. <em>Best-in-class fit. The mature category quality, Prompt Shields, and Groundedness Detection compose into a defense-in-depth posture matching the best in the industry.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Same outcome with Hooks 1 and 2. Hook 1 (LLM Input) with content categories, jailbreak detection, and the brand blocklist. Hook 2 (LLM Output) with categories and groundedness. Hooks 3 and 4 are not configured — this workload doesn't use tools, so the agentic hooks aren't needed. The Validate mode and Enforce strategy are the natural choices for safety-critical chatbot. <em>Equivalent outcome. The two-hook portion of the four-hook model maps directly to this workload; no architectural overhead for the unused hooks.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">Internal IT-support agent with MCP tools — privilege escalation prevention</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The opening scenario closes here. The IT-support assistant has four MCP tools, including a privileged <code>read_employee_record</code>. The architecture must prevent a tier-2 engineer from being socially engineered into reading records outside their reporting chain.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Input + output guardrails block obviously harmful content but do not inspect the structured tool call. The team's options: (1) build custom MCP middleware that sits in front of the MCP server and applies parameter validation policies — works but is a custom build the team operates separately; (2) configure Foundry's Task Adherence at the application/Foundry layer to detect misaligned tool invocations — workable but enforcement is application-side rather than gateway-side; (3) accept the gap and rely on input/output guardrails plus directory ACLs on the underlying API — defense-in-depth, but doesn't structurally close the hole. The team in §0 chose option 1 and built two months of custom middleware. <em>Workable; not as clean as a gateway-policy hook at the tool boundary.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Hook 3 (MCP Pre-Tool) is the architectural primitive that prevents this. A parameter-validation guardrail with the rule <code>employee_id must_be_in_reporting_chain_of: ${request.user.id}</code> is enforced at the gateway before the tool call reaches the MCP server. The socially-engineered tool call is blocked at admission. Hook 4 (MCP Post-Tool) provides defense-in-depth — even if a tool call gets through, secrets and PII are redacted from the response before they round-trip into the next prompt. <em>Direct fit; the architecture's strongest scenario. The two months of custom-middleware work the Azure team did is replaced by declarative guardrail config.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Rolling out a new PII-redaction guardrail without breaking production</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A platform team wants to add a new PII-redaction check on a high-traffic endpoint. The check is well-tested in development, but production traffic includes legitimate uses (e.g., support tickets that contain customer phone numbers as part of the support context) where overzealous redaction would degrade the user experience. The team needs to measure the false-positive rate against real production traffic before flipping to enforcement.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>APIM doesn't have a first-class audit-only mode for content-safety policies. Workarounds: (1) deploy the new policy as a separate APIM API revision with a small canary percentage, measure block rates, ramp gradually — works but ramping is per-revision rather than per-guardrail; (2) emit the safety check's verdict as a custom dimension on telemetry without acting on it (custom policy expression that calls Content Safety API directly and logs without blocking) — workable but is custom plumbing the team operates; (3) accept the tuning happens in pre-prod and ship to production with the chosen threshold. Each is workable; none has the operational simplicity of a per-guardrail audit flag. <em>Achievable; non-trivial operational effort per new-guardrail rollout.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Add the PII-redaction guardrail to Hook 1 with <code>strategy: audit</code>. The check runs against real production traffic, emits observability data on what it would have blocked, but never blocks. After a week the team reads the observability output, identifies the false-positive patterns (e.g., support tickets where phone numbers are legitimate), tunes the redaction rules to handle those cases, and flips the strategy to <code>enforce</code>. The same guardrail definition; one field changed. <em>Direct fit; the Audit strategy is exactly designed for this rollout pattern.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The guardrail comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>Guardrail property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>Hook count</strong></td><td><span class="partial">◐</span> 2 (input + output)</td><td><span class="check">✅</span> 4 (input, output, MCP pre-tool, MCP post-tool)</td><td>For agentic workloads, tool-boundary hooks are where privilege escalation happens.</td></tr>
+<tr><td><strong>Content category coverage</strong></td><td><span class="check">✅</span> Hate, SelfHarm, Sexual, Violence (Azure AI Content Safety — best-in-class)</td><td><span class="check">✅</span> Same four categories; multiple provider integrations.</td><td>The "what" of harmful content; both first-class.</td></tr>
+<tr><td><strong>Severity granularity</strong></td><td><span class="check">✅</span> FourSeverityLevels (0/2/4/6) or EightSeverityLevels (0–7)</td><td><span class="check">✅</span> Configurable per check.</td><td>Both expose granularity for tuning.</td></tr>
+<tr><td><strong>Jailbreak / prompt injection detection</strong></td><td><span class="check">✅</span> Prompt Shields (best-in-class for indirect injection too)</td><td><span class="check">✅</span> First-class jailbreak detection at Hook 1.</td><td>Critical for any LLM workload.</td></tr>
+<tr><td><strong>Groundedness Detection (RAG hallucination)</strong></td><td><span class="check">✅</span> Best-in-class (English-only, regional availability)</td><td><span class="check">✅</span> Configurable at Hook 2.</td><td>For RAG workloads. Microsoft's implementation is among the best available.</td></tr>
+<tr><td><strong>Protected Material detection</strong></td><td><span class="check">✅</span> First-class (text + code, English-only)</td><td><span class="partial">◐</span> Configurable through external integration; less out-of-the-box.</td><td>For chatbot products that must avoid copyrighted reproduction.</td></tr>
+<tr><td><strong>Tool-call parameter validation</strong></td><td><span class="cross">✕</span> Not a gateway-policy primitive; Task Adherence is application-layer.</td><td><span class="check">✅</span> Hook 3 (MCP Pre-Tool) is first-class.</td><td>The privilege-escalation surface for agentic systems.</td></tr>
+<tr><td><strong>Tool-response inspection</strong></td><td><span class="cross">✕</span> Not a gateway-policy primitive.</td><td><span class="check">✅</span> Hook 4 (MCP Post-Tool) is first-class.</td><td>Prevents sensitive data round-tripping into next-turn context.</td></tr>
+<tr><td><strong>Audit-only mode for new guardrails</strong></td><td><span class="partial">◐</span> Achievable through custom telemetry plumbing.</td><td><span class="check">✅</span> First-class <code>strategy: audit</code>.</td><td>Determines whether new guardrails can be rolled out against real traffic safely.</td></tr>
+<tr><td><strong>Failure-handling strategies</strong></td><td><span class="partial">◐</span> Implicit; behavior depends on policy structure.</td><td><span class="check">✅</span> Enforce, Enforce-But-Ignore-On-Error, Audit.</td><td>Different strategies for different operational contexts.</td></tr>
+<tr><td><strong>Sequential vs parallel guardrail execution</strong></td><td><span class="cross">✕</span> Not a first-class distinction; ordering is in policy XML.</td><td><span class="check">✅</span> Validate (parallel) vs Mutate (sequential).</td><td>Safety checks should be parallel; content rewriters need to layer.</td></tr>
+<tr><td><strong>Streaming-response handling</strong></td><td><span class="check">✅</span> Sliding-window buffer; stream truncation on block (no 403 mid-stream)</td><td><span class="check">✅</span> Equivalent semantics for output guardrails.</td><td>Both handle streaming sensibly.</td></tr>
+<tr><td><strong>Language coverage (categories)</strong></td><td><span class="check">✅</span> 8 native + working in many more</td><td><span class="check">✅</span> Depends on backend provider</td><td>Both handle multilingual workloads.</td></tr>
+<tr><td><strong>Custom blocklists</strong></td><td><span class="check">✅</span> First-class via Content Safety blocklists</td><td><span class="check">✅</span> Configurable per hook</td><td>Both support brand-specific terms, competitor mentions, etc.</td></tr>
+<tr><td><strong>Misaligned-action detection</strong></td><td><span class="partial">◐</span> Task Adherence (Content Safety, application-layer)</td><td><span class="check">✅</span> Hook 3+4 directly enforce at gateway-policy layer</td><td>Architectural locus differs; Microsoft's investment is real but at a different layer.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">For text-only LLM workloads, APIM's <code>llm-content-safety</code> backed by Azure AI Content Safety is genuinely best-in-class. The category models are mature with broad language coverage. Prompt Shields catches jailbreak and indirect-injection attacks at quality the industry hasn't matched. Groundedness Detection is the canonical answer for RAG hallucination. Protected Material handles licensed-content concerns. The streaming-buffer behavior is thoughtful. Microsoft's investment in agentic safety (Task Adherence) shows the platform team is aware of the agentic-workload question and is building toward it — at the application/Foundry layer rather than the gateway-policy layer. For organizations with a chatbot-shaped workload and an Azure-anchored stack, this is the right answer.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> the workload is text-only LLM with no tool use, the team operates Azure AI Content Safety as institutional infrastructure across multiple workloads, the language coverage and category quality of Microsoft's models are mission-critical, or the application-layer Task Adherence enforcement is acceptable for the agentic safety posture.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">The four-hook architecture is the structural fit for tool-using agents. Hook 3 (MCP Pre-Tool) and Hook 4 (MCP Post-Tool) are the architectural primitives that close the gap APIM has at the tool boundary — privilege escalation through parameter manipulation is caught by parameter-validation guardrails before tool execution; sensitive-data leakage through tool responses is caught by Mutate-mode redaction guardrails before next-turn context. The Validate-vs-Mutate distinction matches the design intent of safety checks vs content rewriters. The Audit strategy makes new-guardrail rollout safe against real traffic. For agentic workloads where the tool boundary is the privilege-escalation surface, the architecture's value is real and direct.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> the workload uses MCP tools or function-calling agents, the safety review specifically requires gateway-policy hooks at the tool boundary, validate-vs-mutate semantics with explicit failure-handling strategies are operationally important, or rolling out new guardrails against production traffic in audit-only mode is part of the team's safety-engineering practice.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that the two architectures fit different sides of the AI-workload landscape. Azure's two-hook architecture with Azure AI Content Safety is excellent for the text-only chatbot shape — and for that shape, the integration with Foundry, the language coverage, the Prompt Shields and Groundedness Detection put Microsoft's offering among the best available. TrueFoundry's four-hook architecture is engineered for the agentic shape — and for that shape, hooks at the tool boundary close gaps that the chatbot-architecture leaves at the gateway-policy layer.</p>
+
+<p>The trajectory of AI workloads matters here. Text-only chatbots are the workload of 2023-2024; tool-using agents are increasingly the workload of 2025-2026. Microsoft is clearly aware of this — Task Adherence is real, well-engineered, and operates at the layer Microsoft chose for it. The architectural argument is not that Azure ignores agentic safety; it is that the gateway-policy layer is a different layer, and for teams whose safety review wants gateway-policy enforcement at the tool boundary (rather than application-layer enforcement), the four-hook model fits more cleanly.</p>
+
+<p>For most teams the right answer depends on the dominant workload shape. Chatbot-heavy organizations with Azure-anchored stacks should use APIM's two-hook coverage and Azure AI Content Safety — the integration is excellent. Agent-heavy organizations or organizations whose safety review specifically requires gateway-policy enforcement at the tool boundary should use TrueFoundry's four-hook architecture. Mixed organizations need to evaluate the weighted balance between the two workload shapes.</p>
+
+<p>The next blog (<a href="08-truefoundry-vs-azure-observability-otel-monitor.html">Observability — OpenTelemetry &amp; Azure Monitor</a>) opens Movement III — the platform surface. Where do AI traces, logs, and metrics actually go, and what does it take to debug a distributed AI agent across three providers and ten microservices when the user reports "it gave a weird answer"?</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/llm-content-safety-policy" target="_blank">Microsoft Learn — llm-content-safety policy (categories, severity levels, shield-prompt, enforce-on-completions, blocklists, streaming behavior)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/overview" target="_blank">Microsoft Learn — What is Azure AI Content Safety? (capacity, language, length constraints)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/harm-categories" target="_blank">Microsoft Learn — Harm Categories (Hate, SelfHarm, Sexual, Violence)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/jailbreak-detection" target="_blank">Microsoft Learn — Prompt Shields (jailbreak + indirect injection detection)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/groundedness" target="_blank">Microsoft Learn — Groundedness Detection</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/protected-material" target="_blank">Microsoft Learn — Protected Material detection</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/custom-categories" target="_blank">Microsoft Learn — Custom Categories</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-services/content-safety/whats-new" target="_blank">Microsoft Learn — What's new in Azure AI Content Safety (Task Adherence)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities" target="_blank">Microsoft Learn — AI gateway capabilities overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-overview" target="_blank">TrueFoundry Docs — Guardrails overview (four hooks)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrail-modes" target="_blank">TrueFoundry Docs — Guardrail Modes (Validate vs Mutate)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrail-strategies" target="_blank">TrueFoundry Docs — Guardrail Strategies (Enforce, Enforce-But-Ignore-On-Error, Audit)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrails-integrations" target="_blank">TrueFoundry Docs — Guardrails Integrations (provider catalog)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/mcp-overview" target="_blank">TrueFoundry Docs — MCP overview (the Pre-Tool and Post-Tool hooks)</a></li>
+  <li><a href="https://modelcontextprotocol.io/specification/" target="_blank">MCP Specification — Model Context Protocol</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 7 of 12 · April 2026 · <a href="06-truefoundry-vs-azure-token-governance-finops-attribution.html">← Blog 6 — FinOps</a> · <a href="08-truefoundry-vs-azure-observability-otel-monitor.html">Blog 8 — Observability →</a>
+</p>
+</body>
+</html>
