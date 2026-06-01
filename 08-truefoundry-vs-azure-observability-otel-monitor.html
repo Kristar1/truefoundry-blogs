@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="Azure Monitor (Application Insights + Log Analytics + generative-AI-gateway logs) with mature KQL queries and AI dashboard templates vs TrueFoundry's OpenTelemetry-first design with native exporters to Datadog, Honeycomb, Grafana, and any OTLP backend — the trace-stitching question that decides whether AI observability lands in the same backend as the rest of the company's distributed-trace data, with Microsoft's documented 40-50% throughput reduction at >1000 RPS and the 32 KB / 8 KB / 2 MB log entry limits explicit."/>
+<title>Observability — OpenTelemetry &amp; Azure Monitor: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement III · Platform surface</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 8 of 12</span>
+</div>
+
+<h1>Observability — OpenTelemetry &amp; Azure Monitor: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 30 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 Observability · SRE · AI Platform Engineering</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for the diagnostic-logs reference (sampling settings, frontend/backend body bytes, alwaysLog, verbosity), the Application Insights integration tutorial (the documented 40-50% throughput reduction at >1000 RPS, the multiplexing limitation, the AMPLS ingestion caveat), the resource-logs reference (the 32 KB log entry limit, the 8,192-byte body limit, the 2 MB message cap, generative-AI-gateway 32 KB chunking with sequence numbers), and the Monitor Azure API Management overview (the resource-logs vs Application Insights split, Log Analytics + Grafana integration). The TrueFoundry side is grounded in the gateway observability documentation (OpenTelemetry-first design with native exporters), the OTel-export configuration patterns, the Trace, Metrics, and Logs primitives mapped to W3C trace context, and the raw-metrics API. Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog opens Movement III and assumes the FinOps attribution model from <a href="06-truefoundry-vs-azure-token-governance-finops-attribution.html">Blog 6</a> for the dimensional/cardinality discussion.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Observability comparisons that walk feature checklists find parity quickly. Both products produce metrics, logs, and traces; both integrate with industry-standard backends; both support sampling and dashboards. The checklist comparison is correct but skips the architectural question that decides whether AI engineers can actually debug a production incident: <strong>what shape are the traces in, and where do they go?</strong> The two products optimize for different assumptions. <strong>Azure assumes the observability backend is Azure Monitor</strong> — Application Insights for traces and KQL queries, Log Analytics for resource logs, Azure Monitor metrics for dashboards, Managed Grafana for visualization. The integration is mature and deep but oriented around Azure-native consumption. <strong>TrueFoundry assumes the observability backend is whatever the customer's SRE team already operates</strong> — OpenTelemetry-first export with native exporters to Datadog, Honeycomb, Tempo, Grafana Cloud, and any OTLP-compatible collector. The architectural difference is whether AI observability lives in a dedicated Azure-side surface or flows into the customer's existing distributed-tracing stack alongside everything else. For organizations already operating mature OTel pipelines, the second architecture is operationally decisive; for Azure-anchored organizations the first is institutional muscle.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A "weird answer" that becomes a trace-stitching question</div>
+<p>Tuesday, 10:14 AM. A senior platform engineer at a B2B fintech receives a Slack DM from a product manager: "Customer says our AI assistant gave a weird answer to a refund question. Here's the conversation ID. Can you check what happened?" The product manager is unbothered — these tickets come in, the platform team investigates, life moves on. The platform engineer expects a 20-minute investigation. It takes two and a half hours.</p>
+<p>The architecture being investigated is genuinely complex, and that's the point. The user's question hits a Vue frontend, which calls a Node.js BFF, which calls a Python orchestrator microservice, which calls APIM (which holds the AI policies — content safety, token limits, routing), which calls Azure OpenAI. The orchestrator also calls a Java retrieval service for RAG context, which calls Elasticsearch, which calls a fine-tuned re-ranker model deployed to AKS. Eight services, three languages, two model providers (AOAI and the self-hosted re-ranker), one user-visible response that the customer is calling "weird." The platform engineer's first move is correct: pull the conversation ID and find the trace.</p>
+<p>The trace is fragmented across two backends. Application traces from the Node BFF, Python orchestrator, Java retrieval service, and Elasticsearch are all in the company's Datadog instance — that's where the SRE team already operates, where the existing dashboards live, where the on-call alerts fire. APIM's traces and AOAI request/response telemetry are in Application Insights — because that's where APIM emits Application Insights traces by default, and the team has accepted that AI observability lives there. The W3C trace context propagates correctly within each backend but does not stitch automatically across them. To follow the request end-to-end, the engineer pulls the Datadog trace, copies the trace ID, then opens Application Insights and runs a KQL query keyed on that trace ID to find the corresponding APIM-side spans. The KQL is the kind that takes practice to write right: querying <code>requests</code> joined to <code>dependencies</code>, filtered by the operation_Id, with the LLM request/response bodies expanded from the generative-AI-gateway log chunks (which split at 32 KB with sequence numbers — the engineer hits this once and learns to reconstruct the message in KQL).</p>
+<p>The diagnosis lands eventually. The retrieval service returned an unusually short context (2 of 5 expected documents) because two Elasticsearch shards had elevated latency that morning and the BFF's RAG-context call timed out. The orchestrator passed the truncated context to AOAI through APIM, which produced a confidently-worded answer based on incomplete grounding. The fix is two things: a longer timeout on the RAG-context call, and a Groundedness Detection guardrail at the APIM output (which would have caught the hallucination on the truncated context — see Blog 7). But the architectural lesson the engineer takes away from the postmortem is the trace-stitching cost. Two backends meant two queries, two query languages, two correlation hops. The 20-minute investigation became a 150-minute investigation because the AI portion of the trace lived in a different observability surface from the rest of the stack.</p>
+<p>The architectural memo the team writes after the incident proposes what this blog is about: <em>AI observability should flow into the same distributed-tracing stack as the rest of the company's services, not into a parallel Azure-side surface, because cross-stack debugging is the dominant operational cost</em>. That isn't an argument against Azure Monitor — it's an excellent product for organizations whose entire stack lives there. It's an argument for AI observability being OTel-first by default, so it lands wherever the SRE team already operates.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Azure observability is Azure-native.</strong> Application Insights for traces and KQL queries; Log Analytics for resource logs; Azure Monitor metrics for dashboards; Managed Grafana for visualization. Mature integration. The diagnostic-logs reference exposes <code>sampling.percentage</code>, <code>alwaysLog</code>, <code>frontend</code>/<code>backend</code> body byte limits, and verbosity. <strong>Generative-AI-gateway logs</strong> are a first-class category that captures LLM request/response messages with documented chunking behavior (32 KB chunks with sequence numbers for messages above the limit; 2 MB hard cap per message).</li>
+    <li><strong>TrueFoundry observability is OTel-first.</strong> OpenTelemetry exporters are the primary mechanism; metrics, logs, and traces flow as OTLP to whatever collector the customer points the gateway at. Native integrations with Datadog, Honeycomb, Tempo, Grafana Cloud, and any OTLP-compatible backend. Trace context follows W3C convention; AI spans stitch into the customer's existing distributed-trace surface.</li>
+    <li><strong>Microsoft documents real performance and limit constraints honestly.</strong> The Application Insights integration documentation states: <em>"enabling the logging feature caused a 40%-50% reduction in throughput when request rate exceeded 1,000 requests per second."</em> The 32 KB log entry limit, 8,192-byte body limit, 2 MB message cap, and self-hosted-gateway best-effort delivery (<em>"we don't guarantee all telemetry is pushed to Azure Application Insights"</em>) all shape production design.</li>
+    <li><strong>Honest framing.</strong> Azure Monitor is exceptionally well-engineered for organizations whose stack runs on Azure end-to-end. The integration with Foundry, the KQL query language, the AI-specific dashboard templates, the Application Insights end-to-end correlation are best-in-class for that fit. For organizations whose SRE stack lives elsewhere — Datadog, Honeycomb, Grafana Cloud, self-hosted Tempo — the fit reverses, and AI observability that flows into the existing OTel pipeline is structurally better suited to how the team actually operates.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when Azure Monitor is the institutional observability surface for the rest of the stack, KQL is the team's query muscle, the existing Application Insights estate operates AI workloads alongside everything else, or the AI-specific generative-AI-gateway logs and Azure-Monitor-based AI dashboard templates are operationally valuable.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when the SRE team already operates Datadog, Honeycomb, Grafana Cloud, or self-hosted OpenTelemetry infrastructure, when distributed-trace stitching across the AI hop and the rest of the stack is decisive for incident-response time, or when OTLP-first export to a vendor-agnostic backend is the natural shape for the org's observability practice.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Trace stitching as the metric</div>
+    <div class="qp-desc">For distributed AI systems with 5-15 microservices in the request path, the dominant operational cost of debugging is cross-stack trace correlation. The architectural property that decides this cost is whether AI observability lands in the same backend as the rest of the trace, not whether each individual product has good dashboards.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Why trace stitching is the architectural question</a></li>
+    <li><a href="#azure">§2 — Azure: Application Insights, Log Analytics, generative-AI-gateway logs</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: OpenTelemetry-first with native exporters</a></li>
+    <li><a href="#scenarios">§4 — Three observability scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — Why trace stitching is the architectural question</h2>
+
+<p class="intro-lead">Observability checklists find feature parity easily. Traces, logs, metrics. Sampling controls. Custom dimensions. End-to-end correlation. Both products check every box. The checklist comparison is correct but stops at the gateway boundary, and the gateway boundary is precisely where the operationally consequential question begins. The question is not whether each product produces good telemetry; it is <em>whether the telemetry from the AI hop joins the same trace as the rest of the request lifecycle</em> — and that depends on which backend it flows into.</p>
+
+<p>For a single-service workload, this question doesn't matter. The AI service is the entire stack; one observability backend is fine. For a real distributed system — frontend, BFF, orchestrator, RAG retrieval, AI gateway, model providers, database, cache, message queues — the AI hop is one of many spans that have to compose into one trace if the on-call engineer is going to debug the incident in under an hour. The composition happens through W3C trace context propagation: every service forwards the <code>traceparent</code> header (and optionally <code>tracestate</code>) to its downstream calls; every span in every service includes the same trace ID; the observability backend stitches them together when it sees them.</p>
+
+<p>This works cleanly when all the spans land in one backend. It works less cleanly when spans land in two backends — the trace ID is preserved, but the engineer has to query two systems, learn two query languages, and correlate manually. Most enterprises end up in this state when the AI gateway emits to Application Insights while the rest of the stack emits to Datadog or Honeycomb or self-hosted OTel infrastructure, and the operational cost of the split shows up not at platform-design time but at incident time, repeatedly, on every distributed-AI debugging session.</p>
+
+<h3>The three observability primitives</h3>
+
+<p>Walking the primitives explicitly:</p>
+
+<ol>
+<li><strong>Traces</strong> — the request-flow story. A trace is a tree of spans showing how a request flowed through the system, with timing, status, and metadata at each span. For AI workloads, the LLM request span (with prompt, completion tokens, latency, model used) is often the most expensive and slowest span in the trace; it's also where most "weird answer" investigations land. The trace's value depends on whether all spans land in one backend.</li>
+<li><strong>Metrics</strong> — the aggregate story. Per-second request rates, error rates, p50/p95/p99 latencies, token throughput, cost per minute. Metrics are how dashboards and alerts work. Both products produce equivalent metrics; the question is the dimensional richness (covered in Blog 6) and the destination of the metrics stream.</li>
+<li><strong>Logs</strong> — the event story. Resource logs, audit logs, AI gateway logs, application logs. For AI workloads, the LLM request and response messages are first-class log events that often need to be captured (subject to redaction; subject to size limits). Both products produce equivalent log content; the question is where the logs flow and what the throughput cost is.</li>
+</ol>
+
+<h3>The architectural question for AI workloads specifically</h3>
+
+<p>For AI workloads, two observability concerns are sharper than they are for general API traffic:</p>
+
+<ul>
+<li><strong>LLM message capture.</strong> Production AI systems often need to capture full request/response messages (the prompt, the completion) for compliance, debugging, and quality evaluation. Both products support this; both have documented size limits. APIM's generative-AI-gateway logs split messages above 32 KB into chunks with sequence numbers (with a 2 MB hard cap per message); TrueFoundry's OTel export is bounded by the OTLP payload limits of the customer's collector configuration. The size handling matters because long-context AI workloads regularly exceed 32 KB on single messages.</li>
+<li><strong>Throughput cost of full-fidelity logging.</strong> Microsoft's own documentation states this directly: <em>"enabling the logging feature caused a 40%-50% reduction in throughput when request rate exceeded 1,000 requests per second."</em> This is not a defect; it is the documented cost of detailed Application Insights instrumentation. Production designs use sampling — typically 10-25% in high-traffic production, 100% during incidents. TrueFoundry's OTel export has its own throughput cost that depends on the collector's batching configuration. Neither is free.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>Azure Monitor is among the best-engineered observability platforms in the cloud-vendor space. Application Insights' end-to-end transaction view, Log Analytics' KQL query language, the AI-specific dashboard templates, the Managed Grafana integration, the deep AI observability for AOAI traffic — all genuinely best-in-class for the workloads they target. The architectural argument is not that Azure Monitor is poorly designed; it is that <em>it is designed for organizations whose observability practice already lives in Azure</em>. For those organizations, AI workloads inherit a mature, deeply-integrated surface. For organizations whose SRE stack lives elsewhere, the fit reverses — and the trace-stitching cost is what makes the architectural choice operationally consequential.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks the Azure observability surface — Application Insights for traces and request telemetry, Log Analytics for resource logs and KQL, generative-AI-gateway logs as a first-class category, the documented limits and constraints, and the Managed Grafana integration — with a working diagnostic-settings configuration and a representative KQL query. §3 walks TrueFoundry's OpenTelemetry-first surface — OTLP export with native exporters to multiple backends, W3C trace context propagation, the customer-stack integration shapes — with a working OTel collector configuration and the equivalent trace query. §4 walks three observability scenarios side-by-side. §5 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: Application Insights, Log Analytics, generative-AI-gateway logs</span></div>
+
+<p>Azure Monitor for APIM is a composition of Azure-native services. The architectural picture has three layers: <strong>Application Insights</strong> for end-to-end transaction tracing and request telemetry, <strong>Log Analytics</strong> as the unified log store with KQL as the query language, and <strong>Azure Monitor metrics</strong> for time-series aggregates with native dashboarding. <strong>Managed Grafana</strong> sits on top as the visualization surface for teams that prefer Grafana to Azure dashboards. AI-specific: <strong>generative-AI-gateway logs</strong> are a first-class log category that captures LLM request/response telemetry. The integration is mature; the constraints are documented; the throughput cost is non-trivial at scale.</p>
+
+<h3>Layer 1 — Application Insights as the trace surface</h3>
+
+<p>Application Insights is the request-tracing story. Every API request through APIM produces an Application Insights <code>requests</code> entry (the gateway-side span) and one or more <code>dependencies</code> entries (each backend call APIM forwards). Trace context propagation through W3C <code>traceparent</code> headers means application services upstream and downstream can stitch their spans into the same trace ID — provided they land in the same Application Insights instance.</p>
+
+<p>The diagnostic settings exposed by APIM at the API or all-APIs level give precise control over what gets logged:</p>
+
+<ul>
+<li><strong><code>sampling.percentage</code></strong> — what fraction of requests get logged. 100 in development; 10–25 in high-traffic production per Microsoft's own guidance.</li>
+<li><strong><code>alwaysLog: "allErrors"</code></strong> — guarantees that error responses bypass sampling and are always logged. The standard production pattern: sample success at 10%, log all errors.</li>
+<li><strong><code>frontend.request.body.bytes</code> / <code>frontend.response.body.bytes</code></strong> — how many bytes of the request/response body to capture. Default is 0 (no body). Setting to 512 captures the first 512 bytes; setting to 8192 captures up to the per-body cap.</li>
+<li><strong><code>backend.request.body.bytes</code> / <code>backend.response.body.bytes</code></strong> — same controls for the backend leg of the call.</li>
+<li><strong><code>verbosity</code></strong> — the level applied to traces emitted by trace policies (verbose, information, error).</li>
+</ul>
+
+<h3>Layer 2 — Generative-AI-gateway logs as a first-class category</h3>
+
+<p>For LLM workloads specifically, APIM emits a separate log category: <strong>generative AI gateway logs</strong>. These capture LLM request and response messages — the actual prompt and completion text — subject to documented size handling:</p>
+
+<blockquote style="border-left:3px solid var(--azure); padding-left:1rem; margin:1rem 0; color:var(--ink); font-style:italic;">
+"Generative AI gateway logs — LLM request or response messages up to 32 KB in size, if collected, are sent in a single entry. Messages larger than 32 KB are split and logged in 32 KB chunks with sequence numbers for later reconstruction. Request messages and response messages can't exceed 2 MB each."
+</blockquote>
+
+<p>The chunking behavior is operationally important. A long-context AI workload — RAG with 50 KB of retrieved documents in the prompt, for example — will produce a multi-chunk log entry. Reconstruction in KQL requires joining the chunks by their sequence numbers; the engineer who hits this once writes a reusable KQL function for next time. This is honest engineering — the chunking is the right answer to the size constraint — but it's a piece of operational nuance that production teams need to know about.</p>
+
+<h3>Layer 3 — The throughput cost</h3>
+
+<p>The most consequential constraint for production design is the documented throughput cost. From the <a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-app-insights" target="_blank">Application Insights integration tutorial</a>:</p>
+
+<blockquote style="border-left:3px solid var(--azure); padding-left:1rem; margin:1rem 0; color:var(--ink); font-style:italic;">
+"Based on internal load tests, enabling the logging feature caused a 40%-50% reduction in throughput when request rate exceeded 1,000 requests per second. Application Insights is designed to assess application performances using statistical analysis. It's not: Intended to be an audit system. Suited for logging each individual request for high-volume APIs."
+</blockquote>
+
+<p>This is an unusually candid documentation entry. Microsoft is saying directly: Application Insights is designed for statistical observability, not for full-fidelity audit trails. Production systems hitting 1000+ RPS pay a real performance cost for 100% sampling. The mitigation is sampling — and Microsoft's own guidance ("100% for development, 10-25% for high-traffic production") encodes this. For audit trails specifically, the recommendation is to use Resource Logs (sent to Log Analytics or Storage Account directly) rather than Application Insights.</p>
+
+<h3>Layer 4 — Resource logs and Log Analytics</h3>
+
+<p>For audit-trail-grade logging that doesn't pay the Application Insights performance cost, Resource Logs are the right channel. Configured through Diagnostic Settings on the APIM resource, they emit two relevant categories:</p>
+
+<ul>
+<li><strong>ApiManagement Gateway</strong> — request/response logs from the gateway (separate from Application Insights' <code>requests</code> table).</li>
+<li><strong>Generative AI gateway logs</strong> — the LLM-specific category, including the chunked LLM messages described above.</li>
+</ul>
+
+<p>Both flow into Log Analytics where they can be queried with KQL alongside other Azure resource logs. The resource-specific table mode (vs the legacy AzureDiagnostics catch-all) is the recommended setting; it gives properly typed columns rather than a single jsonified payload.</p>
+
+<h3>Layer 5 — Documented constraints that shape design</h3>
+
+<p>A handful of additional constraints that production teams need to design around:</p>
+
+<ul>
+<li><strong>32 KB total log entry limit.</strong> If the combined size of all attributes in a gateway-log entry exceeds 32 KB, APIM trims the entry by removing all body and trace content. The size budget is across all fields, not per field.</li>
+<li><strong>8,192-byte body limit per body in gateway logs.</strong> Bodies are capped at 8 KB even if the total entry has room. Long bodies are truncated.</li>
+<li><strong>Self-hosted gateway delivery is best-effort.</strong> Per Microsoft Learn: <em>"we don't guarantee all telemetry is pushed to Azure Application Insights since it relies on Application Insights' in-memory buffering."</em> For self-hosted-gateway deployments (Blog 3), audit-grade observability requires a different ingestion path.</li>
+<li><strong>Multiplexing requires Microsoft Support involvement.</strong> If you want to send telemetry to two different Application Insights instances from the same APIM service (the canonical use case: one for dev, one for prod with both enabled), this is supported but requires opening a support ticket. The default behavior is that the more granular logger overrides the broader one.</li>
+<li><strong>AMPLS (Azure Monitor Private Link Scope) ingestion caveats.</strong> If APIM is in a VNet linked to an AMPLS configured for Private-Only access mode, telemetry ingestion silently fails until the Application Insights and Log Analytics resources are added to the AMPLS. Documented operational gotcha.</li>
+</ul>
+
+<h3>The Azure observability topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure observability topology — three Azure-native surfaces">
+<defs>
+  <linearGradient id="bgAz8" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az8sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAz8" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgAz8)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure observability — Application Insights + Log Analytics + generative-AI-gateway logs</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">All three surfaces land in Azure Monitor. Cross-stack trace stitching depends on whether other services emit to the same Application Insights instance.</text>
+
+<!-- APIM source -->
+<rect x="40" y="110" width="180" height="100" rx="10" fill="#101B2C" stroke="#7CC2FF" stroke-width="2" filter="url(#az8sh)"/>
+<text x="130" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">APIM gateway</text>
+<text x="130" y="158" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">request/response</text>
+<text x="130" y="174" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ LLM messages</text>
+<text x="130" y="194" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">policy traces · custom dims</text>
+
+<!-- Three diverging arrows -->
+<line x1="220" y1="140" x2="280" y2="140" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz8)"/>
+<line x1="220" y1="160" x2="280" y2="290" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz8)"/>
+<line x1="220" y1="180" x2="280" y2="430" stroke="#7CC2FF" stroke-width="2" marker-end="url(#arAz8)"/>
+
+<!-- Surface 1: Application Insights -->
+<rect x="280" y="100" width="380" height="160" rx="10" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="300" y="126" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">SURFACE 1 — APPLICATION INSIGHTS</text>
+<text x="300" y="148" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">End-to-end transaction tracing</text>
+<text x="300" y="168" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">requests · dependencies · exceptions</text>
+<text x="300" y="184" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">trace context: W3C traceparent</text>
+<text x="300" y="200" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">sampling: 10-25% prod, 100% dev</text>
+<text x="300" y="220" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ 40-50% throughput cut at >1000 RPS (per MS docs)</text>
+<text x="300" y="240" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ statistical, not audit-grade</text>
+
+<!-- Surface 2: Log Analytics + KQL -->
+<rect x="280" y="280" width="380" height="120" rx="10" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="300" y="306" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">SURFACE 2 — LOG ANALYTICS</text>
+<text x="300" y="328" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Resource logs · KQL queries</text>
+<text x="300" y="348" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">ApiManagement Gateway category</text>
+<text x="300" y="364" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ Generative AI gateway category</text>
+<text x="300" y="384" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ 32 KB entry · 8 KB body · 2 MB hard cap</text>
+
+<!-- Surface 3: Azure Monitor metrics -->
+<rect x="280" y="420" width="380" height="120" rx="10" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="300" y="446" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">SURFACE 3 — AZURE MONITOR METRICS</text>
+<text x="300" y="468" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">Per-minute aggregates · dashboards · alerts</text>
+<text x="300" y="488" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">capacity · throttling · token metric (Blog 6)</text>
+<text x="300" y="508" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">10 dim keys · 50K active TS / region / sub / 12h</text>
+<text x="300" y="528" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ 5-custom-dim cap on emit-token-metric (Blog 6)</text>
+
+<!-- Visualization layer -->
+<rect x="700" y="100" width="540" height="200" rx="10" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6" filter="url(#az8sh)"/>
+<text x="720" y="126" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">VISUALIZATION + ANALYSIS</text>
+
+<rect x="720" y="146" width="240" height="70" rx="8" fill="#101B2C" stroke="#1e3a5f" stroke-width="1.2"/>
+<text x="840" y="170" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Azure portal</text>
+<text x="840" y="188" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Metrics Explorer · Log Analytics</text>
+<text x="840" y="204" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">App Insights end-to-end transaction</text>
+
+<rect x="980" y="146" width="240" height="70" rx="8" fill="#101B2C" stroke="#1e3a5f" stroke-width="1.2"/>
+<text x="1100" y="170" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Managed Grafana</text>
+<text x="1100" y="188" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Azure-managed Grafana</text>
+<text x="1100" y="204" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">+ AI-specific dashboard templates</text>
+
+<rect x="720" y="226" width="500" height="60" rx="8" fill="#101B2C" stroke="#1e3a5f" stroke-width="1.2"/>
+<text x="970" y="248" text-anchor="middle" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Workbooks · Alerts · Action Groups · KQL functions</text>
+<text x="970" y="266" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">All Azure-native; deeply integrated with the rest of the Azure stack</text>
+
+<!-- Cross-stack stitching panel -->
+<rect x="700" y="320" width="540" height="220" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="720" y="346" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">CROSS-STACK TRACE STITCHING</text>
+<text x="720" y="370" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">When other services emit to:</text>
+
+<rect x="720" y="382" width="500" height="36" rx="6" fill="#091510" stroke="#50fa7b" stroke-width="1"/>
+<text x="970" y="406" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ Same App Insights → automatic stitching, one trace ID, KQL queryable</text>
+
+<rect x="720" y="426" width="500" height="36" rx="6" fill="#1a1200" stroke="#F4C04F" stroke-width="1"/>
+<text x="970" y="450" text-anchor="middle" fill="#F4C04F" font-size="11" font-family="IBM Plex Mono, monospace">◐ Different App Insights → manual correlation by trace ID</text>
+
+<rect x="720" y="470" width="500" height="36" rx="6" fill="#1a0a08" stroke="#ff4757" stroke-width="1"/>
+<text x="970" y="494" text-anchor="middle" fill="#ff4757" font-size="11" font-family="IBM Plex Mono, monospace">⚠ External backend (Datadog, Honeycomb) → two-system, two-language</text>
+
+<text x="970" y="520" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Multiplexing to two App Insights instances requires Microsoft Support.</text>
+</svg>
+</div>
+<div class="img-caption">Azure observability topology — three Azure-native surfaces (Application Insights, Log Analytics, Azure Monitor metrics) with mature visualization options. Cross-stack trace stitching is automatic when other services emit to the same Application Insights instance; manual correlation when they don't.</div>
+
+<h3>What the operator writes — diagnostic settings + a representative KQL query</h3>
+
+<p>The Bicep below shows a working diagnostic configuration: 25% sampling on success traffic, 100% on errors, 512 bytes of frontend body capture, full LLM request/response message logging through the generative-AI-gateway log category. The companion KQL is what an on-call engineer writes to investigate a specific conversation, joining APIM gateway logs to LLM-message logs and reconstructing chunked messages:</p>
+
+<div class="code-wrap"><div class="code-lang">Bicep</div><pre>// Illustrative APIM diagnostic settings — production sampling pattern
+resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = {
+  name: 'contoso-apim'
+}
+
+// Application Insights logger
+resource aiLogger 'Microsoft.ApiManagement/service/loggers@2024-05-01' = {
+  parent: apim
+  name: 'azuremonitor'
+  properties: {
+    loggerType: 'applicationInsights'
+    credentials: {
+      connectionString: appInsights.properties.ConnectionString
+    }
+  }
+}
+
+// Diagnostic at the all-APIs level — 25% sampling, always-log errors
+resource appInsightsDiag 'Microsoft.ApiManagement/service/diagnostics@2024-05-01' = {
+  parent: apim
+  name: 'applicationinsights'
+  properties: {
+    alwaysLog: 'allErrors'             // bypasses sampling for any 4xx/5xx
+    loggerId: aiLogger.id
+    sampling: {
+      samplingType: 'fixed'
+      percentage: 25                   // production guidance: 10-25%
+    }
+    frontend: {
+      request:  { headers: ['Content-type'], body: { bytes: 512 } }
+      response: { headers: ['Content-type'], body: { bytes: 512 } }
+    }
+    backend: {
+      request:  { headers: [], body: { bytes: 0 } }
+      response: { headers: [], body: { bytes: 0 } }
+    }
+    verbosity: 'information'
+  }
+}
+
+// Resource-log diagnostic setting — sends gateway + generative-AI-gateway
+// logs to Log Analytics for audit-grade retention (no sampling cost there)
+resource resourceLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: apim
+  name: 'apim-to-loganalytics'
+  properties: {
+    workspaceId: logAnalyticsWorkspace.id
+    logs: [
+      { category: 'GatewayLogs', enabled: true }
+      { category: 'GenerativeAIGatewayLogs', enabled: true }   // LLM messages
+      { category: 'WebSocketConnectionLogs', enabled: false }
+    ]
+    metrics: [
+      { category: 'AllMetrics', enabled: true }
+    ]
+  }
+}</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for the <a href="https://learn.microsoft.com/en-us/azure/api-management/diagnostic-logs-reference" target="_blank">diagnostic-logs reference</a>, the <a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-app-insights" target="_blank">App Insights integration tutorial</a>, and <a href="https://learn.microsoft.com/en-us/azure/api-management/monitor-api-management" target="_blank">Monitor Azure API Management</a>. The pattern shown is the standard production configuration: sampled Application Insights for end-to-end traces, full-fidelity Resource Logs in Log Analytics for audit-grade retention, the Generative AI Gateway category enabled for LLM-message capture.</div>
+
+<p>The companion KQL — what the on-call engineer writes when a "weird answer" ticket arrives. This query stitches APIM gateway logs to the generative-AI-gateway logs by request ID and reconstructs any chunked LLM messages:</p>
+
+<div class="code-wrap"><div class="code-lang">KQL</div><pre>// Reconstruct an LLM conversation for a specific request ID
+// Joins gateway logs + generative-AI-gateway logs + handles chunking
+let targetRequestId = "abc-123-456";
+let gatewayLog = ApiManagementGatewayLogs
+  | where TimeGenerated > ago(2h)
+  | where CorrelationId == targetRequestId
+  | project TimeGenerated, ApiId, OperationId, ResponseCode, TotalTime,
+            BackendResponseCode, BackendTime, RequestSize, ResponseSize;
+let llmLog = ApiManagementGatewayLlmLogs
+  | where TimeGenerated > ago(2h)
+  | where CorrelationId == targetRequestId
+  // Reconstruct chunked messages — chunks have SequenceNumber and total ChunkCount
+  | summarize
+      RequestText  = strcat_array(make_list_with_nulls(RequestMessage),  ""),
+      ResponseText = strcat_array(make_list_with_nulls(ResponseMessage), ""),
+      TotalTokens  = sum(TotalTokens),
+      PromptTokens = sum(PromptTokens),
+      CompletionTokens = sum(CompletionTokens)
+    by CorrelationId, ModelName;
+gatewayLog
+  | join kind=inner llmLog on $left.CorrelationId == $right.CorrelationId
+  | project TimeGenerated, ApiId, OperationId, ModelName,
+            RequestText, ResponseText,
+            PromptTokens, CompletionTokens, TotalTokens,
+            ResponseCode, TotalTime</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Illustrative KQL pattern for reconstructing chunked LLM messages (per Microsoft's documented chunking behavior at the 32 KB threshold) and joining them to the gateway log entry by correlation ID. The query is the kind of thing an on-call engineer writes once and saves as a reusable function. Note: column names follow the documented schema for the resource-specific table mode.</div>
+
+<h3>What APIM is genuinely strong at — and the operating cost</h3>
+
+<p>What Azure Monitor for APIM does well is real and worth naming:</p>
+
+<ul>
+<li><strong>End-to-end transaction view in Application Insights.</strong> When other services in the same trace emit to the same App Insights, the transaction view is exceptional — you see every span, every dependency, every exception in one tree. For Azure-anchored stacks where everything lands in App Insights, this is best-in-class.</li>
+<li><strong>KQL is a powerful query language.</strong> For complex correlations, joins, time-series operations, and ad-hoc investigations, KQL outclasses most query languages in observability platforms. The chunked-message reconstruction shown above is the kind of operation KQL handles cleanly.</li>
+<li><strong>The Azure Monitor-based AI dashboard templates are mature.</strong> Microsoft ships pre-built dashboards covering token usage, model latency, error rates, content-safety blocks — useful out-of-the-box for teams that want a starting point.</li>
+<li><strong>Generative AI gateway logs are first-class.</strong> The dedicated log category for LLM messages, with documented chunking and size handling, is the right design — separating AI-specific telemetry from general gateway logs.</li>
+<li><strong>Documented constraints, honestly.</strong> The 40-50% throughput reduction at >1000 RPS, the 32 KB total / 8 KB body / 2 MB cap limits, the self-hosted-gateway best-effort delivery, the AMPLS ingestion caveat — all explicitly documented. Production teams designing around them can operate them reliably.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest caveats</div>
+  <p>(1) <strong>Cross-stack trace stitching.</strong> When other services in the request path don't emit to the same Application Insights instance — typical for organizations operating Datadog or Honeycomb as their primary distributed-trace backend — the engineer has to query two systems and manually correlate by trace ID. The 150-minute investigation in the opening scenario is this cost showing up. (2) <strong>The throughput-vs-fidelity trade-off.</strong> Production traffic above 1000 RPS pays a real performance cost for full-fidelity Application Insights logging. The recommended mitigation (sampling) is the right answer, but it means the trace data is statistical, not exhaustive. For workloads that need audit-grade trails, Resource Logs in Log Analytics are the right channel; teams operate two log streams. (3) <strong>The Azure-native default.</strong> The integration is excellent <em>within</em> Azure Monitor; integration to non-Azure observability backends (Datadog, Honeycomb, OpenTelemetry collectors) requires shipping logs out of Log Analytics through a separate forwarder or accepting the dual-backend trace-stitching cost.</p>
+</div>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: OpenTelemetry-first with native exporters</span></div>
+
+<p>TrueFoundry's <a href="https://www.truefoundry.com/docs/ai-gateway/observability" target="_blank">observability surface</a> is shaped by a deliberate architectural choice: the gateway emits OpenTelemetry telemetry as its primary observability mechanism, and customers point that OTel stream at whatever collector they already operate. There is no proprietary observability backend the customer is steered toward; the SRE team's existing Datadog, Honeycomb, Grafana Cloud, Tempo, or self-hosted OTel collector is the destination. The architectural fact this produces is that AI observability lands in the same backend as the rest of the company's distributed-trace data — and the trace-stitching cost from the opening scenario disappears.</p>
+
+<h3>Layer 1 — OTel as the primary mechanism</h3>
+
+<p>The three OpenTelemetry primitives — Traces, Metrics, Logs — are first-class outputs of the gateway:</p>
+
+<ul>
+<li><strong>Traces.</strong> Every request through the gateway produces an OTel span representing the gateway's processing — admission, identity verification, rate-limit check, cache lookup, routing decision, backend call, response handling, guardrail checks. The span carries W3C trace context inherited from the incoming request, so the span stitches into the caller's trace automatically. Sub-spans capture the individual steps for engineers debugging policy decisions.</li>
+<li><strong>Metrics.</strong> Token throughput, request rates, error rates, latency percentiles, cache hit rates, guardrail block rates — emitted as OTel metrics with the metadata-driven dimensions described in Blog 6. The dimensional ceiling is wherever the customer's downstream metrics backend imposes one (Prometheus, Datadog, etc.) rather than a platform-imposed cap.</li>
+<li><strong>Logs.</strong> Gateway events — policy decisions, errors, audit events, guardrail outcomes — emitted as OTel logs with trace-context correlation. LLM request and response messages are first-class log payloads, subject to whatever size limits the customer's log backend imposes (no 32 KB chunking constraint at the gateway layer, though the customer's backend may have its own).</li>
+</ul>
+
+<h3>Layer 2 — Native exporters to multiple backends</h3>
+
+<p>The OTel-first design makes exporter integration the natural extension point. The customer points the gateway's exporter at any of:</p>
+
+<ul>
+<li><strong>Datadog</strong> via the OTel Collector's Datadog exporter or the native Datadog OTLP endpoint.</li>
+<li><strong>Honeycomb</strong> via OTLP/HTTP to the Honeycomb collector.</li>
+<li><strong>Grafana Cloud</strong> via OTLP to Grafana's hosted backend (Tempo for traces, Mimir for metrics, Loki for logs).</li>
+<li><strong>Self-hosted Tempo / Mimir / Loki</strong> via OTLP to the collector running in the customer's cluster.</li>
+<li><strong>New Relic, Elastic, Splunk Observability, Lightstep</strong> — any platform with OTLP ingestion.</li>
+<li><strong>Azure Monitor</strong> via the OpenTelemetry Distro for Azure Monitor — meaning the customer can choose Azure Monitor as the destination if they want to, but it's a configuration choice rather than the default architectural assumption.</li>
+</ul>
+
+<p>The architectural implication is operational: <strong>AI observability inherits whatever observability practice the SRE team already has</strong>. If the team operates Datadog, AI traces appear in the same Datadog dashboards as the rest of the stack; the on-call engineer who pulls a trace in Datadog sees the AI hop alongside the BFF, orchestrator, RAG retrieval, and database calls — one query, one tool, one mental model.</p>
+
+<h3>Layer 3 — Trace context propagation and sampling</h3>
+
+<p>OpenTelemetry's W3C-standard trace context propagation is the mechanism that makes cross-stack stitching work. The gateway:</p>
+
+<ul>
+<li><strong>Reads the incoming <code>traceparent</code></strong> from the request and uses its <code>trace-id</code> as the parent of the gateway span.</li>
+<li><strong>Forwards the <code>traceparent</code></strong> to the LLM backend so backend-side telemetry (when the backend supports it) can stitch into the same trace.</li>
+<li><strong>Honors sampling decisions</strong> from the upstream <code>traceparent</code> sampling flag — if the caller's trace is sampled, the gateway span is sampled; if not, it isn't. This means the customer's overall sampling rate (typically 1-5% in high-traffic production) flows naturally through the AI hop without separate configuration.</li>
+</ul>
+
+<p>The sampling-control axis is owned by the customer's OTel pipeline — typical patterns include head-based sampling at the source service, tail-based sampling at the OTel collector (intelligent sampling that keeps all error traces and a percentage of success traces), and adaptive sampling based on traffic levels. The gateway participates in whatever sampling regime the customer's pipeline implements; it doesn't impose its own.</p>
+
+<h3>Layer 4 — Customer-stack integration shapes</h3>
+
+<p>The integration shape varies based on the customer's backend, but the canonical patterns are:</p>
+
+<ul>
+<li><strong>Datadog-anchored stack:</strong> gateway emits OTLP to a Datadog Agent or directly to Datadog's OTLP endpoint. AI traces appear in APM alongside other services; LLM-message logs appear in Log Management; token-usage metrics appear in Metrics Explorer. One unified Datadog operational surface.</li>
+<li><strong>Honeycomb-anchored stack:</strong> gateway emits OTLP to Honeycomb's collector. Honeycomb's BubbleUp and high-cardinality query model is particularly well-suited to debugging AI workloads with rich metadata dimensions (per Blog 6's metadata-driven attribution).</li>
+<li><strong>Grafana Cloud or self-hosted Grafana stack:</strong> gateway emits OTLP to a collector that fans out to Tempo (traces), Mimir (metrics), Loki (logs). Customer operates the standard LGTM stack; AI observability is one more service in it.</li>
+<li><strong>Customer collector + multiple backends:</strong> gateway emits to a single OTel Collector deployed in the customer's cluster; the collector fans out to multiple backends (e.g., traces to Tempo for retention, metrics to Prometheus for alerting, logs to Datadog for searching). The fan-out logic is in the collector, not in the gateway — the gateway's responsibility is one OTLP stream.</li>
+</ul>
+
+<h3>The TrueFoundry observability topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry observability topology — OTel-first">
+<defs>
+  <linearGradient id="bgTf8" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf8sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf8" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgTf8)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry observability — OTel-first, customer-stack-native</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Gateway emits OTLP to a customer-owned collector. AI traces stitch into the customer's existing distributed-tracing surface — one backend, one query language.</text>
+
+<!-- Gateway source -->
+<rect x="40" y="110" width="200" height="180" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="2" filter="url(#tf8sh)"/>
+<text x="140" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">TrueFoundry gateway</text>
+<text x="140" y="166" text-anchor="middle" fill="#FFB39C" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">OTel emit</text>
+<rect x="56" y="180" width="168" height="22" rx="4" fill="#0c0608" stroke="#5a2418" stroke-width="0.8"/>
+<text x="140" y="196" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">traces (W3C trace context)</text>
+<rect x="56" y="208" width="168" height="22" rx="4" fill="#0c0608" stroke="#5a2418" stroke-width="0.8"/>
+<text x="140" y="224" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">metrics (no dim cap)</text>
+<rect x="56" y="236" width="168" height="22" rx="4" fill="#0c0608" stroke="#5a2418" stroke-width="0.8"/>
+<text x="140" y="252" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">logs (LLM messages)</text>
+<text x="140" y="278" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">→ OTLP to customer collector</text>
+
+<line x1="240" y1="200" x2="290" y2="200" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf8)"/>
+
+<!-- OTel Collector -->
+<rect x="290" y="160" width="220" height="120" rx="10" fill="#13070b" stroke="#FF5533" stroke-width="2" filter="url(#tf8sh)"/>
+<text x="400" y="186" text-anchor="middle" fill="#FFB39C" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">OTEL COLLECTOR</text>
+<text x="400" y="208" text-anchor="middle" fill="#E8EEF8" font-size="13" font-family="IBM Plex Sans, sans-serif">customer-operated</text>
+<text x="400" y="226" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">tail-based sampling</text>
+<text x="400" y="242" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">PII redaction processors</text>
+<text x="400" y="260" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">batching · retry · fan-out</text>
+
+<line x1="510" y1="200" x2="560" y2="200" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf8)"/>
+
+<!-- Backend choice fan-out -->
+<rect x="560" y="100" width="680" height="240" rx="10" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="580" y="126" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">CUSTOMER OBSERVABILITY BACKEND — pick one or fan out</text>
+
+<rect x="580" y="146" width="160" height="64" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="660" y="172" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Datadog</text>
+<text x="660" y="190" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">APM + Logs + Metrics</text>
+
+<rect x="750" y="146" width="160" height="64" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="830" y="172" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Honeycomb</text>
+<text x="830" y="190" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">BubbleUp · high-cardinality</text>
+
+<rect x="920" y="146" width="160" height="64" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="1000" y="172" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Grafana Cloud</text>
+<text x="1000" y="190" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Tempo + Mimir + Loki</text>
+
+<rect x="1090" y="146" width="140" height="64" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="1160" y="172" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Self-hosted</text>
+<text x="1160" y="190" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">LGTM · Jaeger · Tempo</text>
+
+<rect x="580" y="222" width="160" height="64" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="660" y="248" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">New Relic</text>
+<text x="660" y="266" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">OTLP ingestion</text>
+
+<rect x="750" y="222" width="160" height="64" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="830" y="248" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Elastic / Splunk</text>
+<text x="830" y="266" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">OTLP ingestion</text>
+
+<rect x="920" y="222" width="160" height="64" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="1000" y="248" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Lightstep</text>
+<text x="1000" y="266" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">OTLP ingestion</text>
+
+<rect x="1090" y="222" width="140" height="64" rx="8" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="1160" y="248" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Azure Monitor</text>
+<text x="1160" y="266" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">via OTel Distro</text>
+
+<text x="580" y="316" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">All destinations consume OTLP — gateway code is unchanged across choices.</text>
+
+<!-- Cross-stack stitching panel -->
+<rect x="40" y="360" width="1200" height="180" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="60" y="386" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">CROSS-STACK TRACE STITCHING</text>
+
+<rect x="60" y="406" width="1160" height="36" rx="6" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="640" y="430" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ AI hop emits to same backend as Vue/Node BFF/Python orchestrator/Java retrieval/Elasticsearch — automatic single-trace stitching</text>
+
+<rect x="60" y="450" width="1160" height="36" rx="6" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="640" y="474" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ One query language (Datadog APM, Honeycomb queries, Grafana Tempo, etc.) across the entire trace including AI</text>
+
+<rect x="60" y="494" width="1160" height="36" rx="6" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="640" y="518" text-anchor="middle" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">✓ The 150-minute investigation from §0 becomes a 20-minute investigation: pull conversation ID, find trace, AI hop is in same view</text>
+
+<text x="60" y="566" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Customer ownership of the OTel pipeline means sampling, retention, redaction, and routing are customer policies — not platform-imposed.</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry observability topology — gateway emits OTLP to a customer-operated OpenTelemetry collector that routes telemetry to whatever observability backend(s) the SRE team already operates. The architectural property is that AI observability lands in the same backend as the rest of the company's distributed-trace data.</div>
+
+<h3>What the operator writes — OTel collector configuration</h3>
+
+<p>The YAML below shows a working OTel collector configuration that receives OTLP from the TrueFoundry gateway and fans out to two backends — Datadog for APM and Loki for log retention. The companion gateway configuration shows how to point the gateway at the collector:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative OTel Collector configuration deployed in customer cluster
+# Receives OTLP from TrueFoundry gateway, fans out to Datadog + Loki
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+
+processors:
+  # Tail-based sampling: keep all errors + 10% of success traces
+  tail_sampling:
+    decision_wait: 10s
+    policies:
+      - { name: errors, type: status_code, status_code: { status_codes: [ERROR] } }
+      - { name: high-latency, type: latency, latency: { threshold_ms: 5000 } }
+      - { name: probabilistic, type: probabilistic, probabilistic: { sampling_percentage: 10 } }
+
+  # PII redaction before export — applies regex-based substitution to message bodies
+  attributes/redact:
+    actions:
+      - { key: llm.prompt, action: update, value: "[REDACTED-AT-COLLECTOR]" }
+      - { key: llm.completion, action: update, value: "[REDACTED-AT-COLLECTOR]" }
+
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+exporters:
+  # Datadog for APM (traces) + metrics
+  datadog:
+    api: { site: datadoghq.com, key: ${DD_API_KEY} }
+
+  # Loki for log retention
+  loki:
+    endpoint: https://logs.contoso.internal/loki/api/v1/push
+
+service:
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [tail_sampling, attributes/redact, batch]
+      exporters:  [datadog]
+    metrics:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [datadog]
+    logs:
+      receivers:  [otlp]
+      processors: [attributes/redact, batch]
+      exporters:  [loki]
+---
+# TrueFoundry gateway configuration — OTel export pointed at the collector
+type: gateway-config
+observability:
+  otel_export:
+    endpoint: http://otel-collector.observability.svc.cluster.local:4317
+    protocol: grpc
+    resource_attributes:
+      service.name: truefoundry-ai-gateway
+      service.namespace: ai-platform
+      deployment.environment: prod
+  trace_propagation:
+    format: w3c               # honors incoming traceparent
+  sampling:
+    mode: parent_based        # follows upstream sampling decision</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition consistent with <a href="https://www.truefoundry.com/docs/ai-gateway/observability" target="_blank">TrueFoundry observability docs</a> and the OpenTelemetry Collector configuration. The tail-based sampling policy is the canonical "keep all errors + 10% of success" production pattern that costs less than blanket sampling while preserving full debugging fidelity for incidents. The PII redaction processor is one example of customer-controlled telemetry shaping at the collector layer.</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>Cross-stack trace stitching is automatic.</strong> The 150-minute investigation in the opening scenario becomes a 20-minute investigation when the AI hop emits to the same backend as the rest of the stack. The on-call engineer pulls a conversation ID, finds the trace, sees the AI span alongside every other span — one query, one tool. (2) <strong>Customer owns the pipeline.</strong> Sampling rate, retention policy, redaction rules, fan-out logic — all customer policies, not platform-imposed. The team that already operates an OTel pipeline applies the same rules to AI telemetry as everything else. (3) <strong>One ingestion path.</strong> No separate "AI observability" surface for the team to learn; AI traces appear in whatever distributed-trace tool the team already has muscle memory for. (4) <strong>OTel-first survives backend changes.</strong> If the org migrates from Datadog to Honeycomb (or to a self-hosted stack), the gateway configuration changes by one line — the destination URL. The gateway code is unchanged because OTLP is the wire format. (5) <strong>Vendor-agnostic by construction.</strong> No assumption that the customer is on Azure, on a particular cloud, or using a particular observability vendor. The integration shape is "OTLP to wherever you already have a collector."</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Three observability scenarios compared</h2>
+
+<p>The three scenarios below walk concrete operational moments where observability architecture decides the response time. Each is shown side by side under both products.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">"Weird answer" investigation across 8 microservices</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The opening scenario closes here. A customer reports an incorrect AI response. The on-call engineer needs to trace the request through Vue → Node BFF → Python orchestrator → APIM → AOAI → Java retrieval → Elasticsearch → re-ranker.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>If all eight services emit to the same Application Insights instance (Azure-anchored stack), the trace stitches automatically into one end-to-end transaction view. The KQL query for the chunked LLM messages shown in §2 retrieves the full conversation. Investigation time: ~20 minutes for an experienced KQL user. <em>If, however, the application services emit to Datadog (the typical case for a non-Azure-anchored stack), the engineer queries two systems and manually correlates by trace ID.</em> Investigation time: 100-150 minutes — the case from the opening scenario. The architecture works well when the institutional choice is Azure Monitor end-to-end; less well when AI sits in a different backend than the rest.</p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>OTel-first emit to the same backend the SRE team already operates. The trace stitches across all eight services automatically because they share trace context and emit to the same collector / backend. The on-call engineer pulls the trace in their primary observability tool — Datadog APM, Honeycomb, Tempo — and sees the AI span alongside every other span. Investigation time: ~20 minutes regardless of which observability backend the org runs. <em>The architecture's primary value: cross-stack trace stitching is automatic without requiring the AI hop to be in a specific vendor's observability surface.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">High-traffic production at 2,500 RPS — full-fidelity vs sampled telemetry</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A customer-facing AI feature is running at 2,500 RPS in peak hours. The platform team needs decisions on what telemetry to keep at full fidelity versus what to sample. Compliance requires full LLM message audit trails; engineering needs traces for debugging.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Microsoft's documented 40-50% throughput reduction at >1000 RPS makes 100% Application Insights sampling impractical at 2,500 RPS. The institutional pattern: Application Insights at 10-25% sampling for traces (with <code>alwaysLog: "allErrors"</code> for full error capture); Resource Logs to Log Analytics for full-fidelity audit (the Generative AI Gateway category captures every LLM message, with the documented chunking for messages above 32 KB). Two log streams, both queryable through KQL, but the engineer has to know which one to query for which question. <em>Effective; the throughput-vs-fidelity trade-off is documented and operable, with the cost being two parallel log pipelines.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>OTel collector tail-based sampling keeps all error traces and a configurable percentage of success traces (typically 5-10% at this scale), which preserves full debugging fidelity for incidents while reducing the volume the backend ingests. Logs export full LLM messages to whatever log retention backend the customer operates (Loki, Splunk, Datadog Logs); the message-size limit is whatever the customer's backend imposes rather than a platform-imposed 32 KB chunking constraint. <em>Equivalent outcome with one OTel pipeline rather than two parallel log streams. The customer's collector config carries the throughput-vs-fidelity policy.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Migrating observability backend — Datadog to self-hosted Grafana Cloud</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A platform team is migrating their observability stack from Datadog (current) to self-hosted Grafana Cloud (target) for cost reasons. The migration plan covers all 40 production microservices over Q3. The platform team needs to know what changes are required for the AI observability portion.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>If the existing AI stack emits to Application Insights, migrating to Grafana Cloud requires a parallel ingestion path: configure Application Insights to also forward telemetry to an OTel collector that routes to Grafana Cloud. This is achievable through Azure Monitor's <code>diagnostic settings → Event Hub → OTel Collector</code> pattern, but it's a non-trivial pipeline the team builds and operates. Alternative: change APIM diagnostic settings to point at a custom logger backed by Application Insights' OpenTelemetry Distro for Azure Monitor, then export OTLP from there. Both work; both are migration-specific engineering work. <em>Workable but the Azure-Monitor-anchored architecture imposes migration cost specifically because that anchor exists.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The gateway already emits OTLP to a customer-operated collector. The migration is a configuration change in the collector — change the exporter from Datadog to Grafana Cloud. Gateway configuration is unchanged. The OTLP wire format is stable across destinations. <em>Direct fit; the OTel-first architecture is structurally migration-friendly because the destination is a configuration choice rather than an architectural assumption.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The observability comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>Observability property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>Primary observability mechanism</strong></td><td>Application Insights + Log Analytics + Azure Monitor metrics (Azure-native)</td><td>OpenTelemetry-first, vendor-agnostic OTLP export</td><td>Determines whether AI observability lives in a dedicated surface or flows into the customer's existing stack.</td></tr>
+<tr><td><strong>End-to-end transaction tracing</strong></td><td><span class="check">✅</span> Excellent within Application Insights</td><td><span class="check">✅</span> Excellent in customer's existing trace backend</td><td>Both first-class; the question is which backend.</td></tr>
+<tr><td><strong>Cross-stack trace stitching</strong></td><td><span class="partial">◐</span> Automatic if all services share App Insights; manual otherwise</td><td><span class="check">✅</span> Automatic when SRE stack is OTel-based (Datadog, Honeycomb, Grafana, etc.)</td><td>Decisive for distributed AI systems with 5+ microservices in the request path.</td></tr>
+<tr><td><strong>Generative AI gateway logs (LLM message capture)</strong></td><td><span class="check">✅</span> First-class category; 32 KB chunking for messages above limit; 2 MB hard cap</td><td><span class="check">✅</span> First-class log payloads; size bounded by customer's log backend</td><td>Both capture LLM messages; size handling differs.</td></tr>
+<tr><td><strong>Throughput cost of full-fidelity logging</strong></td><td><span class="partial">◐</span> Microsoft-documented 40-50% throughput reduction at >1000 RPS</td><td><span class="partial">◐</span> Cost depends on collector batching config; OTel batching is well-engineered</td><td>Both have non-zero cost; both honestly documented.</td></tr>
+<tr><td><strong>Sampling controls</strong></td><td><span class="check">✅</span> Fixed percentage + alwaysLog for errors</td><td><span class="check">✅</span> Parent-based + tail-based sampling at OTel collector</td><td>Both first-class; tail-based sampling at the collector is a powerful pattern.</td></tr>
+<tr><td><strong>Query language</strong></td><td><span class="check">✅</span> KQL — powerful, deeply integrated with Azure</td><td>Whatever the customer's backend uses (Datadog APM, Honeycomb, etc.)</td><td>KQL is genuinely strong for complex correlations; vendor-agnostic OTel inherits whatever the destination provides.</td></tr>
+<tr><td><strong>Visualization</strong></td><td><span class="check">✅</span> Azure portal + Managed Grafana + AI dashboard templates</td><td><span class="check">✅</span> Customer's existing dashboards (Datadog, Grafana, etc.)</td><td>Both have good visualization; the question is whether AI dashboards live separately.</td></tr>
+<tr><td><strong>Log entry size limits</strong></td><td><span class="partial">◐</span> 32 KB total entry; 8 KB body; 2 MB message cap; chunking with sequence numbers</td><td>Bounded by customer's log backend (no platform-imposed cap)</td><td>For long-context workloads, the chunking can complicate KQL queries.</td></tr>
+<tr><td><strong>Self-hosted gateway delivery semantics</strong></td><td><span class="partial">◐</span> Best-effort: <em>"we don't guarantee all telemetry is pushed to App Insights"</em></td><td><span class="check">✅</span> OTel collector handles retry/buffering deterministically</td><td>For self-hosted gateway deployments, audit-grade observability requires architecture choices.</td></tr>
+<tr><td><strong>Multiplexing to multiple backends</strong></td><td><span class="cross">✕</span> Same logger at multiple scopes requires Microsoft Support involvement</td><td><span class="check">✅</span> Native through OTel collector fan-out</td><td>Standard SRE pattern: traces to Tempo, metrics to Prometheus, logs to Loki.</td></tr>
+<tr><td><strong>Backend portability / migration cost</strong></td><td><span class="partial">◐</span> Migration from Azure Monitor requires building a parallel ingestion path</td><td><span class="check">✅</span> One-line config change in collector</td><td>For organizations evolving their observability stack.</td></tr>
+<tr><td><strong>AMPLS / Private Link concerns</strong></td><td><span class="partial">◐</span> Documented ingestion gotcha with Private-Only mode</td><td>Customer's responsibility through their collector network policy</td><td>Private-network deployments need explicit configuration in both cases.</td></tr>
+<tr><td><strong>AI-specific dashboard templates out-of-the-box</strong></td><td><span class="check">✅</span> Azure-Monitor-based AI dashboard with token usage, latency, errors</td><td><span class="partial">◐</span> Customer builds or imports community templates</td><td>For Azure-anchored teams, the templates are real time-savings.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">Azure Monitor is one of the most mature, deeply integrated observability platforms in the cloud-vendor space. Application Insights' end-to-end transaction view is exceptional. Log Analytics' KQL outclasses most query languages for complex correlations. The Azure Monitor-based AI dashboard templates are battle-tested. The generative AI gateway log category with documented chunking and size handling is the right design for LLM-message capture. Microsoft's documentation is unusually candid about the constraints — the 40-50% throughput reduction at >1000 RPS, the 32 KB / 8 KB / 2 MB limits, the self-hosted gateway best-effort delivery, the AMPLS gotcha — all explicit. For organizations whose entire stack runs on Azure end-to-end and whose SRE practice is built around Azure Monitor, this is best-in-class.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> Azure Monitor is the institutional observability surface for the rest of the stack, KQL is the team's query muscle, the existing Application Insights estate operates AI workloads alongside everything else, the AI-specific Azure-Monitor-based dashboard templates are operationally valuable, or the workload runs at low-enough RPS that the documented throughput cost of full-fidelity logging is acceptable.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">OpenTelemetry-first emit with vendor-agnostic OTLP export means AI observability lands wherever the SRE team already operates — Datadog, Honeycomb, Grafana Cloud, self-hosted Tempo, or any combination through OTel collector fan-out. The architectural property is that the AI hop joins the same trace as the rest of the company's distributed-trace data without requiring the rest of the stack to migrate to a particular vendor's observability surface. For distributed AI systems with 5-15 microservices in the request path, the cross-stack trace stitching this enables is decisive for incident-response time. The "weird answer" investigation from the opening scenario becomes the 20-minute case rather than the 150-minute case. For organizations evolving their observability stack — migrating between vendors, fanning out to multiple backends, applying customer-controlled redaction policies at the collector layer — the architecture is structurally migration-friendly.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> the SRE team already operates Datadog, Honeycomb, Grafana Cloud, or self-hosted OpenTelemetry infrastructure; cross-stack trace stitching is decisive for incident-response time; backend portability is part of the org's observability strategy; or the customer-controlled OTel pipeline (sampling, redaction, fan-out) is the natural shape for the team's observability practice.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that the two architectures encode different assumptions about where the customer's observability practice lives. Azure Monitor for APIM is engineered for organizations whose stack runs on Azure end-to-end — the integration is deep, the AI-specific dashboards are mature, the KQL fluency built across other Azure workloads carries over directly. TrueFoundry's OTel-first design is engineered for organizations whose SRE practice runs on a vendor-agnostic distributed-tracing backend — Datadog, Honeycomb, Grafana, or anything that consumes OTLP. Both architectures are coherent within their assumption.</p>
+
+<p>The trace-stitching cost from the opening scenario is the operational metric that tests both. For Azure-anchored stacks, both architectures produce automatic stitching (TrueFoundry through OTel-to-Azure-Monitor via the OpenTelemetry Distro for Azure Monitor; APIM natively). For non-Azure-anchored stacks — which is most enterprises with mature SRE practices — TrueFoundry's OTel-first design produces automatic stitching while APIM produces a two-backend split that costs ~80-130 minutes per cross-stack debugging session. The cost compounds across the lifetime of the AI program where these debugging sessions are routine.</p>
+
+<p>For most teams the right answer is shaped by the rest of the stack. If observability is Azure Monitor across the board, APIM's mature integration is the right call — the institutional muscle of KQL, the AI dashboard templates, the deep Foundry integration are all real value. If observability lives in Datadog or Honeycomb or Grafana or self-hosted Tempo (which is the typical case for organizations operating multi-cloud or with established SRE practices), the OTel-first architecture is the structural fit because trace-stitching is what determines incident-response time and trace-stitching across two backends is the dominant operational cost.</p>
+
+<p>The next blog (<a href="09-truefoundry-vs-azure-model-catalog-self-hosted-inference.html">Model Catalog &amp; Self-Hosted Inference</a>) walks the second platform-surface dimension. What's actually deployable from each platform — closed providers, open-weights models, fine-tuned models, self-hosted inference runtimes — and what does the deployment shape look like across regions and provider mix?</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-app-insights" target="_blank">Microsoft Learn — Integrate APIM with Application Insights (40-50% throughput reduction at >1000 RPS, multiplexing limitation, AMPLS caveat)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/diagnostic-logs-reference" target="_blank">Microsoft Learn — Diagnostic logs settings reference (sampling, alwaysLog, frontend/backend body bytes, verbosity)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/monitor-api-management" target="_blank">Microsoft Learn — Monitor Azure API Management (resource logs, generative AI gateway category, 32 KB / 8 KB / 2 MB limits)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-use-azure-monitor" target="_blank">Microsoft Learn — Tutorial: Monitor APIs in Azure API Management</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview" target="_blank">Microsoft Learn — Application Insights overview</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-monitor/logs/log-analytics-overview" target="_blank">Microsoft Learn — Log Analytics overview</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/data-platform-metrics" target="_blank">Microsoft Learn — Azure Monitor metrics platform</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/managed-grafana/overview" target="_blank">Microsoft Learn — Managed Grafana overview</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-overview" target="_blank">Microsoft Learn — OpenTelemetry Distro for Azure Monitor</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/observability" target="_blank">TrueFoundry Docs — AI Gateway Observability (OTel-first emit)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/platform/observability-overview" target="_blank">TrueFoundry Docs — Platform observability overview</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/fetch-raw-metrics" target="_blank">TrueFoundry Docs — Raw Metrics API</a></li>
+  <li><a href="https://opentelemetry.io/docs/specs/otel/" target="_blank">OpenTelemetry — Specification</a></li>
+  <li><a href="https://www.w3.org/TR/trace-context/" target="_blank">W3C — Trace Context specification</a></li>
+  <li><a href="https://opentelemetry.io/docs/collector/" target="_blank">OpenTelemetry — Collector documentation</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 8 of 12 · April 2026 · <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">← Blog 7 — Guardrails</a> · <a href="09-truefoundry-vs-azure-model-catalog-self-hosted-inference.html">Blog 9 — Model Catalog →</a>
+</p>
+</body>
+</html>
