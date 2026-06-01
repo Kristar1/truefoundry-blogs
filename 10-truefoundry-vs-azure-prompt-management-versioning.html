@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="Azure Prompt Flow with three flow types (Standard, Evaluation, Chat), Variants for prompt tuning, Foundry Evaluations with built-in evaluators (Risk and Safety, Relevance, Groundedness, Content Safety 0-7 severity), and Foundry Agents' first-class agent_name:version reference scheme — vs TrueFoundry's prompt-as-config approach with versioned prompts, alias resolution at request time, and decoupling between prompt content and application binary. The architectural question that decides operational fit: are prompts deployment-coupled artifacts or platform-configuration objects? With Microsoft's own model-upgrade-strategy guidance recommending the abstraction-layer pattern that TrueFoundry provides as a platform primitive."/>
+<title>Prompt Management &amp; Versioning: TrueFoundry vs Azure</title>
+<style>
+/* Shared CSS for blogs 3-12 — extracted from Blog 2 */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+:root {
+  --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+  --azure:#0078D4; --tf:#FF5533;
+  --text:#e2e8f0; --muted:#7a8899; --ink:#c5d5e8;
+  --warn:#F4C04F; --ok:#50fa7b; --danger:#ff4757; --soft:#7aa2ff;
+  --card:#0f1522;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:16px; line-height:1.78; max-width:1000px; margin:0 auto; padding:2rem 1.5rem 6rem; }
+code,pre,.mono { font-family:'IBM Plex Mono',monospace; }
+h1 { font-size:2.3rem; font-weight:700; line-height:1.16; margin-bottom:1rem; letter-spacing:-.02em; }
+h2 { font-size:1.55rem; font-weight:700; margin:3rem 0 1rem; padding-bottom:.45rem; border-bottom:1px solid var(--border); }
+h3 { font-size:1.18rem; font-weight:600; margin:1.8rem 0 .65rem; }
+h4 { font-size:1rem; font-weight:600; margin:1.25rem 0 .5rem; }
+p { margin-bottom:1rem; color:var(--ink); }
+strong { color:var(--text); }
+a { color:#60a5fa; text-decoration:none; overflow-wrap:anywhere; } a:hover { text-decoration:underline; }
+ul,ol { padding-left:1.5rem; margin-bottom:1rem; }
+li { margin-bottom:.4rem; color:var(--ink); }
+.series-bar { display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.tag-pill { display:inline-block; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.72rem; font-family:'IBM Plex Mono',monospace; padding:.25rem .7rem; border-radius:999px; letter-spacing:.05em; text-transform:uppercase; }
+.tag-pill.active { background:#0f1d2e; border-color:#60a5fa; color:#60a5fa; }
+.series-dots { display:flex; gap:.3rem; align-items:center; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--border); } .dot.active { background:#60a5fa; }
+.meta { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.meta-item { font-size:.82rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; }
+.methodology { background:#0a1220; border:1px solid #1e3a5f; color:#94b8d8; font-size:.82rem; padding:.95rem 1.15rem; border-radius:10px; font-family:'IBM Plex Mono',monospace; line-height:1.7; margin-bottom:1.45rem; }
+.methodology strong { color:#60a5fa; }
+.intro-lead { font-size:1.05rem; color:#d3dfec; }
+.callout { border-left:3px solid var(--border); background:var(--surface); border-radius:0 10px 10px 0; padding:1rem 1.2rem; margin:1.2rem 0; }
+.callout.info { border-color:#60a5fa; background:#0a1220; }
+.callout.warn { border-color:var(--warn); background:#1a1200; }
+.callout.ok { border-color:var(--ok); background:#091510; }
+.callout.danger { border-color:var(--danger); background:#1a0a0a; }
+.callout-title { font-size:.75rem; font-weight:700; font-family:'IBM Plex Mono',monospace; letter-spacing:.08em; text-transform:uppercase; margin-bottom:.45rem; }
+.callout.info .callout-title { color:#60a5fa; }
+.callout.warn .callout-title { color:var(--warn); }
+.callout.ok .callout-title { color:var(--ok); }
+.callout.danger .callout-title { color:var(--danger); }
+.scenario { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1.45rem; margin:1.5rem 0; }
+.scenario-title { font-family:'IBM Plex Mono',monospace; font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--warn); margin-bottom:.7rem; }
+.quickpick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:1rem; margin:1.5rem 0; }
+.qp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.1rem; min-width:0; }
+.qp-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.qp-name { font-size:1.06rem; font-weight:700; margin-bottom:.3rem; overflow-wrap:anywhere; }
+.qp-desc { font-size:.85rem; color:var(--muted); line-height:1.55; overflow-wrap:anywhere; }
+.c-azure { color:var(--azure); border-top:3px solid var(--azure); }
+.c-tf { color:var(--tf); border-top:3px solid var(--tf); }
+.c-neutral { color:#93c5fd; border-top:3px solid #93c5fd; }
+.toc { padding:1.2rem; margin:1.5rem 0; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.toc h3 { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#60a5fa; margin-bottom:.7rem; font-family:'IBM Plex Mono',monospace; margin-top:0; }
+.toc ol { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:.35rem 1.5rem; margin-bottom:0; padding-left:1.2rem; }
+.toc li { margin-bottom:0; }
+.toc a { color:var(--muted); }
+.toc a:hover { color:#60a5fa; text-decoration:none; }
+.vendor-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.4rem; border-radius:12px; margin:2.5rem 0 1.2rem; }
+.vendor-header.azure { background:#071a2a; border:1px solid var(--azure); }
+.vendor-header.tf { background:#1e0d08; border:1px solid var(--tf); }
+.vendor-header.neutral { background:#101729; border:1px solid #60a5fa; }
+.vendor-badge { font-family:'IBM Plex Mono',monospace; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+.vendor-header.azure .vendor-badge { background:var(--azure); color:#fff; }
+.vendor-header.tf .vendor-badge { background:var(--tf); color:#fff; }
+.vendor-header.neutral .vendor-badge { background:#60a5fa; color:#071523; }
+.vendor-title { font-size:1.18rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.svg-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.85rem; margin:1.5rem 0; }
+.svg-wrap svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.img-caption { font-size:.78rem; color:var(--muted); text-align:center; margin-top:.5rem; margin-bottom:1rem; font-family:'IBM Plex Mono',monospace; line-height:1.6; }
+.code-wrap { position:relative; margin:1rem 0 .4rem; padding-top:1.45rem; }
+.code-lang { position:absolute; top:.1rem; left:.15rem; font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:#8ab4ff; }
+.code-wrap pre { background:#080c12; border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.4rem; padding-right:3.2rem; overflow-x:auto; font-size:.82rem; line-height:1.6; margin:0; white-space:pre; }
+.copy-btn { position:absolute; top:.55rem; right:.55rem; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:.68rem; padding:.22rem .55rem; border-radius:5px; cursor:pointer; transition:all .15s ease; user-select:none; letter-spacing:.03em; line-height:1.4; }
+.copy-btn:hover { background:var(--border); color:var(--text); border-color:#2e4060; }
+.copy-btn.copied { color:var(--ok); border-color:#50fa7b44; background:#0a1a10; }
+.source-note { font-size:.74rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-bottom:1.4rem; padding:.3rem .8rem; border-left:2px solid var(--border); line-height:1.6; overflow-wrap:anywhere; }
+.source-note a { color:#7a8899; } .source-note a:hover { color:#60a5fa; }
+.matrix-wrap { overflow-x:auto; margin:1.5rem 0; }
+table { width:100%; border-collapse:collapse; font-size:.83rem; min-width:740px; }
+thead tr { background:var(--surface2); }
+th { padding:.72rem .82rem; text-align:left; font-family:'IBM Plex Mono',monospace; font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:2px solid var(--border); color:var(--muted); }
+td { padding:.66rem .82rem; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+tr:hover td { background:var(--surface); }
+.check { color:var(--ok); }
+.cross { color:var(--danger); }
+.partial { color:var(--warn); }
+.verdict-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:1rem; margin:1.5rem 0; }
+.verdict-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem; position:relative; min-width:0; }
+.verdict-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+.verdict-card.azure::before { background:var(--azure); }
+.verdict-card.tf::before { background:var(--tf); }
+.verdict-label { font-size:.7rem; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+.verdict-card.azure .verdict-label { color:var(--azure); }
+.verdict-card.tf .verdict-label { color:var(--tf); }
+.verdict-name { font-weight:700; font-size:1.05rem; margin-bottom:.5rem; }
+.verdict-text { font-size:.85rem; color:var(--muted); line-height:1.6; margin-bottom:.5rem; }
+.verdict-use { font-size:.79rem; color:var(--text); margin-top:.65rem; padding-top:.65rem; border-top:1px solid var(--border); }
+.verdict-use strong { color:#a5f3fc; }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; margin:1rem 0; }
+.mini-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.mini-card h4 { margin-top:0; }
+.bullet-tight li { margin-bottom:.2rem; }
+.ref-list { font-size:.84rem; }
+.ref-list li { margin-bottom:.4rem; color:var(--muted); }
+hr { border:none; border-top:1px solid var(--border); margin:2.7rem 0; }
+@media (max-width:760px) {
+  body { padding:1.2rem 1rem 4rem; }
+  h1 { font-size:1.9rem; }
+  .toc ol, .two-col { grid-template-columns:1fr; }
+  table { min-width:620px; }
+}
+</style>
+</head>
+<body>
+<div class="series-bar">
+  <span class="tag-pill">TrueFoundry vs Azure</span>
+  <span class="tag-pill">Movement III · Platform surface</span>
+  <div class="series-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div></div>
+  <span class="tag-pill active">Blog 10 of 12</span>
+</div>
+
+<h1>Prompt Management &amp; Versioning: TrueFoundry vs Azure</h1>
+
+<div class="meta">
+  <span class="meta-item">⏱ 30 min read</span>
+  <span class="meta-item">🗓 April 2026</span>
+  <span class="meta-item">👤 LLMOps · Platform Engineering · ML Engineering</span>
+</div>
+
+<div class="methodology">
+  <strong>Methodology.</strong> The Azure side is grounded in current Microsoft Learn pages for Prompt Flow concepts (the three flow types: Standard, Evaluation, Chat; nodes-as-DAG model; Variants as the prompt-tuning primitive; the documented hub-based vs Foundry-project compatibility caveat), the Foundry Agent development lifecycle (the <code>&lt;agent_name&gt;:&lt;version&gt;</code> reference scheme, the immutable-name rule, version-as-snapshot semantics), Foundry Evaluations (dataset-driven evaluation with built-in evaluators for Risk and Safety, Relevance, Groundedness, and Content Safety with 0-7 severity), and the Model Upgrade and Migration Strategy guidance from Microsoft's Foundry blog (golden evaluation dataset per app, offline certification + canary online validation, the explicit recommendation to "introduce a model abstraction layer in applications. Route requests through deployment aliases or configuration"). The TrueFoundry side is grounded in the Prompts documentation (prompt as first-class platform object, semantic versioning), the Prompt Versioning patterns, and the integration with the virtual-model abstraction (Blog 4). Code blocks are illustrative compositions of documented features. The framing thesis comes from <a href="00-truefoundry-vs-azure-series-introduction-and-master-matrix.html">Blog 0</a>; this blog assumes the virtual-model contract from <a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html">Blog 4</a> and the deployment-shape from <a href="09-truefoundry-vs-azure-model-catalog-self-hosted-inference.html">Blog 9</a>.
+</div>
+
+<div class="callout info">
+  <div class="callout-title">What this blog argues</div>
+  <p>Prompt management comparisons that walk feature checklists find both products competitive at the build-and-evaluate phase. Azure's Prompt Flow is rich — three flow types, Variants for prompt tuning, dataset-driven evaluations with built-in evaluators, integration with VS Code through the open-source extension. TrueFoundry has prompts as first-class versioned platform objects with the same evaluation patterns. The checklist comparison is correct but stops at the question that decides operational fit: <strong>where do prompts live in the deployment lifecycle, and how do they bind to applications in production?</strong> The two products optimize for different binding points. <strong>Azure's Prompt Flow couples prompt management to the Foundry studio's deployment model</strong> — flows version through flow runs, deploy as Azure AI endpoints, and the AI orchestration is part of the same deployment surface as the prompt content. <strong>TrueFoundry decouples prompts from deployment surface entirely</strong> — prompts version like any other platform configuration, the application binds to a prompt name + version (or alias), the platform handles delivery without owning the orchestration. Microsoft itself documents the recommended pattern explicitly: <em>"introduce a model abstraction layer in applications. Route requests through deployment aliases or configuration."</em> The architectural fact is that this is the same pattern TrueFoundry's prompt-as-config approach is built around — and it's the pattern Microsoft tells customers to build on top of Azure rather than something Foundry provides natively.</p>
+</div>
+
+<section id="tldr">
+<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+
+<div class="scenario">
+<div class="scenario-title">A prompt rollback that becomes a coupling question</div>
+<p>An e-commerce platform team in São Paulo runs a product-discovery AI assistant in three languages (Portuguese, Spanish, English) across web and mobile. The architecture is Azure-anchored: AOAI gpt-4o-mini for the language model, Foundry Prompt Flow for the prompt-orchestration logic, Foundry's standard managed-online-endpoint pattern for serving. A specific prompt version — call it <code>discovery_v14</code> — has been live for six weeks and performs well on internal evals. On a Tuesday afternoon, the platform team's product manager forwards a customer-support escalation: a Brazilian Portuguese variant of a product-search query produces consistently odd responses. Initial investigation suggests the prompt's RAG-context formatting interacts badly with a recent Portuguese tokenization update.</p>
+<p>The rollback decision is unambiguous — return to <code>discovery_v13</code> until the v14 issue is properly diagnosed. The question is the rollback procedure. The team's prompt is embedded in a Prompt Flow that's deployed as a Managed Online Endpoint. Rolling back the prompt means deploying a new version of the Prompt Flow, which means triggering the Foundry deployment pipeline, which means the entire flow goes through redeployment — the LLM node, the Python tool nodes, the embedding lookup node, and the prompt itself. The deployment process takes 18-25 minutes because the managed online endpoint provisions new compute and runs through health checks before the traffic switch. During those 18-25 minutes, customers continue to hit the bad <code>v14</code> prompt. The on-call platform engineer is uncomfortable but accepts the wait.</p>
+<p>Two weeks later, the team's incident postmortem captures a more architectural concern. Prompts are configuration; configuration changes shouldn't require code-deployment-class operations. The team's other configuration changes — feature flags, A/B test traffic ratios, runtime limits — change in seconds because they're delivered through their feature-flag service, not through the deployment pipeline. The fact that prompt rollback takes 18-25 minutes is a property of how the prompt is bound to deployment, not a property of the prompt itself. The team writes up a target architecture: <em>prompts should be platform configuration that the running application reads at request time, with version pinning and aliasing — same operational shape as feature flags, not as deployments</em>. The target architecture is what this blog is about. It's also what Microsoft itself recommends when discussing model upgrades: introduce a model abstraction layer in applications, route requests through deployment aliases or configuration. The same recommendation applies to prompts.</p>
+<p>The team's eventual remediation is a custom prompt-config service they build in front of the Prompt Flow deployment — prompts are stored in their existing config service (with versioning, environment promotion, and runtime fetches), the Prompt Flow's LLM node is reduced to a thin shell that fetches prompt content at invocation time, and the deployment pipeline only redeploys when the orchestration code changes (rare) rather than when prompt content changes (frequent). The remediation works and runs reliably, but the team's platform lead notes in the architecture review that they've built — at meaningful engineering cost — what the platform should arguably provide as a primitive. The architectural lesson the team takes from the incident is one this blog is about: <em>prompts are configuration, configuration belongs in a config service, and the platform that treats prompts as deployment-coupled artifacts forces this kind of remediation engineering on every team that hits production scale</em>.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-title">TL;DR</div>
+  <ul class="bullet-tight">
+    <li><strong>Azure: Prompt Flow as the prompt-orchestration surface, deployed as managed online endpoints.</strong> Three flow types — Standard (general LLM apps), Evaluation (takes outputs from previous runs as inputs to score them), Chat. Nodes-as-DAG model with LLM nodes, Python tool nodes, custom tool nodes. Variants as the prompt-tuning primitive (multiple prompt variations per LLM node, run through batch evaluation). Built-in evaluators in Foundry Evaluations: Risk and Safety, Relevance, Groundedness, Content Safety with 0-7 severity scoring. Dataset-driven evaluation with the <em>"GenAI Ops Lifecycle"</em> framing.</li>
+    <li><strong>The Foundry-projects vs hub-projects caveat is operationally consequential.</strong> Microsoft's Prompt Flow documentation carries the explicit notice: <em>"This article provides legacy support for hub-based projects. It will not work for Foundry projects."</em> Teams creating projects in 2026 face the choice between the newer Foundry-resource project type (no Prompt Flow) and the older hub-based project type (Prompt Flow works, with the documented legacy framing).</li>
+    <li><strong>Foundry Agents have first-class versioning at the agent level.</strong> Agents are referenced as <code>&lt;agent_name&gt;:&lt;version&gt;</code>; the agent name is immutable after creation; saving meaningful changes creates new versions. The lifecycle treats agents like deployments rather than like configuration — including the deployment-class operational tax.</li>
+    <li><strong>TrueFoundry: prompts as first-class platform objects, decoupled from deployment.</strong> Prompts are versioned independently. The application binds to a prompt name + version or to an alias (<code>discovery@stable</code>, <code>discovery@canary</code>). The gateway delivers the prompt content to the LLM call at request time. Rolling back is changing the alias's version pointer — seconds, not minutes.</li>
+    <li><strong>Microsoft itself documents this pattern.</strong> The Foundry model-upgrade-strategy guidance recommends explicitly: <em>"Introduce a model abstraction layer in applications. Route requests through deployment aliases or configuration."</em> The recommended architecture is the architecture TrueFoundry provides as a platform primitive; in Foundry it's an architecture customers build on top.</li>
+    <li><strong>Honest framing.</strong> Prompt Flow is a strong build-and-evaluate environment. The DAG model, the Variants tooling, the Foundry Evaluations integration with built-in evaluators, the VS Code extension — all genuinely useful for the prompt-engineering phase. The architectural argument is about the <em>deployment</em> phase: where prompts live in production, how they bind to applications, and what changing them costs operationally.</li>
+  </ul>
+</div>
+
+<div class="quickpick-grid">
+  <div class="qp-card c-azure">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">Azure</div>
+    <div class="qp-desc">The right call when Prompt Flow's DAG-based orchestration is the natural shape for the AI logic, when Foundry Evaluations' built-in evaluators (Risk and Safety, Groundedness, Content Safety) are mission-critical, when the integration between Prompt Flow's Variants tooling and the deployment surface is operationally valuable, or when the team is willing to operate the Prompt-Flow-as-deployment binding for the build-and-evaluate strength it provides.</div>
+  </div>
+  <div class="qp-card c-tf">
+    <div class="qp-label">Quick-Pick</div>
+    <div class="qp-name">TrueFoundry</div>
+    <div class="qp-desc">The right call when prompts need to change at config-update speed (seconds, not minutes), when prompt rollback needs to be a config operation rather than a deployment operation, when the application's binding to prompts should follow the same model-abstraction pattern Microsoft itself recommends, or when prompt management needs to integrate uniformly with the team's existing config-service practices.</div>
+  </div>
+  <div class="qp-card c-neutral">
+    <div class="qp-label">Editorial frame</div>
+    <div class="qp-name">Build-vs-deploy phase</div>
+    <div class="qp-desc">The build-and-evaluate phase has reasonable parity — both products handle prompt iteration, evaluation, and comparison. The architectural difference is in the deploy phase: whether prompts are deployment-bound artifacts (Azure) or platform-configuration objects (TrueFoundry). The deploy-phase difference is what shapes day-two operational cost.</div>
+  </div>
+</div>
+
+<div class="toc">
+  <h3>// Table of Contents</h3>
+  <ol>
+    <li><a href="#why">§1 — Why prompts are configuration, not deployment</a></li>
+    <li><a href="#azure">§2 — Azure: Prompt Flow, Foundry Evaluations, Agent versioning</a></li>
+    <li><a href="#tf">§3 — TrueFoundry: prompts as first-class config with virtual-model binding</a></li>
+    <li><a href="#scenarios">§4 — Three prompt-management scenarios compared</a></li>
+    <li><a href="#verdict">§5 — Editorial verdict</a></li>
+    <li><a href="#references">§6 — References</a></li>
+  </ol>
+</div>
+</section>
+
+<section id="why">
+<h2>§1 — Why prompts are configuration, not deployment</h2>
+
+<p class="intro-lead">Software-engineering practice over the past two decades has converged on a sharp distinction between code and configuration. Code is what changes infrequently and goes through deployment pipelines, code review, and CI/CD. Configuration is what changes frequently and goes through config services, feature flags, and runtime fetches. The distinction matters because the operational properties of changing each are radically different — code changes take minutes-to-hours and involve risk; configuration changes take seconds and are typically reversible at the same speed. A platform that confuses the two — that treats configuration as code or code as configuration — creates operational friction that compounds over the lifetime of a system.</p>
+
+<p>Prompts are configuration. The evidence is in their change frequency, their reversibility, and the relationship between prompt change and application code change. A production AI application changes its application code rarely — the orchestration logic, the tool wiring, the response handling — but its prompts change frequently as the team learns from production traffic, refines the response style, addresses edge cases, and tunes for specific user populations. A prompt change typically does not change the application's external API or the structure of its inputs and outputs; it changes how the LLM phrases its responses, what context it considers, what guardrails it implicitly enforces. This is the configuration shape, not the code shape. The platform that treats prompts as code-class artifacts forces every prompt change through a code-class change pipeline.</p>
+
+<h3>Three properties that make prompts configuration</h3>
+
+<ol>
+<li><strong>Change frequency.</strong> Production AI teams change prompts orders of magnitude more often than they change application code. Weekly prompt iterations are normal; daily iterations are common during prompt-tuning sprints. Application code changes per day are typically zero or one; prompt changes per day at active teams are 5-50. The change-frequency distribution is the configuration distribution.</li>
+<li><strong>Reversibility shape.</strong> A prompt change should be reversible in seconds — if the new version produces unexpected behavior in production, the team should be able to point traffic back to the previous version without triggering a deployment, restarting compute, or invalidating caches. This is feature-flag-class reversibility. A platform that requires a deployment to revert a prompt has imposed code-class reversibility on configuration-class changes.</li>
+<li><strong>Decoupling from application binary.</strong> The application binary (the deployed code that orchestrates LLM calls, tool invocations, and response handling) typically should not know which specific prompt version it's using — it should bind to a stable prompt name (or alias) and let the platform resolve the version at request time. This is the same pattern as feature flags, configuration services, and service-discovery systems. Coupling the binary to a specific prompt version means every prompt change implies a binary change, which means deployment-class operations.</li>
+</ol>
+
+<h3>Microsoft itself recommends the pattern</h3>
+
+<p>The Microsoft Foundry blog's <a href="https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/model-upgrade-and-migration-strategy-for-microsoft-foundry/4503176" target="_blank">Model Upgrade and Migration Strategy guidance</a> contains the architectural recommendation explicitly: <em>"Introduce a model abstraction layer in applications. Route requests through deployment aliases or configuration."</em> The context is model-version upgrades — the same architectural shape that prompt versioning exhibits. Microsoft is documenting the right answer: applications should bind to abstract names that resolve to specific versions at runtime through configuration, not bake specific versions into the application binary.</p>
+
+<p>The architectural fact this surfaces is that <em>Microsoft's recommended pattern is what TrueFoundry's prompt-as-config approach implements as a platform primitive</em>. In Foundry, the model-abstraction-layer pattern is something customers build on top of the platform — using deployment aliases (which Foundry does provide for AOAI deployments) and writing application-side configuration logic. In TrueFoundry, the equivalent abstraction is part of the platform: virtual models for model abstraction (Blog 4), versioned prompts with alias resolution for prompt abstraction. Both architectures arrive at the same target shape; one provides it as a platform primitive, the other recommends customers build it.</p>
+
+<div class="callout warn">
+  <div class="callout-title">The honest boundary on this argument</div>
+  <p>Prompt Flow is a genuinely strong tool for the build-and-evaluate phase of prompt engineering. The DAG-based flow model lets engineers compose LLM calls with Python tool nodes and custom tools in a visual environment that's powerful for development. The Variants primitive enables systematic A/B testing of prompt variations within a flow. Foundry Evaluations' built-in evaluators (Relevance, Groundedness, Content Safety with 0-7 severity, Risk and Safety) are mature and well-engineered. The integration with VS Code through the open-source Prompt Flow extension is excellent. The argument is not that Prompt Flow is poorly designed for what it does; it is that <em>Prompt Flow's deployment model couples prompt management to the orchestration deployment</em>, which is a different architectural choice from prompts-as-decoupled-configuration. For teams who want the rich orchestration model and accept the deployment-coupling, Prompt Flow is excellent. For teams who want prompt management to be a thin configuration layer with the orchestration owned elsewhere, the coupling is the issue.</p>
+</div>
+
+<p>The rest of the blog walks both architectures in working detail. §2 walks Azure's Prompt Flow surface — the three flow types (Standard, Evaluation, Chat), the DAG model with LLM and tool nodes, Variants for prompt tuning, Foundry Evaluations with built-in evaluators, the agent-versioning model with the <code>&lt;agent_name&gt;:&lt;version&gt;</code> reference scheme — with a working flow.dag.yaml composition. §3 walks TrueFoundry's prompt-as-config approach — versioned prompts as platform objects, alias resolution at request time, the integration with the virtual-model abstraction, and the deployment pattern that decouples prompt content from application binary — with a working configuration. §4 walks three concrete prompt-management scenarios side-by-side. §5 ends with the editorial verdict.</p>
+</section>
+
+
+<section id="azure">
+<div class="vendor-header azure"><span class="vendor-badge">Microsoft</span><span class="vendor-title">§2 — Azure: Prompt Flow, Foundry Evaluations, Agent versioning</span></div>
+
+<p>Azure's prompt-management surface is composed across three platform pieces: <strong>Prompt Flow</strong> for prompt orchestration and authoring, <strong>Foundry Evaluations</strong> for dataset-driven evaluation with built-in evaluators, and <strong>Foundry Agents</strong> with first-class agent versioning. Each piece is well-engineered for what it does. The architectural question this section walks is how the pieces compose and what the deployment-binding model means for teams operating prompts in production.</p>
+
+<h3>Layer 1 — Prompt Flow as the orchestration surface</h3>
+
+<p><a href="https://learn.microsoft.com/en-us/azure/foundry-classic/concepts/prompt-flow" target="_blank">Prompt Flow</a> is the AI-application-orchestration tool inside Foundry. It's available as both an open-source GitHub project (with VS Code extension) and a cloud-integrated version inside Foundry portal. The cloud version is the production-oriented surface; the OSS version is the development-oriented one.</p>
+
+<p>Three flow types are documented:</p>
+
+<ul>
+<li><strong>Standard flow</strong> — designed for general LLM application development. The most common shape; supports the full toolset (LLM nodes, Python tool nodes, custom tool nodes, embedding lookups).</li>
+<li><strong>Evaluation flow</strong> — *"takes the outputs of previous flow runs as inputs"* and computes evaluation metrics on them. The evaluation flow is itself a flow that can have LLM nodes (LLM-as-judge), Python nodes (algorithmic scoring), or both.</li>
+<li><strong>Chat flow</strong> — chat-specific variant of Standard with conversation-history primitives.</li>
+</ul>
+
+<p>A flow is a DAG of nodes. Each node has typed inputs and outputs; edges define data dependencies. The execution model resolves the DAG, runs nodes in topological order, and produces outputs. For a typical RAG-with-prompt-orchestration shape, a Standard flow has: an embedding-lookup node (retrieve context for the user query), a prompt-construction node (assemble system prompt + retrieved context + user query), an LLM node (call AOAI with the constructed prompt), and an output-formatting node (post-process the LLM response).</p>
+
+<h3>Layer 2 — Variants as the prompt-tuning primitive</h3>
+
+<p>Within an LLM node in a Standard flow, the <strong>Variants</strong> primitive lets engineers define multiple prompt variations and run them through batch evaluation to compare metrics. A Variant captures: the prompt template, the LLM model, generation parameters (temperature, max-tokens, etc.), and any reference materials. The Foundry portal provides a side-by-side comparison UI; the SDK provides programmatic access for CI-integrated evaluation.</p>
+
+<p>The Variants model is genuinely useful for the prompt-engineering phase. An engineer iterating on a prompt can have <code>variant_0</code> through <code>variant_5</code> in one LLM node, run them all on a 100-sample evaluation dataset, and compare scores side-by-side. The architectural fact: <em>Variants live inside the flow, not outside it</em>. They're a flow-internal tuning tool, not a deployment-time selection mechanism. To promote a variant to production requires editing the flow to make that variant the active one, then deploying the new flow version.</p>
+
+<h3>Layer 3 — Foundry Evaluations and the GenAI Ops Lifecycle</h3>
+
+<p><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/evaluation-approach-gen-ai" target="_blank">Foundry Evaluations</a> are dataset-driven. The team curates an evaluation dataset (representative prompts with optional ground-truth answers and grounding context), selects evaluators, runs the evaluation, and reads aggregated metrics. The framing Microsoft uses is the <em>"GenAI Ops Lifecycle"</em>: evaluation is part of the production lifecycle, not a one-off pre-launch activity.</p>
+
+<p>Built-in evaluators include:</p>
+
+<ul>
+<li><strong>Risk and Safety evaluators</strong> — Hate/Unfairness, Sexual, Violence, Self-Harm, with severity scoring 0-7 (matching the Content Safety severity scale from <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Blog 7</a>).</li>
+<li><strong>Quality evaluators</strong> — Relevance (does the answer relate to the question?), Groundedness (is the answer supported by the retrieved context?), Coherence, Fluency, Similarity (against ground truth).</li>
+<li><strong>Content Safety evaluators</strong> — same 0-7 severity model as the Content Safety service, deployed as evaluators against output datasets.</li>
+<li><strong>Custom evaluators</strong> — teams can plug in their own evaluators, including LLM-as-judge patterns where a GPT model is configured with evaluation instructions to score outputs.</li>
+</ul>
+
+<p>The integration with monitoring is documented: deployed Prompt Flows can have <code>GenerationTokenStatisticsSignal</code> and <code>GenerationSafetyQualitySignal</code> monitors that run evaluators against production traffic on a schedule. The pattern is sound; the operational requirement is that monitoring evaluators that use LLM-as-judge need a GPT model configured for that purpose, which adds an institutional dependency.</p>
+
+<h3>Layer 4 — Foundry Agents with first-class versioning</h3>
+
+<p>Foundry's <a href="https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/development-lifecycle" target="_blank">Agent development lifecycle</a> introduces a different versioning model. Agents — prompt-based agents, workflow agents, and hosted (containerized) agents — get first-class versioning with a strict rule from the documentation: <em>"After you name your agent, you can't change the name. In code, you refer to your agent by &lt;agent_name&gt;:&lt;version&gt;."</em> Versions are saved as snapshots; meaningful changes save as new versions; the lifecycle treats versions as immutable artifacts.</p>
+
+<p>The agent-versioning model is sound for what it targets — agentic systems where the version <em>is</em> the meaningful unit of release because the agent's behavior is composed of prompt + tools + model + configuration. The architectural property: <em>this versioning is at the agent level, not at the prompt level</em>. A team that wants to roll back just the prompt portion of an agent without touching the tools or configuration goes through an agent-version operation.</p>
+
+<h3>Layer 5 — Deployment as managed online endpoints</h3>
+
+<p>The piece that determines deployment-time operational cost is the deployment binding. Prompt Flows in production are deployed as Foundry's <strong>managed online endpoints</strong>, which are an Azure Machine Learning concept that provisions managed compute (a backing AML cluster), runs health checks, manages traffic splits between blue/green deployments, and integrates with Azure Monitor.</p>
+
+<p>The operational shape: deploying a new flow version provisions new compute (or scales existing), runs through health checks (typically 5-15 minutes), then performs a traffic switch. For a single-deployment-pattern shop, this is conventional and fine. For a team that wants to change prompts without going through deployment, the binding is the friction point.</p>
+
+<h3>The Foundry-vs-hub project caveat</h3>
+
+<p>One additional architectural fact: Microsoft's Prompt Flow documentation carries the explicit notice <em>"This article provides legacy support for hub-based projects. It will not work for Foundry projects"</em> across multiple Prompt Flow how-to articles. Foundry Projects are the newer, recommended project type; AI Hub Projects are the older type that Prompt Flow was built around. For new teams creating projects in 2026, the choice is between the newer Foundry-resource project type (without Prompt Flow) and the older hub-based project type (with Prompt Flow, framed as legacy). Microsoft is clearly working on this transition; the operational reality during the transition is that teams who want Prompt Flow operate in a project type Microsoft is documenting as legacy.</p>
+
+<h3>The Azure prompt-management topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Azure prompt management topology">
+<defs>
+  <linearGradient id="bgAz10" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#07101D"/><stop offset="100%" stop-color="#07172A"/></linearGradient>
+  <filter id="az10sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/></filter>
+  <marker id="arAz10" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7CC2FF"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgAz10)" stroke="#22314C" stroke-width="2"/>
+<text x="40" y="50" fill="#E8EEF8" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">Azure prompt management — Prompt Flow + Foundry Evaluations + managed online endpoint</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Three flow types · Variants for tuning · dataset-driven evaluations · deployed as managed online endpoints (deployment-coupled).</text>
+
+<!-- Build phase -->
+<rect x="40" y="110" width="380" height="220" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="60" y="136" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">BUILD PHASE — Prompt Flow</text>
+
+<rect x="60" y="156" width="160" height="40" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="140" y="180" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Standard flow</text>
+
+<rect x="240" y="156" width="160" height="40" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="320" y="180" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Evaluation flow</text>
+
+<rect x="60" y="204" width="160" height="40" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="140" y="228" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Chat flow</text>
+
+<text x="60" y="266" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">DAG of nodes:</text>
+<text x="60" y="282" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">embedding · prompt · LLM · python · custom</text>
+<text x="60" y="304" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Variants live inside LLM node (flow-internal)</text>
+
+<!-- Eval phase -->
+<rect x="440" y="110" width="380" height="220" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="460" y="136" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">EVAL PHASE — Foundry Evaluations</text>
+
+<rect x="460" y="156" width="340" height="40" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="630" y="180" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Risk &amp; Safety evaluators (0-7 severity)</text>
+
+<rect x="460" y="204" width="340" height="40" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="630" y="228" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Quality (Relevance · Groundedness · Coherence)</text>
+
+<rect x="460" y="252" width="340" height="40" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="630" y="276" text-anchor="middle" fill="#E8EEF8" font-size="11" font-family="IBM Plex Sans, sans-serif">Custom (LLM-as-judge · algorithmic)</text>
+
+<text x="460" y="312" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">"GenAI Ops Lifecycle" — dataset-driven, ongoing</text>
+
+<!-- Deploy phase -->
+<rect x="840" y="110" width="400" height="220" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="860" y="136" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">DEPLOY PHASE — managed online endpoint</text>
+
+<rect x="860" y="156" width="360" height="44" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="1040" y="180" text-anchor="middle" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Flow deployed as Azure ML endpoint</text>
+<text x="1040" y="194" text-anchor="middle" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Provisions backing compute · health checks</text>
+
+<text x="860" y="222" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ Prompt change → new flow version → deploy</text>
+<text x="860" y="240" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ Deployment time: 18-25 min typical</text>
+<text x="860" y="258" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">⚠ Rollback = redeploy previous version</text>
+
+<rect x="860" y="276" width="360" height="40" rx="6" fill="#1a0a08" stroke="#ff4757" stroke-width="1.4"/>
+<text x="1040" y="300" text-anchor="middle" fill="#ff4757" font-size="11" font-family="IBM Plex Mono, monospace">PROMPT IS DEPLOYMENT-COUPLED</text>
+
+<!-- Agent versioning -->
+<rect x="40" y="350" width="600" height="210" rx="14" fill="#0a1830" stroke="#7CC2FF" stroke-width="1.6"/>
+<text x="60" y="376" fill="#7CC2FF" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">FOUNDRY AGENTS — first-class versioning</text>
+
+<rect x="60" y="396" width="540" height="44" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="420" fill="#E8EEF8" font-size="12" font-family="IBM Plex Mono, monospace">Reference: &lt;agent_name&gt;:&lt;version&gt;</text>
+<text x="80" y="436" fill="#FFE0A0" font-size="10" font-family="IBM Plex Mono, monospace">Agent name is immutable after creation</text>
+
+<rect x="60" y="448" width="540" height="44" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="80" y="472" fill="#E8EEF8" font-size="12" font-family="IBM Plex Mono, monospace">Versions saved as snapshots</text>
+<text x="80" y="488" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">Save subsequent changes as new versions</text>
+
+<text x="60" y="514" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Version is at the agent level (prompt + tools + model)</text>
+<text x="60" y="532" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Rolling back the prompt portion → roll back the whole agent</text>
+
+<!-- Project-type caveat -->
+<rect x="660" y="350" width="580" height="210" rx="14" fill="#1a1200" stroke="#F4C04F" stroke-width="1.4"/>
+<text x="680" y="376" fill="#F4C04F" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PROJECT-TYPE CAVEAT</text>
+
+<rect x="680" y="396" width="540" height="60" rx="6" fill="#0a1830" stroke="#7CC2FF" stroke-width="1"/>
+<text x="700" y="418" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Foundry resource project (newer)</text>
+<text x="700" y="436" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Standard / Provisioned serverless deployments</text>
+<text x="700" y="450" fill="#ff4757" font-size="10" font-family="IBM Plex Mono, monospace">⚠ Prompt Flow does NOT work in this project type</text>
+
+<rect x="680" y="466" width="540" height="60" rx="6" fill="#0a1830" stroke="#7CC2FF" stroke-width="1"/>
+<text x="700" y="488" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">AI Hub-based project (older)</text>
+<text x="700" y="506" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Required for Prompt Flow + managed compute</text>
+<text x="700" y="520" fill="#FFE0A0" font-size="10" font-family="IBM Plex Mono, monospace">"This article provides legacy support" notice</text>
+
+<text x="40" y="582" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Teams creating projects in 2026 face the choice between newer Foundry projects (no Prompt Flow) or older hub-based projects (Prompt Flow, framed as legacy).</text>
+</svg>
+</div>
+<div class="img-caption">Azure prompt-management topology — Prompt Flow build phase + Foundry Evaluations eval phase + managed-online-endpoint deploy phase. The architectural property to internalize: prompt change requires flow redeployment, which requires backing compute provisioning. Foundry Agents have first-class versioning at the agent level, but rolling back the prompt portion goes through the agent-version operation.</div>
+
+<h3>What the operator writes — Prompt Flow with Variants and evaluation harness</h3>
+
+<p>The YAML below shows a working Prompt Flow definition (<code>flow.dag.yaml</code>) for a customer-discovery RAG flow with three Variants on the LLM node. The companion Python snippet shows how the team would run a batch evaluation with built-in evaluators (Relevance, Groundedness, Content Safety) over a curated dataset:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative Prompt Flow definition: customer-discovery RAG with Variants
+# This is a Standard flow (per Microsoft Learn taxonomy)
+inputs:
+  user_query: { type: string }
+  conversation_history: { type: list, default: [] }
+
+outputs:
+  response:
+    type: string
+    reference: ${format_response.output}
+  retrieved_context:
+    type: string
+    reference: ${embedding_lookup.output}
+
+nodes:
+  # Node 1 — embedding lookup against the product catalog index
+  - name: embedding_lookup
+    type: python
+    source: { type: code, path: embedding_lookup.py }
+    inputs:
+      query: ${inputs.user_query}
+      top_k: 5
+      index_name: product-catalog-pt-br
+
+  # Node 2 — assemble system prompt with retrieved context
+  - name: assemble_prompt
+    type: python
+    source: { type: code, path: assemble_prompt.py }
+    inputs:
+      query: ${inputs.user_query}
+      context: ${embedding_lookup.output}
+      history: ${inputs.conversation_history}
+
+  # Node 3 — LLM node with three Variants for prompt tuning
+  - name: discovery_llm
+    type: llm
+    source: { type: code, path: prompts/variant_default.jinja2 }
+    inputs:
+      prompt_text: ${assemble_prompt.output}
+      deployment_name: gpt-4o-mini-prod
+      temperature: 0.3
+      max_tokens: 500
+    connection: aoai-prod
+    api: chat
+    use_variants: true            # enables variant selection at flow run time
+
+  # Node 4 — format the LLM response for the application
+  - name: format_response
+    type: python
+    source: { type: code, path: format_response.py }
+    inputs:
+      llm_output: ${discovery_llm.output}
+      query: ${inputs.user_query}
+
+# Variants for the LLM node — three prompt variations being tuned
+node_variants:
+  discovery_llm:
+    default_variant_id: variant_0
+    variants:
+      variant_0:                  # current production
+        node:
+          source: { type: code, path: prompts/variant_default.jinja2 }
+          inputs:
+            temperature: 0.3
+      variant_1:                  # experimental: more concise responses
+        node:
+          source: { type: code, path: prompts/variant_concise.jinja2 }
+          inputs:
+            temperature: 0.2
+      variant_2:                  # experimental: stronger grounding instructions
+        node:
+          source: { type: code, path: prompts/variant_grounded.jinja2 }
+          inputs:
+            temperature: 0.3</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition based on Microsoft Learn for <a href="https://learn.microsoft.com/en-us/azure/foundry-classic/concepts/prompt-flow" target="_blank">Prompt Flow concepts</a> and the open-source <a href="https://microsoft.github.io/promptflow/" target="_blank">Prompt Flow OSS docs</a>. The Variants section captures three prompt variations within the same LLM node — the canonical Prompt Flow tuning pattern. Promoting a variant to production requires editing the flow's <code>default_variant_id</code> (or the variant's prompt path) and redeploying the flow.</div>
+
+<div class="code-wrap"><div class="code-lang">Python</div><pre># Illustrative Foundry Evaluation harness running built-in evaluators
+# over a curated dataset, comparing the three Variants from above
+from azure.ai.evaluation import (
+    evaluate, RelevanceEvaluator, GroundednessEvaluator, ContentSafetyEvaluator,
+)
+
+model_config = {
+    "azure_endpoint": "https://contoso-foundry.openai.azure.com",
+    "api_key": os.environ["AOAI_API_KEY"],
+    "azure_deployment": "gpt-4o",          # judge model for LLM-as-judge evaluators
+}
+
+# Run evaluation across all three variants on the same dataset
+for variant_id in ["variant_0", "variant_1", "variant_2"]:
+    result = evaluate(
+        evaluation_name=f"discovery-rag-{variant_id}-eval",
+        data="evaluation_dataset.jsonl",   # 100-sample golden dataset
+        target=lambda inputs: pf.test(
+            flow="customer_discovery_flow",
+            inputs=inputs,
+            variant=f"${{discovery_llm.{variant_id}}}",   # select variant
+        ),
+        evaluators={
+            "relevance": RelevanceEvaluator(model_config),
+            "groundedness": GroundednessEvaluator(model_config),
+            "content_safety": ContentSafetyEvaluator(
+                azure_ai_project={"subscription_id": SUB_ID, "resource_group": RG, "project_name": "discovery"},
+                credential=DefaultAzureCredential(),
+            ),
+        },
+    )
+    print(f"{variant_id}: {result['metrics']}")</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition consistent with the <a href="https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/develop/evaluate-sdk" target="_blank">Foundry Evaluations SDK</a> and the <a href="https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/model-upgrade-and-migration-strategy-for-microsoft-foundry/4503176" target="_blank">model-upgrade-strategy guidance</a>. The pattern shown is the canonical Foundry-recommended evaluation: golden dataset + built-in evaluators including LLM-as-judge variants for Relevance and Groundedness. Custom evaluators can be added through the same harness.</div>
+
+<h3>What Azure is genuinely strong at — and the deployment-coupling caveat</h3>
+
+<p>What Prompt Flow + Foundry Evaluations does well is real:</p>
+
+<ul>
+<li><strong>The DAG-of-nodes model is powerful.</strong> Composing LLM calls with Python tool nodes, embedding lookups, and custom tools in a visual flow editor is genuinely useful for prompt-engineering work. The OSS VS Code extension makes it development-friendly.</li>
+<li><strong>Variants is the right primitive for prompt tuning.</strong> Running multiple prompt variations through batch evaluation against a curated dataset is exactly the pattern teams need during prompt tuning. The side-by-side comparison UI is well-designed.</li>
+<li><strong>Foundry Evaluations' built-in evaluators are mature.</strong> Relevance, Groundedness, Content Safety with 0-7 severity, Risk and Safety — all produced by Microsoft and well-tested. The integration with Azure AI Content Safety means the same severity model applies in evaluation as in production guardrails.</li>
+<li><strong>The "GenAI Ops Lifecycle" framing is sound.</strong> Treating evaluation as ongoing application lifecycle discipline — not a one-off pre-launch step — is the right architectural framing. Microsoft's documentation models this well.</li>
+<li><strong>Foundry Agents' first-class versioning is well-engineered.</strong> The <code>&lt;agent_name&gt;:&lt;version&gt;</code> reference scheme, immutable names, version-as-snapshot semantics — all align with deployment-engineering best practice for agent systems.</li>
+</ul>
+
+<div class="callout warn">
+  <div class="callout-title">The honest caveats</div>
+  <p>(1) <strong>Prompt change requires flow redeployment.</strong> Production prompt rollback takes 18-25 minutes (managed online endpoint provisioning + health checks). Reversibility is deployment-class, not configuration-class. (2) <strong>Variants live inside the flow.</strong> They're a build-time tuning tool, not a deploy-time selection mechanism. Promoting a variant to production requires editing the flow and redeploying. (3) <strong>Agent versioning is at the agent level.</strong> Rolling back just the prompt portion of an agent goes through an agent-version operation, which carries the agent's full deployment cost. (4) <strong>The Foundry-vs-hub project caveat is operationally consequential.</strong> The "<em>this article provides legacy support for hub-based projects. It will not work for Foundry projects</em>" notice on Prompt Flow articles forces a project-type decision early in a project's lifecycle. (5) <strong>Microsoft's own model-abstraction recommendation</strong> implicitly acknowledges the gap — the recommendation to <em>"introduce a model abstraction layer in applications. Route requests through deployment aliases or configuration"</em> is something customers build, not something Foundry provides as a primitive for prompts.</p>
+</div>
+</section>
+
+
+<section id="tf">
+<div class="vendor-header tf"><span class="vendor-badge">TrueFoundry</span><span class="vendor-title">§3 — TrueFoundry: prompts as first-class config with virtual-model binding</span></div>
+
+<p>TrueFoundry's prompt management surface is shaped by a deliberate architectural choice: prompts are first-class platform configuration objects with their own versioning lifecycle, decoupled from application deployment. The application binds to a stable prompt name (or alias); the platform resolves the name to a specific version at request time; updating the prompt is a configuration operation that takes effect in seconds, not a deployment operation that takes 18-25 minutes. The architecture implements directly the "model abstraction layer" pattern Microsoft itself recommends for AOAI workloads — except as a platform primitive rather than something customers build.</p>
+
+<h3>Layer 1 — Prompts as first-class versioned platform objects</h3>
+
+<p>The <a href="https://www.truefoundry.com/docs/ai-gateway/prompts" target="_blank">Prompts</a> documentation describes the model: a prompt is a named object in the platform, lives in a workspace (Blogs 2 and 6's RBAC/FinOps boundary), and has an independent versioning lifecycle. Each version is immutable once published; new versions are created by editing and re-publishing. The platform tracks the version history, the diff between versions, the authorship, and the timestamps.</p>
+
+<p>The architectural fact: <em>prompts are configuration objects with the same operational properties as feature flags or runtime config</em>. They version like config (semantic versions or auto-incremented), they're authored like config (through the workspace UI, the CLI, or GitOps), they're deployed like config (instantaneously to all consumers when published). This is the inverse of treating prompts as deployment-bound artifacts.</p>
+
+<h3>Layer 2 — Alias resolution at request time</h3>
+
+<p>The piece that makes prompts operationally useful as configuration is alias resolution. An application binds to a stable prompt name with optional alias modifier — for example, <code>discovery@stable</code>, <code>discovery@canary</code>, <code>discovery@v14</code>. The gateway resolves the alias at request time:</p>
+
+<ul>
+<li><strong>Pinned version</strong> (<code>discovery@v14</code>): always returns version 14, regardless of what's published as the current stable version. Used by applications that need exact reproducibility.</li>
+<li><strong>Stable alias</strong> (<code>discovery@stable</code>): returns whatever version is currently aliased as stable. The platform team can re-point the alias to a different version without any application change.</li>
+<li><strong>Canary alias</strong> (<code>discovery@canary</code>): returns the canary version, used for traffic-split testing alongside stable.</li>
+<li><strong>Latest</strong> (<code>discovery@latest</code>): always returns the most recently published version. Used in development.</li>
+</ul>
+
+<p>The operational consequence: <em>changing a prompt is an alias-pointer update</em>. Rolling back the bad <code>discovery_v14</code> from the opening scenario is changing <code>discovery@stable</code> from <code>v14</code> to <code>v13</code> — a configuration change that takes seconds and affects new requests immediately. No deployment, no compute provisioning, no health-check window. The application code is unchanged because it binds to <code>discovery@stable</code>, not to a specific version.</p>
+
+<h3>Layer 3 — Integration with the virtual-model abstraction</h3>
+
+<p>Prompts compose with the virtual-model abstraction from <a href="04-truefoundry-vs-azure-routing-load-balancing-failover.html">Blog 4</a>. The virtual model says <em>"this application calls a model named <code>discovery-prod</code>; the platform decides which provider serves it."</em> The prompt abstraction says <em>"this application uses a prompt named <code>discovery@stable</code>; the platform decides which version is served."</em> The two abstractions compose: an application calls <code>(model=discovery-prod, prompt=discovery@stable, query=user_input)</code>, and the platform resolves both abstractions independently — the model to a specific provider/backend, the prompt to a specific version — at request time.</p>
+
+<p>This composability is operationally meaningful. The team can change the underlying model (move from gpt-4o to gpt-4o-mini, route 30% of traffic to Claude for an A/B test, fail over to a self-hosted Llama for cost optimization) without touching prompts. The team can change the prompt (roll back, A/B test, regional override for Brazilian Portuguese) without touching the model routing. Two orthogonal abstractions; two independent operational levers.</p>
+
+<h3>Layer 4 — Evaluation patterns through Promptfoo / custom evaluators</h3>
+
+<p>Evaluation in TrueFoundry follows a similar dataset-driven pattern but uses the customer's choice of evaluation framework rather than a platform-specific evaluator suite. Common patterns:</p>
+
+<ul>
+<li><strong>Promptfoo integration</strong> — open-source LLM evaluation framework. The team writes a Promptfoo config that points at the gateway endpoint with specific prompt/model bindings; Promptfoo runs the evaluation against a dataset; the team reads results in CI or in Promptfoo's web UI.</li>
+<li><strong>Built-in scoring through gateway hooks</strong> — the LLM Output guardrail hook from <a href="07-truefoundry-vs-azure-guardrails-content-safety-four-hooks.html">Blog 7</a> can run quality evaluators in Audit mode against production traffic, emitting observability signals about ongoing quality. This is the equivalent of Foundry's <code>GenerationSafetyQualitySignal</code> monitoring pattern but uses the four-hook guardrail engine as the substrate.</li>
+<li><strong>Custom CI-integrated evaluation</strong> — teams plug their own evaluators (in-house quality scorers, regulatory-compliance evaluators, regression tests) into their CI pipeline; the gateway is just an HTTP endpoint that the evaluator calls.</li>
+</ul>
+
+<p>The architectural choice differs from Azure's: Azure provides a curated evaluator suite as part of Foundry; TrueFoundry takes a vendor-agnostic approach where evaluation is the customer's responsibility but every standard evaluation framework integrates through standard interfaces. For teams that want Microsoft's curated evaluators, Azure has the advantage; for teams that have already invested in their own evaluation practice or prefer the open-source Promptfoo ecosystem, TrueFoundry's neutrality is operationally cleaner.</p>
+
+<h3>The TrueFoundry prompt-management topology diagram</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrueFoundry prompt management topology">
+<defs>
+  <linearGradient id="bgTf10" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a0a05"/><stop offset="100%" stop-color="#0c0608"/></linearGradient>
+  <filter id="tf10sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/></filter>
+  <marker id="arTf10" markerWidth="8" markerHeight="8" refX="6.8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#FF8866"/></marker>
+</defs>
+<rect x="10" y="10" width="1260" height="580" rx="22" fill="url(#bgTf10)" stroke="#5a2418" stroke-width="2"/>
+<text x="40" y="50" fill="#FFE0D0" font-size="20" font-weight="700" font-family="IBM Plex Sans, sans-serif">TrueFoundry prompt management — prompts as first-class config, alias-resolved at request time</text>
+<text x="40" y="74" fill="#9AABBF" font-size="13" font-family="IBM Plex Sans, sans-serif">Application binds to stable name + alias. Gateway resolves at request time. Prompt rollback = alias pointer update.</text>
+
+<!-- Application -->
+<rect x="40" y="110" width="180" height="80" rx="10" fill="#1f0d08" stroke="#FF5533" stroke-width="1.6" filter="url(#tf10sh)"/>
+<text x="130" y="138" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application</text>
+<text x="130" y="158" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">prompt="discovery@stable"</text>
+<text x="130" y="178" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">model="discovery-prod"</text>
+
+<line x1="220" y1="150" x2="270" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf10)"/>
+
+<!-- Gateway resolution -->
+<rect x="270" y="110" width="240" height="80" rx="10" fill="#260f08" stroke="#FF5533" stroke-width="2.5" filter="url(#tf10sh)"/>
+<text x="390" y="132" text-anchor="middle" fill="#FFB39C" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">GATEWAY RESOLUTION</text>
+<text x="390" y="152" text-anchor="middle" fill="#E8EEF8" font-size="13" font-weight="600" font-family="IBM Plex Sans, sans-serif">at request time</text>
+<text x="390" y="170" text-anchor="middle" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">resolve alias → version</text>
+
+<line x1="510" y1="150" x2="560" y2="150" stroke="#FF8866" stroke-width="2" marker-end="url(#arTf10)"/>
+
+<!-- Prompt registry -->
+<rect x="560" y="100" width="320" height="240" rx="14" fill="#1a0a05" stroke="#FF5533" stroke-width="1.4"/>
+<text x="580" y="126" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">PROMPT REGISTRY (workspace-scoped)</text>
+
+<text x="580" y="148" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Aliases:</text>
+
+<rect x="580" y="156" width="280" height="30" rx="4" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="600" y="176" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">discovery@stable → v13</text>
+<text x="780" y="176" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">(prod traffic)</text>
+
+<rect x="580" y="190" width="280" height="30" rx="4" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="600" y="210" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">discovery@canary → v14</text>
+<text x="780" y="210" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">(under eval)</text>
+
+<rect x="580" y="224" width="280" height="30" rx="4" fill="#091510" stroke="#50fa7b" stroke-width="1.2"/>
+<text x="600" y="244" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">discovery@latest → v14</text>
+<text x="780" y="244" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">(dev/test)</text>
+
+<text x="580" y="276" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Versions (immutable):</text>
+
+<rect x="580" y="284" width="280" height="22" rx="4" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="600" y="300" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">v14 — adds RAG-context formatting</text>
+
+<rect x="580" y="308" width="280" height="22" rx="4" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="600" y="324" fill="#9AABBF" font-size="10" font-family="IBM Plex Mono, monospace">v13 — last known good (PT-BR fix)</text>
+
+<!-- Rollback panel -->
+<rect x="900" y="100" width="340" height="240" rx="14" fill="#091510" stroke="#50fa7b" stroke-width="2"/>
+<text x="920" y="126" fill="#50fa7b" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">ROLLBACK = ALIAS UPDATE</text>
+
+<text x="920" y="156" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Step 1 — change alias pointer</text>
+<rect x="920" y="166" width="300" height="40" rx="6" fill="#101B2C" stroke="#1e3a5f" stroke-width="1"/>
+<text x="940" y="190" fill="#E8EEF8" font-size="11" font-family="IBM Plex Mono, monospace">discovery@stable → v13</text>
+
+<text x="920" y="226" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Step 2 — propagation:</text>
+<rect x="920" y="236" width="300" height="22" rx="4" fill="#091510" stroke="#50fa7b" stroke-width="1"/>
+<text x="940" y="252" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">~3 sec to all gateway pods (NATS)</text>
+
+<text x="920" y="282" fill="#E8EEF8" font-size="12" font-family="IBM Plex Sans, sans-serif">Step 3 — applies to next request:</text>
+<rect x="920" y="292" width="300" height="22" rx="4" fill="#091510" stroke="#50fa7b" stroke-width="1"/>
+<text x="940" y="308" fill="#50fa7b" font-size="11" font-family="IBM Plex Mono, monospace">no new deploy · no compute · no health check</text>
+
+<text x="920" y="332" fill="#FFE0A0" font-size="11" font-family="IBM Plex Mono, monospace">Total elapsed: under 10 seconds</text>
+
+<!-- Decoupling panel -->
+<rect x="40" y="360" width="1200" height="200" rx="14" fill="#13070b" stroke="#5a2418" stroke-width="1.4"/>
+<text x="60" y="386" fill="#FFB39C" font-size="12" font-weight="700" font-family="IBM Plex Mono, monospace">DECOUPLING — three orthogonal abstractions, three independent levers</text>
+
+<rect x="60" y="406" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="80" y="428" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Prompt abstraction</text>
+<text x="80" y="448" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">stable name + alias → version</text>
+
+<rect x="450" y="406" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="470" y="428" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Model abstraction (Blog 4)</text>
+<text x="470" y="448" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">virtual model name → backend(s)</text>
+
+<rect x="840" y="406" width="380" height="60" rx="8" fill="#1f0d08" stroke="#FF5533" stroke-width="1.2"/>
+<text x="860" y="428" fill="#E8EEF8" font-size="12" font-weight="600" font-family="IBM Plex Sans, sans-serif">Application binary</text>
+<text x="860" y="448" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">orchestration code, deployed via CI/CD</text>
+
+<text x="60" y="488" fill="#9AABBF" font-size="12" font-family="IBM Plex Mono, monospace">Each lever moves independently. Prompt change does not require model change does not require app deploy.</text>
+<text x="60" y="510" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Microsoft's model-upgrade-strategy guidance recommends exactly this pattern: "Introduce a model abstraction layer in applications.</text>
+<text x="60" y="528" fill="#9AABBF" font-size="11" font-family="IBM Plex Mono, monospace">Route requests through deployment aliases or configuration." TrueFoundry implements it as a platform primitive.</text>
+</svg>
+</div>
+<div class="img-caption">TrueFoundry prompt-management topology — prompts live in a workspace-scoped registry with aliases that resolve at request time. The decoupling produces three orthogonal abstractions (prompt, model, application binary) that move on independent operational schedules.</div>
+
+<h3>What the operator writes — prompt registry + virtual model binding</h3>
+
+<p>The YAML below shows a working configuration: two prompt versions registered, an alias pointing the stable alias at v13 (after the rollback), and a virtual model declaration that an application binds to. The companion Python application snippet shows the request-side binding:</p>
+
+<div class="code-wrap"><div class="code-lang">YAML</div><pre># Illustrative prompt registry — two versions of the discovery prompt
+type: prompt-version
+name: discovery
+version: 13
+workspace: ecommerce-discovery
+content: |
+  You are a helpful product-discovery assistant for Brazilian and Spanish-speaking customers.
+  Use the provided product context to answer the user's query.
+  If the context is insufficient, say so honestly rather than speculating.
+
+  Product context:
+  {{ retrieved_context }}
+
+  User query: {{ user_query }}
+
+  Respond in the user's language. Be concise.
+metadata:
+  author: prompt-team@contoso.com
+  created_at: 2026-02-15T14:32:00Z
+  notes: "Last known good baseline; PT-BR tokenization compatible"
+
+---
+type: prompt-version
+name: discovery
+version: 14
+workspace: ecommerce-discovery
+content: |
+  You are a helpful product-discovery assistant.
+  Use the structured product context below to answer.
+
+  ## Product Context
+  {{ retrieved_context | format_structured }}
+
+  ## User Query
+  {{ user_query }}
+
+  Respond in the user's language with relevant product references.
+metadata:
+  author: prompt-team@contoso.com
+  created_at: 2026-04-01T11:08:00Z
+  notes: "Adds structured RAG formatting; PT-BR tokenization issue under investigation"
+
+---
+# Aliases — point stable to v13 after rolling back from v14
+type: prompt-alias
+name: discovery@stable
+target_version: 13              # rolled back from 14
+workspace: ecommerce-discovery
+
+---
+type: prompt-alias
+name: discovery@canary
+target_version: 14              # under investigation
+workspace: ecommerce-discovery
+
+---
+# Virtual model — application binds here (Blog 4)
+type: virtual-llm-model
+name: discovery-prod
+mode: chat-completions
+workspace: ecommerce-discovery
+
+routing:
+  - default:
+      strategy: weighted
+      backends:
+        - { provider: azure-openai, model: gpt-4o-mini, weight: 100, priority: 1 }
+        - { provider: azure-openai, model: gpt-4o, weight: 0, priority: 2 }   # fallback</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">Composition consistent with TrueFoundry's <a href="https://www.truefoundry.com/docs/ai-gateway/prompts" target="_blank">Prompts documentation</a> and <a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">virtual model docs</a>. The two prompt versions are immutable once published; the alias <code>discovery@stable</code> points at v13 (rolled back from v14). Updating the alias from v14 → v13 is a single configuration change that propagates to all gateway pods through the NATS-based config sync (Blog 1) within a few seconds.</div>
+
+<div class="code-wrap"><div class="code-lang">Python</div><pre># Illustrative application code — binds to stable names, not specific versions
+import os
+from openai import AzureOpenAI
+
+client = AzureOpenAI(
+    azure_endpoint="https://gateway.contoso.internal/v1",
+    api_key=os.environ["TFY_API_KEY"],
+)
+
+response = client.chat.completions.create(
+    model="discovery-prod",                    # virtual model — gateway resolves backend
+    messages=[
+        {"role": "system", "content": "{{prompt:discovery@stable}}"},   # alias-resolved at request time
+        {"role": "user", "content": user_query},
+    ],
+    extra_body={
+        "tfy_metadata": {
+            "team": "discovery", "project_id": "ecommerce-search", "environment": "prod",
+        },
+    },
+)
+
+# Application code binds only to stable names:
+#   model = "discovery-prod"          (virtual model)
+#   prompt = "discovery@stable"       (prompt alias)
+#
+# Both resolve at request time. Prompt rollback (changing the alias's target_version)
+# affects this code's next request without redeploying the application.</pre><button class="copy-btn">copy</button></div>
+<div class="source-note">The application code binds to stable names — <code>discovery-prod</code> for the model, <code>discovery@stable</code> for the prompt. Both abstractions resolve at request time. Rolling back the prompt is a configuration change in the registry; the application code is unchanged. The pattern is the same as feature-flag-driven configuration: stable identifiers in the binary, mutable resolution at runtime.</div>
+
+<div class="callout ok">
+  <div class="callout-title">What this earns operationally</div>
+  <p>(1) <strong>Prompt rollback in seconds, not minutes.</strong> The opening scenario's 18-25 minute rollback becomes a sub-10-second alias-pointer update. The platform team's incident-response time on prompt-related issues is fundamentally different. (2) <strong>Application code is unchanged across prompt versions.</strong> The application binds to <code>discovery@stable</code>; the platform team owns the version routing. Application teams don't redeploy on prompt changes. (3) <strong>Microsoft's recommended pattern is the platform primitive.</strong> The <em>"introduce a model abstraction layer ... route requests through deployment aliases or configuration"</em> recommendation Microsoft makes for AOAI workloads is what TrueFoundry provides for both models (Blog 4) and prompts. Customers don't build the abstraction; the platform delivers it. (4) <strong>Three orthogonal levers.</strong> Prompt version, model routing, application code — each moves independently on its own operational schedule. Code deploys when application logic changes (rare); model routing changes when the team wants to A/B test a provider (occasional); prompt changes when the team is actively iterating (frequent). The change frequencies match the operational shapes. (5) <strong>Workspace-scoped registry.</strong> Per-workspace prompt isolation matches the identity, FinOps, and observability boundaries from earlier blogs — same boundary, no separate concept to learn.</p>
+</div>
+</section>
+
+
+<section id="scenarios">
+<h2>§4 — Three prompt-management scenarios compared</h2>
+
+<p>The three scenarios below walk concrete moments where prompt management shape decides the operational outcome. Each is shown side by side under both products.</p>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 1</span><span class="blast-title">Production prompt rollback for a regression</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">The opening scenario closes here. The Brazilian e-commerce team's <code>discovery_v14</code> prompt has a Portuguese tokenization issue producing odd responses. The team needs to roll back to <code>v13</code> as fast as possible while diagnosis continues.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>Edit the Prompt Flow to use the <code>v13</code> prompt path, build a new flow version, deploy it through the managed-online-endpoint pipeline. Provisioning new compute and running health checks: 18-25 minutes. The team can speed this somewhat by keeping a pre-built v13 endpoint warm in blue-green, but that's an architecture pattern the team operates separately. <em>Workable but operationally heavy. The team's incident-response time on prompt issues is 18-25 minutes minimum.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Update the alias: <code>discovery@stable → v13</code>. NATS config sync propagates to all gateway pods in ~3 seconds. The next request hits v13. Total elapsed: under 10 seconds. The team's incident-response loop on prompt issues is dominated by the time to <em>decide</em> to roll back, not the time to <em>execute</em> the rollback. <em>Direct fit; the architecture's strongest scenario. The decoupling pays off precisely when speed matters.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 2</span><span class="blast-title">Multi-Variant prompt A/B test with rich evaluators</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A team is tuning a customer-support summarization prompt. They have five candidate variants targeting different summarization styles (bullet-point, narrative, action-oriented, etc.). They want to run all five through batch evaluation with Risk and Safety evaluators, Relevance evaluators, Groundedness evaluators, plus a custom domain-specific evaluator (does the summary preserve the customer's stated complaint accurately?). The eval dataset is 200 samples curated over the past quarter.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p><span class="check">✅</span> This is exactly what Prompt Flow Variants + Foundry Evaluations are designed for. Define the five variants in the LLM node, run a batch evaluation through the Foundry portal or SDK, plug in the Risk and Safety + Relevance + Groundedness + Content Safety evaluators, plus the custom domain evaluator. The side-by-side comparison UI shows scores per variant per evaluator. The integration is mature; the workflow is well-supported. <em>Best-in-class fit for this build-and-evaluate phase. The Microsoft-built evaluator suite is genuinely strong here.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>Register five prompt versions; configure a Promptfoo evaluation pointing at the gateway with each prompt version; run the evaluation against the 200-sample dataset. Promptfoo provides comparable side-by-side comparison through its web UI. For the Risk and Safety + Groundedness evaluators, the team either uses Promptfoo's built-in evaluators (which include groundedness scoring) or writes custom evaluators in Python that run as part of the harness. The custom domain evaluator plugs in identically through Promptfoo. <em>Equivalent outcome with a different evaluator suite. Microsoft's curated evaluators are a real advantage; Promptfoo's open-source ecosystem is a different real advantage. For teams who already operate Promptfoo or prefer open-source tooling, the fit is good; for teams who specifically want Microsoft's evaluator quality, Azure has the edge.</em></p>
+    </div>
+  </div>
+</div>
+
+<div class="blast-card">
+  <div class="blast-head"><span class="blast-num" style="background:#7aa2ff; color:#0b0e17;">SCENARIO 3</span><span class="blast-title">Application change shipping fortnightly + prompt iteration shipping daily</span></div>
+  <p style="font-size:.92rem; color:var(--ink);">A platform team operates 6 production AI applications. Application code changes ship every 2 weeks (the team's standard release cadence). Prompts iterate daily during active prompt-tuning sprints — sometimes multiple times per day for the same application. The team needs the operational separation between code-class and config-class changes to be clean.</p>
+  <div class="blast-side">
+    <div class="blast-az">
+      <h4>Azure path</h4>
+      <p>The team builds a parallel prompt-config service in front of Prompt Flow (the remediation pattern from the opening). The Prompt Flow's LLM node fetches prompt content from this config service at invocation time; the flow itself is redeployed only when orchestration code changes. This works and is operationally sound, but requires custom engineering to build and maintain. The team's platform lead notes in the architecture review that they've built — at meaningful cost — what the platform should arguably provide as a primitive. <em>Workable through customer-built remediation. The team operates a config service the platform doesn't.</em></p>
+    </div>
+    <div class="blast-tf">
+      <h4>TrueFoundry path</h4>
+      <p>The architecture matches directly. Application code binds to stable prompt names; ships every 2 weeks through the team's CI/CD. Prompts iterate daily through the prompt registry; alias updates propagate to gateway pods in seconds. Two operational schedules, two distinct change pipelines, no friction between them. <em>Direct fit; the architecture's design intent. This is the canonical scenario the prompt-as-config approach is engineered for.</em></p>
+    </div>
+  </div>
+</div>
+
+<h3>The prompt-management comparison matrix</h3>
+
+<div class="matrix-wrap">
+<table>
+<thead><tr><th>Prompt-management property</th><th>Azure</th><th>TrueFoundry</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>Prompt versioning</strong></td><td><span class="check">✅</span> Through Prompt Flow versions or Foundry Agent versions</td><td><span class="check">✅</span> First-class versioned prompt objects</td><td>Both first-class; binding model differs.</td></tr>
+<tr><td><strong>Prompt-tuning primitive (multi-variant comparison)</strong></td><td><span class="check">✅</span> Variants inside Prompt Flow LLM node</td><td><span class="check">✅</span> Multiple prompt versions + Promptfoo or custom harness</td><td>Both support; Microsoft's UI is more polished, TrueFoundry is more flexible.</td></tr>
+<tr><td><strong>Built-in evaluators</strong></td><td><span class="check">✅</span> Risk and Safety, Relevance, Groundedness, Content Safety (0-7 severity)</td><td><span class="partial">◐</span> Through Promptfoo + custom evaluators</td><td>Microsoft's curated evaluators are genuinely best-in-class for the workloads they target.</td></tr>
+<tr><td><strong>Dataset-driven evaluation</strong></td><td><span class="check">✅</span> Foundry Evaluations with "GenAI Ops Lifecycle" framing</td><td><span class="check">✅</span> Promptfoo or CI-integrated evaluators</td><td>Both first-class.</td></tr>
+<tr><td><strong>LLM-as-judge evaluators</strong></td><td><span class="check">✅</span> First-class (Relevance, Groundedness, Coherence)</td><td><span class="check">✅</span> Through custom evaluators or Promptfoo</td><td>Both support; Azure has more pre-built judge implementations.</td></tr>
+<tr><td><strong>Prompt rollback time</strong></td><td><span class="cross">✕</span> 18-25 min (managed online endpoint redeploy)</td><td><span class="check">✅</span> Under 10 sec (alias pointer update + NATS sync)</td><td>Decisive for incident-response time on prompt regressions.</td></tr>
+<tr><td><strong>Decoupling from application binary</strong></td><td><span class="partial">◐</span> Customer-built (model abstraction layer pattern Microsoft recommends)</td><td><span class="check">✅</span> First-class platform primitive (alias resolution at request time)</td><td>Microsoft itself recommends the pattern; TrueFoundry provides it.</td></tr>
+<tr><td><strong>Prompt aliasing (stable / canary / latest)</strong></td><td><span class="partial">◐</span> Through deployment-alias patterns at AOAI deployment level</td><td><span class="check">✅</span> First-class at the prompt level</td><td>For traffic-split testing without code change.</td></tr>
+<tr><td><strong>DAG-based orchestration</strong></td><td><span class="check">✅</span> Prompt Flow's three flow types with rich node ecosystem</td><td><span class="cross">✕</span> Not the primary metaphor (orchestration via application code)</td><td>For visual flow authoring; Azure's strength.</td></tr>
+<tr><td><strong>VS Code extension for development</strong></td><td><span class="check">✅</span> Open-source Prompt Flow extension</td><td><span class="partial">◐</span> CLI-driven; no flow-specific extension</td><td>For developer workflow.</td></tr>
+<tr><td><strong>Foundry-vs-hub project caveat</strong></td><td><span class="cross">✕</span> Prompt Flow only works in legacy hub-based projects per Microsoft Learn</td><td><span class="check">✅</span> No analogous project-type constraint</td><td>Forces project-type decision early in lifecycle.</td></tr>
+<tr><td><strong>Agent-level versioning</strong></td><td><span class="check">✅</span> First-class with <code>&lt;agent_name&gt;:&lt;version&gt;</code> reference scheme</td><td><span class="partial">◐</span> Through application versioning (out of platform scope)</td><td>For Foundry Agent workloads specifically.</td></tr>
+<tr><td><strong>Production monitoring with quality signals</strong></td><td><span class="check">✅</span> GenerationTokenStatisticsSignal, GenerationSafetyQualitySignal</td><td><span class="check">✅</span> Through guardrail Audit mode (Blog 7) + observability pipeline (Blog 8)</td><td>Both support; architectural locus differs.</td></tr>
+<tr><td><strong>Workspace-scoped prompt isolation</strong></td><td><span class="partial">◐</span> Through project-level isolation</td><td><span class="check">✅</span> First-class at workspace level (matches Blogs 2 + 6 boundaries)</td><td>For multi-team prompt governance.</td></tr>
+<tr><td><strong>Operational shape</strong></td><td>Prompts as deployment-bound artifacts</td><td>Prompts as platform-configuration objects</td><td>The architectural choice that determines day-two operating cost.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+
+<section id="verdict">
+<h2>§5 — Editorial verdict</h2>
+
+<div class="verdict-grid">
+  <div class="verdict-card azure">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">Azure</div>
+    <div class="verdict-text">For the build-and-evaluate phase of prompt engineering, Prompt Flow is genuinely strong. The DAG-based orchestration model with LLM nodes, Python tool nodes, and embedding lookups is a powerful authoring environment. The Variants primitive is the right tool for systematic prompt-tuning A/B tests with batch evaluation. Foundry Evaluations' built-in evaluators — Risk and Safety, Relevance, Groundedness, Content Safety with 0-7 severity, plus the LLM-as-judge implementations — are mature and well-engineered. The "GenAI Ops Lifecycle" framing treats evaluation as ongoing application discipline, which is the right architectural posture. The open-source Prompt Flow VS Code extension makes development friendly. For teams operating in the build-and-evaluate phase, the integration is best-in-class.</div>
+    <div class="verdict-use"><strong>Choose Azure if:</strong> Prompt Flow's DAG-of-nodes model is the natural shape for the AI orchestration logic, Microsoft's curated evaluator suite (Risk and Safety, Groundedness, Content Safety) is mission-critical, the Variants primitive's polished tuning UX is operationally valuable, or the team is willing to operate the Prompt-Flow-as-deployment binding for the build-and-evaluate strength it provides.</div>
+  </div>
+  <div class="verdict-card tf">
+    <div class="verdict-label">Best fit</div>
+    <div class="verdict-name">TrueFoundry</div>
+    <div class="verdict-text">Prompts as first-class platform-configuration objects with alias resolution at request time produce the operating model the deploy-phase scenario calls for. Prompt rollback in seconds rather than minutes. Application binaries that bind to stable names rather than specific versions. The same workspace-scoped boundary used for identity, FinOps, and observability also bounding the prompt registry. The architectural property is that prompts get the operational properties of feature flags rather than of deployments — change frequency matched to operational shape, reversibility matched to incident-response needs, decoupling matched to application-binary lifecycles. The platform implements the model-abstraction-layer pattern Microsoft itself recommends for AOAI workloads as a primitive rather than as something customers build.</div>
+    <div class="verdict-use"><strong>Choose TrueFoundry if:</strong> production prompt rollback in seconds is decisive, prompts iterate at config-class change frequency rather than code-class change frequency, the team's existing config-service practice should extend to prompts, the application binary should bind to stable names rather than specific versions, or the operational separation between code-class and config-class changes is part of the team's engineering discipline.</div>
+  </div>
+</div>
+
+<p>The most honest framing is that the two architectures optimize for different phases of the prompt-management lifecycle. Prompt Flow is engineered for the build-and-evaluate phase — the rich DAG-of-nodes orchestration model, the Variants tuning primitive, the curated evaluator suite are all genuinely valuable for prompt-engineering work. TrueFoundry's prompt-as-config approach is engineered for the deploy-and-operate phase — the alias resolution, the application-binary decoupling, the seconds-rather-than-minutes rollback are all genuinely valuable for production operations.</p>
+
+<p>The architectural fact that decides which phase matters more is workload maturity. Teams in active prompt-tuning sprints — building new AI applications, iterating on initial prompt design, comparing approaches — are in the build-and-evaluate phase, and Prompt Flow's strengths are real. Teams operating mature AI workloads at production scale — pushing daily prompt iterations, responding to production-traffic feedback, running incident-response on prompt regressions — are in the deploy-and-operate phase, and the prompt-as-config approach's strengths are real. Most organizations have both shapes simultaneously across different applications.</p>
+
+<p>The Microsoft model-upgrade-strategy guidance's recommendation — <em>"introduce a model abstraction layer in applications. Route requests through deployment aliases or configuration"</em> — is the architectural endorsement of the prompt-as-config pattern's underlying logic. Microsoft is telling customers to build the abstraction; TrueFoundry provides it as a platform primitive. Different distributions of "build vs buy" for the same architectural target.</p>
+
+<p>For most teams the right answer is shaped by the dominant phase across their workload portfolio. Build-heavy organizations with active prompt-engineering practice should weight Prompt Flow's strengths. Deploy-heavy organizations operating mature AI workloads at scale should weight prompt-as-config's operational properties. Mixed organizations need to evaluate the proportions.</p>
+
+<p>The next blog (<a href="11-truefoundry-vs-azure-mcp-tool-governance-agent-runtime.html">MCP Tool Governance &amp; Agent Runtime</a>) opens Movement IV — the agentic and operational story. How do platforms govern Model Context Protocol servers, manage agent identity and tool authorization, and handle the agentic-runtime patterns that close out the technical comparison?</p>
+</section>
+
+<section id="references">
+<h2>§6 — References</h2>
+<ol class="ref-list">
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry-classic/concepts/prompt-flow" target="_blank">Microsoft Learn — Prompt Flow concepts (three flow types, DAG model, Variants)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/prompt-flow?view=foundry-classic" target="_blank">Microsoft Learn — Prompt Flow in Foundry portal (the legacy-vs-Foundry-projects caveat)</a></li>
+  <li><a href="https://microsoft.github.io/promptflow/" target="_blank">Prompt Flow OSS documentation</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/evaluation-approach-gen-ai" target="_blank">Microsoft Learn — Evaluation in Microsoft Foundry (GenAI Ops Lifecycle)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/develop/evaluate-sdk" target="_blank">Microsoft Learn — Foundry Evaluations SDK</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry-classic/how-to/flow-develop-evaluation" target="_blank">Microsoft Learn — Develop an evaluation flow</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/development-lifecycle" target="_blank">Microsoft Learn — Agent development lifecycle (agent_name:version reference scheme)</a></li>
+  <li><a href="https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/model-upgrade-and-migration-strategy-for-microsoft-foundry/4503176" target="_blank">Microsoft Foundry Blog — Model Upgrade and Migration Strategy (the "introduce a model abstraction layer" recommendation)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/foundry-classic/how-to/monitor-quality-safety" target="_blank">Microsoft Learn — Monitor Quality and Token Usage of Deployed Prompt Flow Applications (GenerationTokenStatisticsSignal, GenerationSafetyQualitySignal)</a></li>
+  <li><a href="https://learn.microsoft.com/en-us/azure/machine-learning/concept-endpoints-online" target="_blank">Microsoft Learn — Managed online endpoints (the Prompt Flow deployment substrate)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/prompts" target="_blank">TrueFoundry Docs — Prompts (first-class platform objects)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/virtual-model" target="_blank">TrueFoundry Docs — Virtual Models (Blog 4 architectural primitive)</a></li>
+  <li><a href="https://www.truefoundry.com/docs/ai-gateway/guardrail-strategies" target="_blank">TrueFoundry Docs — Guardrail Strategies (Audit mode for ongoing quality monitoring)</a></li>
+  <li><a href="https://www.promptfoo.dev/docs/intro/" target="_blank">Promptfoo — Open-source LLM evaluation framework</a></li>
+  <li><a href="https://github.com/microsoft/promptflow" target="_blank">Microsoft Prompt Flow on GitHub (OSS)</a></li>
+</ol>
+</section>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement.querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.innerText); btn.textContent = 'copied'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1200); }
+      catch (e) { btn.textContent = 'failed'; setTimeout(() => { btn.textContent = 'copy'; }, 1200); }
+    });
+  });
+</script>
+<hr/>
+<p style="font-size:.74rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; line-height:1.8;">
+  TrueFoundry vs Azure · Blog 10 of 12 · April 2026 · <a href="09-truefoundry-vs-azure-model-catalog-self-hosted-inference.html">← Blog 9 — Model Catalog</a> · <a href="11-truefoundry-vs-azure-mcp-tool-governance-agent-runtime.html">Blog 11 — MCP &amp; Agent Runtime →</a>
+</p>
+</body>
+</html>
