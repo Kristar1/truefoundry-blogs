@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Gateway Comparison Series — The 15-Axis Comparison Summary</title>
+<meta name="description" content="A one-page TL;DR across all 15 comparisons in the AI Gateway series: LiteLLM, Kong, Portkey, and TrueFoundry, with a jump link to every blog.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0e17; --surface:#121826; --surface2:#1a2233; --border:#1e2d45;
+    /* vendor brand colors sampled from each vendor's logo (LiteLLM & Portkey are both blue logos; Portkey shifted toward royal for separation) */
+    --litellm:#1FB6E8; --kong:#CCFF00; --portkey:#3D74F0; --tf:#FF5533;
+    --text:#e2e8f0; --muted:#7a8899; --warn:#ffa726;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit}
+  .wrap{max-width:1140px; margin:0 auto; padding:0 1.4rem}
+
+  /* ── Hero ── */
+  .hero{padding:4.5rem 0 2.2rem; border-bottom:1px solid var(--border)}
+  .eyebrow{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--muted); display:flex; align-items:center; gap:.7rem; flex-wrap:wrap;
+  }
+  .pill{
+    font-family:var(--mono); font-size:.66rem; font-weight:700; letter-spacing:.12em;
+    color:#000; background:var(--tf); padding:.2rem .55rem; border-radius:5px; text-transform:uppercase;
+  }
+  h1{
+    font-size:clamp(2.1rem,5vw,3.4rem); font-weight:700; line-height:1.08; letter-spacing:-.02em;
+    margin:1.1rem 0 .8rem;
+  }
+  h1 .accent{color:var(--text)}
+  .title-rule{width:56px; height:4px; border-radius:3px; background:var(--tf); margin:.2rem 0 1.1rem}
+  .lede{font-size:1.12rem; color:#c4cedd; max-width:62ch; margin:0 0 1.6rem}
+  .meta-row{
+    display:flex; gap:1.6rem; flex-wrap:wrap; font-family:var(--mono); font-size:.78rem;
+    color:var(--muted); margin-bottom:1.7rem;
+  }
+  .meta-row b{color:var(--text); font-weight:600}
+  .backlink{
+    font-family:var(--mono); font-size:.78rem; color:var(--muted);
+    text-decoration:none; border-bottom:1px dashed var(--border); padding-bottom:1px;
+  }
+  .backlink:hover{color:var(--text); border-color:var(--muted)}
+
+  /* legend */
+  .legend{display:flex; gap:.55rem; flex-wrap:wrap; margin-top:.4rem}
+  .chip{
+    display:inline-flex; align-items:center; gap:.45rem; font-family:var(--mono);
+    font-size:.74rem; font-weight:600; padding:.32rem .7rem; border-radius:999px;
+    border:1px solid var(--border); background:var(--surface);
+  }
+  .dot{width:9px; height:9px; border-radius:50%}
+  .dot.litellm{background:var(--litellm)} .dot.kong{background:var(--kong)}
+  .dot.portkey{background:var(--portkey)} .dot.tf{background:var(--tf)}
+
+  /* ── Signature: positioning strip ── */
+  .thesis{padding:2.6rem 0 .4rem}
+  .throughline{border:1px solid var(--border); background:var(--surface); border-radius:12px; padding:1.4rem 1.5rem}
+  .throughline p{margin:0; font-size:1.02rem; line-height:1.7; color:#cdd6e3}
+  .throughline p b{color:var(--text)}
+  .section-label{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:.9rem;
+  }
+  .spectrum{
+    position:relative; border:1px solid var(--border); background:var(--surface);
+    border-radius:12px; padding:2.4rem 1.4rem 1.4rem;
+  }
+  .spectrum-axis{
+    display:flex; justify-content:space-between; font-family:var(--mono); font-size:.72rem;
+    color:var(--muted); margin-bottom:1.4rem;
+  }
+  .track{position:relative; height:3px; background:linear-gradient(90deg,var(--portkey),var(--litellm),var(--kong),var(--tf)); border-radius:3px; margin:0 .5rem}
+  .nodes{display:flex; justify-content:space-between; margin-top:1.1rem; gap:.6rem; flex-wrap:wrap}
+  .node{flex:1 1 0; min-width:150px}
+  .node .name{font-family:var(--mono); font-weight:700; font-size:.92rem}
+  .node .desc{font-size:.82rem; color:var(--muted); margin-top:.15rem}
+  .node.litellm .name{color:var(--litellm)} .node.kong .name{color:var(--kong)}
+  .node.portkey .name{color:var(--portkey)} .node.tf .name{color:var(--tf)}
+  .caption{font-size:.78rem; color:var(--muted); margin-top:1rem; font-style:italic}
+
+  /* ── Disclaimer ── */
+  .disclaimer{
+    border:1px solid var(--border); border-left:3px solid var(--warn); background:var(--surface);
+    border-radius:8px; padding:.85rem 1.1rem; font-size:.84rem; color:#cdd6e3; margin:2rem 0 0;
+  }
+  .disclaimer b{color:var(--warn)}
+
+  /* ── Table ── */
+  .table-section{padding:2.8rem 0 1rem}
+  .table-scroll{overflow-x:auto; border:1px solid var(--border); border-radius:12px}
+  table{border-collapse:collapse; width:100%; min-width:880px; font-size:.86rem}
+  thead th{
+    position:sticky; top:0; background:var(--surface2); text-align:left; padding:.85rem .9rem;
+    font-family:var(--mono); font-size:.74rem; letter-spacing:.05em; text-transform:uppercase;
+    border-bottom:1px solid var(--border); white-space:nowrap;
+  }
+  th.v-litellm{color:var(--litellm)} th.v-kong{color:var(--kong)}
+  th.v-portkey{color:var(--portkey)} th.v-tf{color:var(--tf)}
+  th.axis-col{color:var(--text)}
+  tbody td{padding:.8rem .9rem; border-bottom:1px solid var(--border); vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:rgba(255,255,255,.018)}
+  td.tf-cell{background:rgba(255,85,51,.05)}
+  .num{font-family:var(--mono); font-size:.72rem; color:var(--muted)}
+  .axis-link{
+    font-weight:600; color:var(--text); text-decoration:none;
+    border-bottom:1px solid transparent; display:inline-flex; align-items:center; gap:.35rem;
+  }
+  .axis-link:hover,.axis-link:focus-visible{color:var(--tf); border-bottom-color:var(--tf)}
+  .axis-link .arr{font-family:var(--mono); opacity:.55; transition:transform .15s}
+  .axis-link:hover .arr{transform:translateX(2px); opacity:1}
+  .axis-sub{font-size:.74rem; color:var(--muted); margin-top:.2rem}
+
+  /* ── Takeaways ── */
+  .takeaways{padding:3rem 0 1rem}
+  h2{font-size:1.5rem; font-weight:700; letter-spacing:-.01em; margin:0 0 1.3rem}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1rem}
+  .vcard{
+    position:relative; background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:1.2rem 1.2rem 1.3rem; overflow:hidden;
+  }
+  .vcard::before{content:''; position:absolute; top:0; left:0; right:0; height:3px}
+  .vcard.litellm::before{background:var(--litellm)} .vcard.kong::before{background:var(--kong)}
+  .vcard.portkey::before{background:var(--portkey)}
+  .vcard h3{
+    font-family:var(--mono); font-size:.8rem; letter-spacing:.05em; text-transform:uppercase;
+    margin:.2rem 0 .6rem; font-weight:700;
+  }
+  .vcard.litellm h3{color:var(--litellm)} .vcard.kong h3{color:var(--kong)}
+  .vcard.portkey h3{color:var(--portkey)}
+  .vcard p{font-size:.88rem; color:#cdd6e3; margin:0}
+  .vcard p b{color:var(--text)}
+
+  .honesty{
+    margin-top:1.4rem; border:1px solid var(--border); border-radius:10px;
+    background:linear-gradient(180deg,rgba(255,85,51,.06),transparent); padding:1.2rem 1.3rem;
+  }
+  .honesty h3{font-size:.95rem; margin:0 0 .5rem; color:var(--tf)}
+  .honesty p{font-size:.88rem; color:#cdd6e3; margin:0}
+
+  /* ── Footer index ── */
+  footer{border-top:1px solid var(--border); margin-top:3.2rem; padding:2.6rem 0 3.4rem}
+  .idx{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:.55rem; margin:1rem 0 1.8rem}
+  .idx a{
+    font-size:.82rem; text-decoration:none; color:#cdd6e3; padding:.5rem .7rem;
+    border:1px solid var(--border); border-radius:7px; background:var(--surface);
+    display:flex; gap:.5rem; align-items:baseline;
+  }
+  .idx a:hover,.idx a:focus-visible{border-color:var(--tf); color:var(--text)}
+  .idx .n{font-family:var(--mono); font-size:.7rem; color:var(--muted)}
+  .foot-meta{font-size:.78rem; color:var(--muted); font-family:var(--mono)}
+  .legal{
+    border:1px solid var(--border); border-radius:10px; background:var(--surface);
+    padding:1.2rem 1.3rem; margin:0 0 1.6rem; max-width:none;
+  }
+  .legal h4{
+    font-family:var(--mono); font-size:.74rem; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 .6rem; font-weight:700;
+  }
+  .legal p{font-size:.8rem; line-height:1.65; color:#9fb0c3; margin:0 0 .6rem}
+  .legal p:last-child{margin-bottom:0}
+
+  a:focus-visible,.axis-link:focus-visible{outline:2px solid var(--tf); outline-offset:2px; border-radius:2px}
+
+  @media (max-width:640px){
+    .hero{padding:3rem 0 1.8rem}
+    .node{min-width:46%}
+  }
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *{transition:none !important}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">
+      <span>AI Gateway Series</span><span class="pill">All 15 · At a glance</span>
+    </div>
+    <div class="title-rule"></div>
+    <h1>The 15-Axis<br><span class="accent">Comparison Summary</span></h1>
+    <p class="lede">A skim-first digest of the full comparison series across LiteLLM, Kong, Portkey, and TrueFoundry. Each axis links straight to its deep-dive — start here, jump anywhere.</p>
+    <div class="meta-row">
+      <span><b>15</b> comparisons</span>
+      <span><b>4</b> gateways</span>
+      <span><b>~4 min</b> to skim</span>
+      <span>Platform Engineering · AI Infra</span>
+    </div>
+    <a class="backlink" href="https://www.truefoundry.com/ai-gateway-comparison-series">← Back to the series landing page</a>
+    <div class="legend" style="margin-top:1.4rem">
+      <span class="chip"><span class="dot tf"></span>TrueFoundry</span>
+      <span class="chip"><span class="dot litellm"></span>LiteLLM</span>
+      <span class="chip"><span class="dot kong"></span>Kong</span>
+      <span class="chip"><span class="dot portkey"></span>Portkey</span>
+    </div>
+  </div>
+</header>
+
+<!-- Signature: the recurring thesis of the whole series -->
+<section class="thesis">
+  <div class="wrap">
+    <div class="section-label">The through-line across all 15 comparisons</div>
+    <div class="throughline">
+      <p>Across the series, a recurring trade-off appears again and again: <b>operational simplicity versus self-hosted depth and control.</b> Portkey and LiteLLM are characterized as optimizing for fast, low-overhead adoption; Kong and TrueFoundry are described as trading higher operational complexity for deeper governance, isolation, and data sovereignty — with TrueFoundry positioned at the self-hosted, highest-control end. The table below summarizes how the individual posts place each platform on each axis.</p>
+    </div>
+    <div class="disclaimer">
+      <b>Editorial summary — not an independent benchmark.</b> The comparative assessments on this page are TrueFoundry's editorial opinions, based on public vendor documentation reviewed as of the end of March 2026, and scoped to these four products. Factual product capabilities should be verified against the current official documentation before architectural or purchasing decisions. Comparative terms such as "only," "most," and "broadest" refer to what was documented across these four products at that time.
+    </div>
+  </div>
+</section>
+
+<!-- Master recap table -->
+<section class="table-section">
+  <div class="wrap">
+    <div class="section-label">Editorial summary by axis — our reading of each platform's public docs (March 2026). Tap any axis to open its deep-dive.</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="axis-col">Axis</th>
+            <th class="v-tf">TrueFoundry</th>
+            <th class="v-litellm">LiteLLM</th>
+            <th class="v-kong">Kong</th>
+            <th class="v-portkey">Portkey</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/model-coverage"><span class="num">01</span>&nbsp;Model Coverage <span class="arr">→</span></a><div class="axis-sub">Universal API · virtual & self-hosted models</div></td>
+            <td class="tf-cell">Self-hosted coverage + governed routing</td>
+            <td>Broad documented provider matrix</td>
+            <td>Auditable normalization contract</td>
+            <td>Clean config-object DX</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/multitenant"><span class="num">02</span>&nbsp;Org &amp; Team Management <span class="arr">→</span></a><div class="axis-sub">Multi-tenancy · projects · teams</div></td>
+            <td class="tf-cell"><b>K8s namespace-based</b> physical isolation</td>
+            <td>K8s workload-identity mapping</td>
+            <td>Plugin-composed Consumer Groups</td>
+            <td>Strong Enterprise IdP / SCIM posture</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/routing"><span class="num">03</span>&nbsp;Routing &amp; Load Balancing <span class="arr">→</span></a><div class="axis-sub">Fallbacks · latency · priorities</div></td>
+            <td class="tf-cell">Latency/TPOT-aware, typed YAML policy</td>
+            <td>Budget-aware multi-provider router</td>
+            <td>High-throughput + semantic / RAG</td>
+            <td>Composable config-first plane</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/caching"><span class="num">04</span>&nbsp;Caching &amp; Performance <span class="arr">→</span></a><div class="axis-sub">Simple + semantic cache · backends</div></td>
+            <td class="tf-cell">Explicit request-level cache controls</td>
+            <td>Flexible backends (Redis/Qdrant)</td>
+            <td>Plugin-chain integrator</td>
+            <td>Managed-first; semantic = Enterprise</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/finops"><span class="num">05</span>&nbsp;Cost Control <span class="arr">→</span></a><div class="axis-sub">Budgets · attribution · pricing</div></td>
+            <td class="tf-cell">Strict hot-path enforcement + cost-per-entity</td>
+            <td>OSS flexible; async spend writes</td>
+            <td>Infra-grade token throttling</td>
+            <td>Friendly but reactive budgets</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/goverence"><span class="num">06</span>&nbsp;Governance <span class="arr">→</span></a><div class="axis-sub">Rate limiting · policy enforcement</div></td>
+            <td class="tf-cell">Deploy-time controls + four runtime hooks</td>
+            <td>Pragmatic budget governor</td>
+            <td>Broad content-firewall surface</td>
+            <td>Metadata-routing specialist</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/guardrail"><span class="num">07</span>&nbsp;Guardrails <span class="arr">→</span></a><div class="axis-sub">Safety · redaction · custom hooks</div></td>
+            <td class="tf-cell">Granular MCP hooks + parallel validation</td>
+            <td>Largest guardrail ecosystem (29)</td>
+            <td>Native semantic topic guards</td>
+            <td>Low-friction guardrail setup</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/observability-dark"><span class="num">08</span>&nbsp;Observability <span class="arr">→</span></a><div class="axis-sub">Logs · traces · feedback · exports</div></td>
+            <td class="tf-cell">Built-in Monitor + optional OTel export</td>
+            <td>Flexible polyglot callbacks</td>
+            <td>Joins existing Kong / OTel stack</td>
+            <td>Analytics-first, low-setup</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/mcp-gateway-tool"><span class="num">09</span>&nbsp;MCP Gateway <span class="arr">→</span></a><div class="axis-sub">Tool-call governance · MCP coverage</div></td>
+            <td class="tf-cell">Purpose-built MCP security surface</td>
+            <td>Credible generalist; no post-hook</td>
+            <td>Plugin adaptor + tool ACLs</td>
+            <td>MCP registry / provisioning</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/agent-gateway-stateful"><span class="num">10</span>&nbsp;Agent Gateway <span class="arr">→</span></a><div class="axis-sub">Stateful execution patterns</div></td>
+            <td class="tf-cell">Governed agent runtime + async execution</td>
+            <td>Budget-state workhorse</td>
+            <td>Protocol normalizer (MCP Proxy)</td>
+            <td>Trace-first observer</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/deployment"><span class="num">11</span>&nbsp;Deployment &amp; Architecture <span class="arr">→</span></a><div class="axis-sub">SaaS · VPC · on-prem · air-gapped</div></td>
+            <td class="tf-cell">K8s split-plane, 6 deployment scenarios</td>
+            <td>Lowest-barrier self-host (Docker/Helm)</td>
+            <td>Broad topology coverage</td>
+            <td>Managed-first; low-ops to production</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/resisdency"><span class="num">12</span>&nbsp;Data Residency <span class="arr">→</span></a><div class="axis-sub">Sovereignty · exports · buckets</div></td>
+            <td class="tf-cell">Data + control-plane sovereignty posture</td>
+            <td>Quick self-host baseline</td>
+            <td>PII-sanitizer plugins (Enterprise)</td>
+            <td>Hybrid; control plane stays cloud</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/prompt-mgmt"><span class="num">13</span>&nbsp;Prompt Management <span class="arr">→</span></a><div class="axis-sub">Saved prompts · versioning · GitOps</div></td>
+            <td class="tf-cell">Integrated GitOps (registry + routing)</td>
+            <td>Evolving; CMS still Beta</td>
+            <td>First-class GitOps via decK</td>
+            <td>Mature Prompt Studio</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/prompt-playground"><span class="num">14</span>&nbsp;Prompt Playground <span class="arr">→</span></a><div class="axis-sub">Interactive testing &amp; iteration</div></td>
+            <td class="tf-cell">Gateway-native; guardrails fire in test</td>
+            <td>CLI / API only, no visual UI</td>
+            <td>No playground; governs AI CLIs</td>
+            <td>Complete prompt-dev studio</td>
+          </tr>
+          <tr>
+            <td><a class="axis-link" href="https://www.truefoundry.com/security"><span class="num">15</span>&nbsp;Security &amp; Compliance <span class="arr">→</span></a><div class="axis-sub">RBAC · SSO · audit · certifications</div></td>
+            <td class="tf-cell">Clear boundary model; in-cluster PEP</td>
+            <td>Fast identity wiring</td>
+            <td>Native gateway mTLS</td>
+            <td>Turnkey managed governance</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- Takeaways -->
+<section class="takeaways">
+  <div class="wrap">
+    <h2>How TrueFoundry compares to each platform</h2>
+    <div class="cards">
+      <div class="vcard litellm">
+        <h3>vs. LiteLLM</h3>
+        <p><b>The OSS pragmatist.</b> Broad provider coverage, low-friction setup, MIT-licensed. The recurring counter: isolation is primarily logical, enforcement is often async, and some features are Beta or Enterprise-only. TrueFoundry's edge is physical isolation and hot-path enforcement.</p>
+      </div>
+      <div class="vcard kong">
+        <h3>vs. Kong</h3>
+        <p><b>For existing Kong estates.</b> Mature plugin governance, native semantic topic guards and native mTLS. The trade-offs the series notes: Enterprise license gates and route-only scoping. TrueFoundry argues it spans deployment <em>and</em> routing with finer metadata-level control.</p>
+      </div>
+      <div class="vcard portkey">
+        <h3>vs. Portkey</h3>
+        <p><b>The series' DX and time-to-value pick.</b> Clean config, strong prompt studio, low-ops observability. The honest trade-off the blogs surface: even in hybrid mode the control plane stays in Portkey's cloud. TrueFoundry's counter is full data + control-plane sovereignty.</p>
+      </div>
+    </div>
+    <div class="honesty">
+      <h3>Most defensible differentiators — and the noted caveats</h3>
+      <p>The most defensible TrueFoundry differentiators across the series are the <b>four-hook guardrail model</b>, <b>deploy-time + runtime governance</b>, <b>physical K8s isolation</b>, and the <b>gateway-native prompt testing and governed agent execution</b>. The softest spots — where the blogs themselves add caveats — are caching (docs don't name the backend/vector store) and the strict air-gapped posture (mixed documentation on offline licensing and analytics).</p>
+    </div>
+  </div>
+</section>
+
+<!-- Footer index -->
+<footer>
+  <div class="wrap">
+    <div class="section-label">Jump to any comparison</div>
+    <div class="idx">
+      <a href="https://www.truefoundry.com/model-coverage"><span class="n">01</span> Model Coverage</a>
+      <a href="https://www.truefoundry.com/multitenant"><span class="n">02</span> Org &amp; Team Management</a>
+      <a href="https://www.truefoundry.com/routing"><span class="n">03</span> Routing &amp; Load Balancing</a>
+      <a href="https://www.truefoundry.com/caching"><span class="n">04</span> Caching &amp; Performance</a>
+      <a href="https://www.truefoundry.com/finops"><span class="n">05</span> Cost Control</a>
+      <a href="https://www.truefoundry.com/goverence"><span class="n">06</span> Governance</a>
+      <a href="https://www.truefoundry.com/guardrail"><span class="n">07</span> Guardrails</a>
+      <a href="https://www.truefoundry.com/observability-dark"><span class="n">08</span> Observability</a>
+      <a href="https://www.truefoundry.com/mcp-gateway-tool"><span class="n">09</span> MCP Gateway</a>
+      <a href="https://www.truefoundry.com/agent-gateway-stateful"><span class="n">10</span> Agent Gateway</a>
+      <a href="https://www.truefoundry.com/deployment"><span class="n">11</span> Deployment &amp; Architecture</a>
+      <a href="https://www.truefoundry.com/resisdency"><span class="n">12</span> Data Residency</a>
+      <a href="https://www.truefoundry.com/prompt-mgmt"><span class="n">13</span> Prompt Management</a>
+      <a href="https://www.truefoundry.com/prompt-playground"><span class="n">14</span> Prompt Playground</a>
+      <a href="https://www.truefoundry.com/security"><span class="n">15</span> Security &amp; Compliance</a>
+    </div>
+    <div class="legal">
+      <h4>About this comparison</h4>
+      <p>This page summarizes a 15-part editorial series comparing AI gateway capabilities across LiteLLM, Kong, Portkey, and TrueFoundry. The comparative assessments are the authors' opinions, derived from publicly available vendor documentation reviewed as of the end of March 2026. They are not independent benchmarks or guarantees, and are scoped to these four products as documented at that time. Comparative terms such as "only," "most," "broadest," and "strongest" describe what was documented across these four products as of that date.</p>
+      <p>Product capabilities, pricing, packaging, and availability change frequently. Always verify against each provider's current official documentation before making architectural or purchasing decisions. Nothing on this page constitutes legal, security, or compliance advice.</p>
+      <p>LiteLLM, Kong, Portkey, and their respective names and logos are trademarks of their respective owners. References are for identification and comparison purposes only and do not imply any affiliation with, sponsorship by, or endorsement from those companies. If you believe any statement here is inaccurate or out of date, please let us know and we will review and update it promptly.</p>
+    </div>
+    <p class="foot-meta">AI Gateway Comparison Series · LiteLLM · Kong · Portkey · TrueFoundry · Editorial summary, as of end of March 2026</p>
+  </div>
+</footer>
+
+</body>
+</html>

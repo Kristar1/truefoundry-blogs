@@ -15,11 +15,11 @@ body {
   background: var(--bg); color: var(--text);
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
   font-size: 16px; line-height: 1.75;
-  max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+  padding: 2rem 1.5rem 6rem;
 }
 code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
-h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
-h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.15; margin-bottom: .75rem; }
+h2 { font-size: 1.5rem; font-weight: 700; margin: 2rem 0 .75rem; line-height: 1.3; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
 h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
 p { margin-bottom: 1rem; }
 a { color: #60a5fa; text-decoration: none; }
@@ -155,17 +155,64 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
 .ref-list { font-size: .83rem; }
 .ref-list li { margin-bottom: .4rem; color: var(--muted); }
 .ref-list a { color: #60a5fa; }
+
+/* ── Navigation Dots as Links ── */
+a.dot { display: block; text-decoration: none; cursor: pointer; transition: transform .15s, opacity .15s; }
+a.dot:hover { transform: scale(1.6); opacity: .85; }
+
+/* ── Table of Contents ── */
+.toc-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+.toc-header { display: flex; justify-content: space-between; align-items: center; padding: .7rem 1.2rem; }
+.toc-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: #60a5fa; font-weight: 700; }
+.toc-arrow { color: var(--muted); font-size: .8rem; transition: transform .2s ease; line-height: 1; }
+.toc-arrow.open { transform: rotate(180deg); }
+.toc-body { padding: .4rem 1.2rem .9rem; }
+.toc-body ol { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr; gap: .2rem 1.5rem; }
+.toc-body li { font-size: .82rem; }
+.toc-body a { color: var(--muted); text-decoration: none; line-height: 1.6; display: block; padding: .1rem 0; border-left: 2px solid transparent; padding-left: .5rem; }
+.toc-body a:hover { color: #60a5fa; border-left-color: #60a5fa; }
+.toc-body a.toc-active { color: #60a5fa; border-left-color: #60a5fa; font-weight: 600; }
+@media (max-width: 900px) {
+  .toc-header { cursor: pointer; user-select: none; }
+  .toc-body { display: none; }
+  .toc-body.open { display: block; }
+}
+@media (min-width: 901px) {
+  .toc-arrow { display: none; }
+}
+
+/* ── Page Layout ── */
+.page-layout { display: grid; grid-template-columns: 1fr 260px; gap: 2.5rem; max-width: 1200px; margin: 0 auto; align-items: start; }
+.article-body { min-width: 0; }
+.toc-sidebar { position: sticky; top: 2rem; }
+.toc-sidebar .toc-wrap, .toc-sidebar .toc { margin: 0; }
+@media (max-width: 900px) {
+  .page-layout { grid-template-columns: 1fr; }
+  .toc-sidebar { position: static; order: -1; }
+}
 </style>
 
+<div class="page-layout">
+  <article class="article-body">
 <!-- ══ SERIES BAR ══ -->
 <div class="series-bar">
   <span class="tag-pill">AI Gateway Series</span>
-  <div class="series-dots">
-    <div class="dot active" title="Blog 1 — Model Coverage &amp; API Unification"></div>
-    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    <div class="dot"></div><div class="dot"></div>
+        <div class="series-dots">
+    <a href="https://www.truefoundry.com/model-coverage" class="dot active" title="Blog 1 — Model Coverage &amp; API Unification"></a>
+    <a href="https://www.truefoundry.com/multitenant" class="dot" title="Blog 2 — Multi-tenancy &amp; Team Management"></a>
+    <a href="https://www.truefoundry.com/routing" class="dot" title="Blog 3 — Routing &amp; Load Balancing"></a>
+    <a href="https://www.truefoundry.com/caching" class="dot" title="Blog 4 — Semantic Caching &amp; Performance"></a>
+    <a href="https://www.truefoundry.com/finops" class="dot" title="Blog 5 — Cost Control &amp; FinOps"></a>
+    <a href="https://www.truefoundry.com/goverence" class="dot" title="Blog 6 — Governance &amp; Policy"></a>
+    <a href="https://www.truefoundry.com/guardrail" class="dot" title="Blog 7 — Guardrails &amp; Content Safety"></a>
+    <a href="https://www.truefoundry.com/observability-dark" class="dot" title="Blog 8 — Observability &amp; Tracing"></a>
+    <a href="https://www.truefoundry.com/mcp-gateway-tool" class="dot" title="Blog 9 — MCP Gateway &amp; Tool Governance"></a>
+    <a href="https://www.truefoundry.com/agent-gateway-stateful" class="dot" title="Blog 10 — Agent Gateway: Stateful Execution"></a>
+    <a href="https://www.truefoundry.com/deployment" class="dot" title="Blog 11 — Deployment &amp; Infrastructure"></a>
+    <a href="https://www.truefoundry.com/resisdency" class="dot" title="Blog 12 — Data Residency &amp; Sovereignty"></a>
+    <a href="https://www.truefoundry.com/prompt-mgmt" class="dot" title="Blog 13 — Prompt Management &amp; GitOps"></a>
+    <a href="https://www.truefoundry.com/prompt-playground" class="dot" title="Blog 14 — Prompt Playground &amp; Testing"></a>
+    <a href="https://www.truefoundry.com/security" class="dot" title="Blog 15 — Security &amp; Zero Trust"></a>
   </div>
   <span class="tag-pill active">Blog 1 of 15</span>
 </div>
@@ -187,9 +234,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
   <span class="mpill google">google/gemini-2.0-flash</span>
   <span class="mpill self-host">meta-llama/Llama-3.3-70B-Instruct</span>
 </div>
-
 <!-- ══ §0 TL;DR ══ -->
-<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<h2 id="section-0">§0 — TL;DR &amp; Quick-Picks</h2>
 
 <div class="scenario">
   <div class="scenario-title">🚨 Real-World Scenario: The 3 AM Vendor Lock-In Crisis</div>
@@ -223,7 +269,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
 </div>
 
 <!-- ══ §1 WHY ══ -->
-<h2>§1 — Why API Unification Is the First Problem to Solve</h2>
+<h2 id="section-1">§1 — Why API Unification Is the First Problem to Solve</h2>
 
 <p>Every major LLM provider has diverged on the operational details that matter: authentication header patterns, streaming event formats, function-calling schemas, error codes, and endpoint path conventions. OpenAI's <code>/v1/chat/completions</code>, Azure OpenAI's deployment-scoped paths like <code>/openai/deployments/{deployment_name}/chat/completions</code>, Anthropic's <code>x-api-key</code> header, and Google Vertex's OAuth2 token flow are all meaningfully different at the wire level.</p>
 
@@ -312,7 +358,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
 <hr>
 
 <!-- ══ §2 LITELLM ══ -->
-<div class="vendor-header litellm">
+<div id="vendor-litellm" class="vendor-header litellm">
   <span class="vendor-badge">LiteLLM</span>
   <span class="vendor-title">§2 — Python-Native Universal Adapter</span>
 </div>
@@ -378,7 +424,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
 <hr>
 
 <!-- ══ §3 KONG ══ -->
-<div class="vendor-header kong">
+<div id="vendor-kong" class="vendor-header kong">
   <span class="vendor-badge">Kong</span>
   <span class="vendor-title">§3 — Plugin-Chain Normalization on a Mature Gateway Substrate</span>
 </div>
@@ -470,7 +516,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
 <hr>
 
 <!-- ══ §4 PORTKEY ══ -->
-<div class="vendor-header portkey">
+<div id="vendor-portkey" class="vendor-header portkey">
   <span class="vendor-badge">Portkey</span>
   <span class="vendor-title">§4 — Config-First, Provider-Slug Addressing</span>
 </div>
@@ -559,7 +605,7 @@ curl https://gateway.internal.mycompany.com/v1/chat/completions \
 <hr>
 
 <!-- ══ §5 TRUEFOUNDRY ══ -->
-<div class="vendor-header tf">
+<div id="vendor-tf" class="vendor-header tf">
   <span class="vendor-badge">TrueFoundry</span>
   <span class="vendor-title">§5 — Kubernetes-Native Split-Plane Architecture</span>
 </div>
@@ -645,7 +691,7 @@ response = client.chat.completions.create(
 <hr>
 
 <!-- ══ §6 SELF-HOSTED ══ -->
-<h2>§6 — Self-Hosted Model Integration: Paths Compared</h2>
+<h2 id="section-6">§6 — Self-Hosted Model Integration: Paths Compared</h2>
 
 <p>The ability to integrate privately-deployed models behind the same unified API surface as cloud providers is the true depth test of API unification. The four platforms take structurally different approaches:</p>
 
@@ -727,7 +773,7 @@ response = client.chat.completions.create(
 <hr>
 
 <!-- ══ §7 MATRIX ══ -->
-<h2>§7 — Feature Matrix</h2>
+<h2 id="section-7">§7 — Feature Matrix</h2>
 <p>Cross-referenced against each vendor's official public documentation as of March 2026. <span class="check">✓</span> = natively supported and documented, <span class="partial">⚠</span> = possible with caveats or workarounds, <span class="cross">✗</span> = not documented as a supported feature.</p>
 
 <div class="matrix-wrap">
@@ -862,7 +908,7 @@ response = client.chat.completions.create(
 <hr>
 
 <!-- ══ §8 VERDICTS ══ -->
-<h2>§8 — Editorial Verdicts</h2>
+<h2 id="section-8">§8 — Editorial Verdicts</h2>
 
 <div class="verdict-grid">
   <div class="verdict-card litellm">
@@ -894,7 +940,7 @@ response = client.chat.completions.create(
 <hr>
 
 <!-- ══ §9 POSITIONING CHART ══ -->
-<h2>§9 — Positioning: Operational Complexity vs. Self-Hosted Integration Depth</h2>
+<h2 id="section-9">§9 — Positioning: Operational Complexity vs. Self-Hosted Integration Depth</h2>
 
 <div class="svg-wrap">
 <svg viewBox="0 0 620 420" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Sans, system-ui, sans-serif">
@@ -974,7 +1020,7 @@ response = client.chat.completions.create(
 
 <hr>
 
-<h2>§10 — References</h2>
+<h2 id="section-10">§10 — References</h2>
 <ol class="ref-list">
   <li><a href="https://docs.litellm.ai/docs/proxy/configs" target="_blank">LiteLLM — Config Overview</a></li>
   <li><a href="https://docs.litellm.ai/docs/proxy/config_settings" target="_blank">LiteLLM — All Settings Reference</a></li>
@@ -1014,6 +1060,32 @@ response = client.chat.completions.create(
   AI Gateway Series · Blog 1 of 15 &nbsp;·&nbsp; March 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
   Feature claims cross-referenced against official public documentation. Model strings in examples are illustrative draft-time identifiers and should be re-verified against current vendor docs before production decisions.
 </p>
+  </article>
+  <aside class="toc-sidebar">
+    <!-- ── TABLE OF CONTENTS ── -->
+    <div class="toc-wrap">
+      <div class="toc-header" id="toc-wrap-hdr">
+        <span class="toc-title">Table of Contents</span>
+        <span class="toc-arrow">&#9662;</span>
+      </div>
+      <nav class="toc-body" id="toc-nav-body">
+        <ol>
+          <li><a href="#section-0">§0 — TL;DR &amp; Quick-Picks</a></li>
+          <li><a href="#section-1">§1 — Why API Unification Is the First Problem</a></li>
+          <li><a href="#vendor-litellm">§2 — LiteLLM: Python-Native Universal Adapter</a></li>
+          <li><a href="#vendor-kong">§3 — Kong: Plugin-Chain Normalization</a></li>
+          <li><a href="#vendor-portkey">§4 — Portkey: Config-First, Provider-Slug Addressing</a></li>
+          <li><a href="#vendor-tf">§5 — TrueFoundry: K8s-Native Split-Plane Architecture</a></li>
+          <li><a href="#section-6">§6 — Self-Hosted Model Integration</a></li>
+          <li><a href="#section-7">§7 — Feature Matrix</a></li>
+          <li><a href="#section-8">§8 — Editorial Verdicts</a></li>
+          <li><a href="#section-9">§9 — Positioning Chart</a></li>
+          <li><a href="#section-10">§10 — References</a></li>
+        </ol>
+      </nav>
+    </div>
+  </aside>
+</div>
 
 <script>
 (function () {
@@ -1049,5 +1121,48 @@ response = client.chat.completions.create(
       else { btn.textContent = 'failed'; window.setTimeout(function(){ btn.textContent = 'copy'; }, 1800); }
     });
   });
+})();
+</script>
+
+<script>
+(function(){
+  // TOC toggle on mobile
+  var hdr = document.getElementById('toc-toggle-hdr');
+  if (hdr) {
+    hdr.addEventListener('click', function(){
+      var body = document.getElementById('toc-list-body');
+      var arrow = hdr.querySelector('.toc-arrow');
+      if (body) body.classList.toggle('open');
+      if (arrow) arrow.classList.toggle('open');
+    });
+  }
+  var wrap = document.getElementById('toc-wrap-hdr');
+  if (wrap) {
+    wrap.addEventListener('click', function(){
+      var body = document.getElementById('toc-nav-body');
+      var arrow = wrap.querySelector('.toc-arrow');
+      if (body) body.classList.toggle('open');
+      if (arrow) arrow.classList.toggle('open');
+    });
+  }
+})();
+</script>
+<script>
+(function(){
+  var links = document.querySelectorAll('.toc-body a[href^="#"]');
+  if (!links.length) return;
+  var sectionIds = Array.from(links).map(function(a){ return a.getAttribute('href').slice(1); });
+  var headings = sectionIds.map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  if (!headings.length) return;
+  function setActive(id) {
+    links.forEach(function(a){
+      a.classList.toggle('toc-active', a.getAttribute('href') === '#' + id);
+    });
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if (e.isIntersecting) setActive(e.target.id); });
+  }, { rootMargin: '-10px 0px -85% 0px' });
+  headings.forEach(function(h){ io.observe(h); });
+  if (headings[0]) setActive(headings[0].id);
 })();
 </script>

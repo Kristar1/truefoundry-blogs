@@ -19,11 +19,11 @@
     background: var(--bg); color: var(--text);
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 16px; line-height: 1.75;
-    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+    padding: 2rem 1.5rem 6rem;
   }
   code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
-  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
-  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.15; margin-bottom: .75rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 2rem 0 .75rem; line-height: 1.3; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
   h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
   p { margin-bottom: 1rem; }
   a { color: #60a5fa; text-decoration: none; }
@@ -113,20 +113,66 @@
   .ref-list { font-size: .83rem; }
   .ref-list li { margin-bottom: .4rem; color: var(--muted); }
   .ref-list a { color: #60a5fa; }
+
+/* ── Navigation Dots as Links ── */
+a.dot { display: block; text-decoration: none; cursor: pointer; transition: transform .15s, opacity .15s; }
+a.dot:hover { transform: scale(1.6); opacity: .85; }
+
+/* ── Table of Contents ── */
+.toc-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+.toc-header { display: flex; justify-content: space-between; align-items: center; padding: .7rem 1.2rem; }
+.toc-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: #60a5fa; font-weight: 700; }
+.toc-arrow { color: var(--muted); font-size: .8rem; transition: transform .2s ease; line-height: 1; }
+.toc-arrow.open { transform: rotate(180deg); }
+.toc-body { padding: .4rem 1.2rem .9rem; }
+.toc-body ol { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr; gap: .2rem 1.5rem; }
+.toc-body li { font-size: .82rem; }
+.toc-body a { color: var(--muted); text-decoration: none; line-height: 1.6; display: block; padding: .1rem 0; border-left: 2px solid transparent; padding-left: .5rem; }
+.toc-body a:hover { color: #60a5fa; border-left-color: #60a5fa; }
+.toc-body a.toc-active { color: #60a5fa; border-left-color: #60a5fa; font-weight: 600; }
+@media (max-width: 900px) {
+  .toc-header { cursor: pointer; user-select: none; }
+  .toc-body { display: none; }
+  .toc-body.open { display: block; }
+}
+@media (min-width: 901px) {
+  .toc-arrow { display: none; }
+}
+
+/* ── Page Layout ── */
+.page-layout { display: grid; grid-template-columns: 1fr 260px; gap: 2.5rem; max-width: 1200px; margin: 0 auto; align-items: start; }
+.article-body { min-width: 0; }
+.toc-sidebar { position: sticky; top: 2rem; }
+.toc-sidebar .toc-wrap, .toc-sidebar .toc { margin: 0; }
+@media (max-width: 900px) {
+  .page-layout { grid-template-columns: 1fr; }
+  .toc-sidebar { position: static; order: -1; }
+}
 </style>
+
+<div class="page-layout">
+  <article class="article-body">
 </head>
 <body>
 
 <div class="series-bar">
   <span class="tag-pill">AI Gateway Series</span>
-  <div class="series-dots">
-    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    <div class="dot"></div>
-    <div class="dot active" title="Blog 14 — Prompt Playground &amp; Interactive Testing"></div>
-    <div class="dot"></div>
+        <div class="series-dots">
+    <a href="https://www.truefoundry.com/model-coverage" class="dot" title="Blog 1 — Model Coverage &amp; API Unification"></a>
+    <a href="https://www.truefoundry.com/multitenant" class="dot" title="Blog 2 — Multi-tenancy &amp; Team Management"></a>
+    <a href="https://www.truefoundry.com/routing" class="dot" title="Blog 3 — Routing &amp; Load Balancing"></a>
+    <a href="https://www.truefoundry.com/caching" class="dot" title="Blog 4 — Semantic Caching &amp; Performance"></a>
+    <a href="https://www.truefoundry.com/finops" class="dot" title="Blog 5 — Cost Control &amp; FinOps"></a>
+    <a href="https://www.truefoundry.com/goverence" class="dot" title="Blog 6 — Governance &amp; Policy"></a>
+    <a href="https://www.truefoundry.com/guardrail" class="dot" title="Blog 7 — Guardrails &amp; Content Safety"></a>
+    <a href="https://www.truefoundry.com/observability-dark" class="dot" title="Blog 8 — Observability &amp; Tracing"></a>
+    <a href="https://www.truefoundry.com/mcp-gateway-tool" class="dot" title="Blog 9 — MCP Gateway &amp; Tool Governance"></a>
+    <a href="https://www.truefoundry.com/agent-gateway-stateful" class="dot" title="Blog 10 — Agent Gateway: Stateful Execution"></a>
+    <a href="https://www.truefoundry.com/deployment" class="dot" title="Blog 11 — Deployment &amp; Infrastructure"></a>
+    <a href="https://www.truefoundry.com/resisdency" class="dot" title="Blog 12 — Data Residency &amp; Sovereignty"></a>
+    <a href="https://www.truefoundry.com/prompt-mgmt" class="dot" title="Blog 13 — Prompt Management &amp; GitOps"></a>
+    <a href="https://www.truefoundry.com/prompt-playground" class="dot active" title="Blog 14 — Prompt Playground &amp; Testing"></a>
+    <a href="https://www.truefoundry.com/security" class="dot" title="Blog 15 — Security &amp; Zero Trust"></a>
   </div>
   <span class="tag-pill active">Blog 14 of 15</span>
 </div>
@@ -152,9 +198,8 @@
   <span class="mpill google">gemini-3-flash</span>
   <span class="mpill google">gemini-3.1-flash-lite</span>
 </div>
-
 <!-- §0 TL;DR -->
-<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<h2 id="section-0">§0 — TL;DR &amp; Quick-Picks</h2>
 
 <div class="scenario">
   <div class="scenario-title">🔐 Enterprise Scenario: The Air-Gapped Model Testing Problem</div>
@@ -187,7 +232,7 @@
 </div>
 
 <!-- §1 WHY PLAYGROUNDS MATTER -->
-<h2>§1 — Why a Governed Prompt Playground Is an Infrastructure Problem</h2>
+<h2 id="section-1">§1 — Why a Governed Prompt Playground Is an Infrastructure Problem</h2>
 
 <p>The distinction between a prompt development playground and a gateway-native testing surface matters operationally. A prompt development playground — like an IDE with multi-model comparison — lets prompt engineers craft, test, and version prompts efficiently against a wide range of cloud providers. It is an excellent product for prompt development velocity. A gateway-native playground goes a step further: it routes test traffic through the same policy stack that production traffic traverses, so the test result includes not just the model's response but proof of which guardrails fired, which routing decision was made, which model actually handled the request, and how long each stage took.</p>
 
@@ -292,7 +337,7 @@
 <hr>
 
 <!-- §2 LITELLM -->
-<div class="vendor-header litellm">
+<div id="vendor-litellm" class="vendor-header litellm">
   <span class="vendor-badge">LiteLLM</span>
   <span class="vendor-title">§2 — Admin UI and Management CLI as Testing Surfaces</span>
 </div>
@@ -373,7 +418,7 @@
 <hr>
 
 <!-- §3 KONG -->
-<div class="vendor-header kong">
+<div id="vendor-kong" class="vendor-header kong">
   <span class="vendor-badge">Kong</span>
   <span class="vendor-title">§3 — Konnect Cloud Control Plane, Developer Tool Governance, No Playground</span>
 </div>
@@ -471,7 +516,7 @@ claude
 <hr>
 
 <!-- §4 PORTKEY -->
-<div class="vendor-header portkey">
+<div id="vendor-portkey" class="vendor-header portkey">
   <span class="vendor-badge">Portkey</span>
   <span class="vendor-title">§4 — Full Prompt Engineering Studio: Playground, Versioning, Prompt API</span>
 </div>
@@ -605,7 +650,7 @@ print(response)
 <hr>
 
 <!-- §5 TRUEFOUNDRY -->
-<div class="vendor-header tf">
+<div id="vendor-tf" class="vendor-header tf">
   <span class="vendor-badge">TrueFoundry</span>
   <span class="vendor-title">§5 — Gateway-Native Playground: Guardrails, Routing, and Air-Gapped Models in One Loop</span>
 </div>
@@ -760,7 +805,7 @@ print(resp.headers.get(<span class="str">"server-timing"</span>))
 <hr>
 
 <!-- §6 FEATURE MATRIX -->
-<h2>§6 — Feature Matrix</h2>
+<h2 id="section-6">§6 — Feature Matrix</h2>
 <p>Cross-referenced against each vendor's official public documentation as of March 2026. ✅ = native and documented, ⚠ = partial or with important caveats, ❌ = not natively supported or not documented.</p>
 
 <div class="matrix-wrap">
@@ -880,7 +925,7 @@ print(resp.headers.get(<span class="str">"server-timing"</span>))
 <hr>
 
 <!-- §7 VERDICT -->
-<h2>§7 — Editorial Verdict</h2>
+<h2 id="section-7">§7 — Editorial Verdict</h2>
 <p>Editorial assessments as of March 10, 2026.</p>
 
 <div class="verdict-grid">
@@ -957,7 +1002,7 @@ print(resp.headers.get(<span class="str">"server-timing"</span>))
 <hr>
 
 <!-- §8 REFERENCES -->
-<h2>§8 — References</h2>
+<h2 id="section-8">§8 — References</h2>
 <ol class="ref-list">
   <li><a href="https://docs.litellm.ai/docs/proxy/ui" target="_blank">LiteLLM — Admin UI</a></li>
   <li><a href="https://docs.litellm.ai/docs/proxy/management_cli" target="_blank">LiteLLM — Proxy Management CLI</a></li>
@@ -999,6 +1044,30 @@ print(resp.headers.get(<span class="str">"server-timing"</span>))
   AI Gateway Series · Blog 14 of 15 &nbsp;·&nbsp; March 10, 2026 &nbsp;·&nbsp; All vendor names are trademarks of their respective owners.<br>
   Feature claims cross-referenced against official public documentation as of March 10, 2026. Verify before production decisions.
 </p>
+  </article>
+  <aside class="toc-sidebar">
+    <!-- ── TABLE OF CONTENTS ── -->
+    <div class="toc-wrap">
+      <div class="toc-header" id="toc-wrap-hdr">
+        <span class="toc-title">Table of Contents</span>
+        <span class="toc-arrow">&#9662;</span>
+      </div>
+      <nav class="toc-body" id="toc-nav-body">
+        <ol>
+          <li><a href="#section-0">§0 — TL;DR &amp; Quick-Picks</a></li>
+          <li><a href="#section-1">§1 — Why a Governed Prompt Playground Is an Infrastructure Problem</a></li>
+          <li><a href="#vendor-litellm">§2 — LiteLLM: Admin UI and Management CLI</a></li>
+          <li><a href="#vendor-kong">§3 — Kong: Konnect Cloud Control Plane</a></li>
+          <li><a href="#vendor-portkey">§4 — Portkey: Full Prompt Engineering Studio</a></li>
+          <li><a href="#vendor-tf">§5 — TrueFoundry: Gateway-Native Playground</a></li>
+          <li><a href="#section-6">§6 — Feature Matrix</a></li>
+          <li><a href="#section-7">§7 — Editorial Verdict</a></li>
+          <li><a href="#section-8">§8 — References</a></li>
+        </ol>
+      </nav>
+    </div>
+  </aside>
+</div>
 
 <script>
 (function () {
@@ -1035,4 +1104,47 @@ print(resp.headers.get(<span class="str">"server-timing"</span>))
   });
 })();
 </script>
+
+<script>
+(function(){
+  // TOC toggle on mobile
+  var hdr = document.getElementById('toc-toggle-hdr');
+  if (hdr) {
+    hdr.addEventListener('click', function(){
+      var body = document.getElementById('toc-list-body');
+      var arrow = hdr.querySelector('.toc-arrow');
+      if (body) body.classList.toggle('open');
+      if (arrow) arrow.classList.toggle('open');
+    });
+  }
+  var wrap = document.getElementById('toc-wrap-hdr');
+  if (wrap) {
+    wrap.addEventListener('click', function(){
+      var body = document.getElementById('toc-nav-body');
+      var arrow = wrap.querySelector('.toc-arrow');
+      if (body) body.classList.toggle('open');
+      if (arrow) arrow.classList.toggle('open');
+    });
+  }
+})();
+</script>
 </body></html>
+<script>
+(function(){
+  var links = document.querySelectorAll('.toc-body a[href^="#"]');
+  if (!links.length) return;
+  var sectionIds = Array.from(links).map(function(a){ return a.getAttribute('href').slice(1); });
+  var headings = sectionIds.map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  if (!headings.length) return;
+  function setActive(id) {
+    links.forEach(function(a){
+      a.classList.toggle('toc-active', a.getAttribute('href') === '#' + id);
+    });
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if (e.isIntersecting) setActive(e.target.id); });
+  }, { rootMargin: '-10px 0px -85% 0px' });
+  headings.forEach(function(h){ io.observe(h); });
+  if (headings[0]) setActive(headings[0].id);
+})();
+</script>

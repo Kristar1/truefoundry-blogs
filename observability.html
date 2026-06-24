@@ -20,11 +20,11 @@
     background: var(--bg); color: var(--text);
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 16px; line-height: 1.75;
-    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 6rem;
+    padding: 2rem 1.5rem 6rem;
   }
   code, pre, .mono { font-family: 'IBM Plex Mono', monospace; }
-  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
-  h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.15; margin-bottom: .75rem; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin: 2rem 0 .75rem; line-height: 1.3; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
   h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .6rem; }
   p { margin-bottom: 1rem; }
   a { color: #60a5fa; text-decoration: none; }
@@ -129,19 +129,66 @@
   .tag-list { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0 1rem; }
   .itag { font-size: .73rem; font-family: 'IBM Plex Mono', monospace; padding: .18rem .55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
   .itag.hi { border-color: #60a5fa55; color: #60a5fa; background: #0a1220; }
+
+/* ── Navigation Dots as Links ── */
+a.dot { display: block; text-decoration: none; cursor: pointer; transition: transform .15s, opacity .15s; }
+a.dot:hover { transform: scale(1.6); opacity: .85; }
+
+/* ── Table of Contents ── */
+.toc-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin: 1.5rem 0; overflow: hidden; }
+.toc-header { display: flex; justify-content: space-between; align-items: center; padding: .7rem 1.2rem; }
+.toc-title { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: #60a5fa; font-weight: 700; }
+.toc-arrow { color: var(--muted); font-size: .8rem; transition: transform .2s ease; line-height: 1; }
+.toc-arrow.open { transform: rotate(180deg); }
+.toc-body { padding: .4rem 1.2rem .9rem; }
+.toc-body ol { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr; gap: .2rem 1.5rem; }
+.toc-body li { font-size: .82rem; }
+.toc-body a { color: var(--muted); text-decoration: none; line-height: 1.6; display: block; padding: .1rem 0; border-left: 2px solid transparent; padding-left: .5rem; }
+.toc-body a:hover { color: #60a5fa; border-left-color: #60a5fa; }
+.toc-body a.toc-active { color: #60a5fa; border-left-color: #60a5fa; font-weight: 600; }
+@media (max-width: 900px) {
+  .toc-header { cursor: pointer; user-select: none; }
+  .toc-body { display: none; }
+  .toc-body.open { display: block; }
+}
+@media (min-width: 901px) {
+  .toc-arrow { display: none; }
+}
+
+/* ── Page Layout ── */
+.page-layout { display: grid; grid-template-columns: 1fr 260px; gap: 2.5rem; max-width: 1200px; margin: 0 auto; align-items: start; }
+.article-body { min-width: 0; }
+.toc-sidebar { position: sticky; top: 2rem; }
+.toc-sidebar .toc-wrap, .toc-sidebar .toc { margin: 0; }
+@media (max-width: 900px) {
+  .page-layout { grid-template-columns: 1fr; }
+  .toc-sidebar { position: static; order: -1; }
+}
 </style>
+
+<div class="page-layout">
+  <article class="article-body">
 </head>
 <body>
 <div class="series-bar">
 <span class="tag-pill">AI Gateway Series</span>
-<div class="series-dots">
-<div class="dot"></div><div class="dot"></div><div class="dot"></div>
-<div class="dot"></div><div class="dot"></div><div class="dot"></div>
-<div class="dot"></div><div class="dot active" title="Blog 8 — Observability"></div>
-<div class="dot"></div><div class="dot"></div><div class="dot"></div>
-<div class="dot"></div><div class="dot"></div><div class="dot"></div>
-<div class="dot"></div>
-</div>
+      <div class="series-dots">
+    <a href="https://www.truefoundry.com/model-coverage" class="dot" title="Blog 1 — Model Coverage &amp; API Unification"></a>
+    <a href="https://www.truefoundry.com/multitenant" class="dot" title="Blog 2 — Multi-tenancy &amp; Team Management"></a>
+    <a href="https://www.truefoundry.com/routing" class="dot" title="Blog 3 — Routing &amp; Load Balancing"></a>
+    <a href="https://www.truefoundry.com/caching" class="dot" title="Blog 4 — Semantic Caching &amp; Performance"></a>
+    <a href="https://www.truefoundry.com/finops" class="dot" title="Blog 5 — Cost Control &amp; FinOps"></a>
+    <a href="https://www.truefoundry.com/goverence" class="dot" title="Blog 6 — Governance &amp; Policy"></a>
+    <a href="https://www.truefoundry.com/guardrail" class="dot" title="Blog 7 — Guardrails &amp; Content Safety"></a>
+    <a href="https://www.truefoundry.com/observability-dark" class="dot active" title="Blog 8 — Observability &amp; Tracing"></a>
+    <a href="https://www.truefoundry.com/mcp-gateway-tool" class="dot" title="Blog 9 — MCP Gateway &amp; Tool Governance"></a>
+    <a href="https://www.truefoundry.com/agent-gateway-stateful" class="dot" title="Blog 10 — Agent Gateway: Stateful Execution"></a>
+    <a href="https://www.truefoundry.com/deployment" class="dot" title="Blog 11 — Deployment &amp; Infrastructure"></a>
+    <a href="https://www.truefoundry.com/resisdency" class="dot" title="Blog 12 — Data Residency &amp; Sovereignty"></a>
+    <a href="https://www.truefoundry.com/prompt-mgmt" class="dot" title="Blog 13 — Prompt Management &amp; GitOps"></a>
+    <a href="https://www.truefoundry.com/prompt-playground" class="dot" title="Blog 14 — Prompt Playground &amp; Testing"></a>
+    <a href="https://www.truefoundry.com/security" class="dot" title="Blog 15 — Security &amp; Zero Trust"></a>
+  </div>
 <span class="tag-pill active">Blog 8 of 15</span>
 </div>
 <h1>Observability in the Dark:<br/>Logs, Tracing &amp; OpenTelemetry Across Four AI Gateways</h1>
@@ -161,7 +208,7 @@
 <span class="mpill google">Gemini 3 Flash (preview)</span>
 </div>
 <!-- ══════ §0 TL;DR ══════ -->
-<h2>§0 — TL;DR &amp; Quick-Picks</h2>
+<h2 id="section-0">§0 — TL;DR &amp; Quick-Picks</h2>
 <div class="scenario">
 <div class="scenario-title">🔍 Real-World Scenario: The Invisible 15-Second Bottleneck</div>
 <p>Your production RAG pipeline takes roughly 15 seconds end-to-end. On a Thursday afternoon, a subset of enterprise users starts reporting incomplete answers — not wrong, not errored, just suspiciously shallow. Your monitoring dashboard shows no 5xx spikes, latency p99 looks flat, and the LLM provider's status page is green.</p>
@@ -191,7 +238,7 @@
 </div>
 </div>
 <!-- ══════ §1 WHY GATEWAY-LAYER OBSERVABILITY ══════ -->
-<h2>§1 — Why the Gateway Is the Right Instrumentation Point</h2>
+<h2 id="section-1">§1 — Why the Gateway Is the Right Instrumentation Point</h2>
 <p>LLM providers expose minimal telemetry. An <code>/v1/chat/completions</code> response contains token counts and a finish reason — nothing you'd want in a trace. The gateway sits at the single choke-point where <em>every</em> LLM call passes. That positional advantage means it can:</p>
 <ul>
 <li><strong>Capture request and response payloads</strong> before they reach application code, without modifying application code.</li>
@@ -250,7 +297,7 @@
 <div class="img-caption">The AI gateway sits at the single choke-point where every LLM call passes — the natural instrumentation layer for prompt content, token accounting, and distributed trace context.</div>
 <hr/>
 <!-- ══════ §2 LITELLM ══════ -->
-<div class="vendor-header litellm">
+<div id="vendor-litellm" class="vendor-header litellm">
 <span class="vendor-badge">LiteLLM</span>
 <span class="vendor-title">§2 — Callback-Driven Polyglot Logging</span>
 </div>
@@ -376,7 +423,7 @@ class SIEMLogger(CustomLogger):
 <div class="img-caption">LiteLLM's callback dispatcher fans out to supported backends; individual hooks can be synchronous or asynchronous depending on callback type and runtime. Editorial reconstruction based on LiteLLM logging docs.</div>
 <hr/>
 <!-- ══════ §3 KONG ══════ -->
-<div class="vendor-header kong">
+<div id="vendor-kong" class="vendor-header kong">
 <span class="vendor-badge">Kong</span>
 <span class="vendor-title">§3 — Plugin-Composable Observability</span>
 </div>
@@ -490,7 +537,7 @@ histogram_quantile(
 <div class="img-caption">Kong's AI observability is a plugin composition. AI Prometheus metrics require both <code>ai_metrics: true</code> on the Prometheus plugin and <code>logging.log_statistics: true</code> on the AI Proxy plugin; cost metrics additionally depend on pricing being configured for the routed model. Editorial reconstruction based on Kong AI Gateway docs.</div>
 <hr/>
 <!-- ══════ §4 PORTKEY ══════ -->
-<div class="vendor-header portkey">
+<div id="vendor-portkey" class="vendor-header portkey">
 <span class="vendor-badge">Portkey</span>
 <span class="vendor-title">§4 — Analytics-First SaaS Observability</span>
 </div>
@@ -605,7 +652,7 @@ client.feedback.create(
 <div class="img-caption">Portkey auto-logs every request. In hybrid deployment, AI traffic stays on the VPC data plane while Portkey-managed dashboards, non-sensitive metadata, and aggregated metrics remain control-plane managed. Enterprise docs additionally describe Prometheus metrics and OTLP / complete-log export paths. Editorial reconstruction based on Portkey observability and enterprise architecture docs.</div>
 <hr/>
 <!-- ══════ §5 TRUEFOUNDRY ══════ -->
-<div class="vendor-header tf">
+<div id="vendor-tf" class="vendor-header tf">
 <span class="vendor-badge">TrueFoundry</span>
 <span class="vendor-title">§5 — Built-In Monitor, Trace Export &amp; Deployment-Dependent Data Paths</span>
 </div>
@@ -723,7 +770,7 @@ service:
 <div class="img-caption">TrueFoundry combines built-in Monitor views with configurable trace routing, retention, metadata, feedback-on-trace workflows, and customer-managed metrics / alerting paths. Request logs are exposed as traces, and routing remains deployment- and destination-dependent.</div>
 <hr/>
 <!-- ══════ §6 DASHBOARD FLEXIBILITY ══════ -->
-<h2>§6 — Trace Dashboard Flexibility Across Platforms</h2>
+<h2 id="section-6">§6 — Trace Dashboard Flexibility Across Platforms</h2>
 <p>All four gateways can ultimately feed Prometheus metrics, but the setup effort and out-of-box experience varies significantly. A compliance team needs audit-oriented log tables. A product team needs per-user cost heatmaps. An ML team needs prompt version performance comparisons.</p>
 <h3>Grafana + Prometheus / Grafana</h3>
 <p>All four gateways can feed metrics into a Prometheus / Grafana-style workflow, but the operator experience differs. LiteLLM and Kong are classic bring-your-own-dashboard products. Portkey has a built-in dashboard and also documents Prometheus metrics for enterprise/self-hosted deployments. TrueFoundry now sits in the middle: it documents a built-in Metrics Dashboard in Monitor, while also exposing Prometheus-compatible metrics and Grafana integration for supported customer-hosted gateway deployments.</p>
@@ -733,7 +780,7 @@ service:
 <p><strong>LiteLLM</strong>, <strong>Kong</strong>, and <strong>TrueFoundry</strong> all document OTLP-friendly tracing paths that can be visualized in Jaeger or Tempo / Jaeger. <strong>Portkey</strong> still centers its own trace UI, but enterprise docs now also describe OTEL-style export and complete-log export options for self-hosted / enterprise use cases. So the accurate distinction is no longer “Portkey cannot”; it is “Portkey's built-in UI is primary, while self-managed backends are an enterprise/export-path story.”</p>
 <hr/>
 <!-- ══════ §7 FEATURE MATRIX ══════ -->
-<h2>§7 — Feature Matrix</h2>
+<h2 id="section-7">§7 — Feature Matrix</h2>
 <p>Cross-referenced against each vendor's official public documentation as of March 2026. <span class="check">✅</span> = native, <span class="partial">⚠</span> = possible with customization or caveats, <span class="cross">❌</span> = not natively supported.</p>
 <div class="matrix-wrap">
 <table>
@@ -932,7 +979,7 @@ service:
 </div>
 <hr/>
 <!-- ══════ §8 VERDICT ══════ -->
-<h2>§8 — Editorial Verdict</h2>
+<h2 id="section-8">§8 — Editorial Verdict</h2>
 <p>Editorial assessments as of March 25, 2026.</p>
 <div class="verdict-grid">
 <div class="verdict-card litellm">
@@ -997,7 +1044,7 @@ service:
 <p style="font-size:.78rem; color:var(--muted); text-align:center; font-family:'IBM Plex Mono',monospace; margin-top:-.4rem;">Axes are editorial assessments as of March 2026. TrueFoundry reflects a built-in Monitor plus optional export posture rather than a pure bring-your-own-backend story.</p>
 <hr/>
 <!-- ══════ §9 REFERENCES ══════ -->
-<h2>§9 — References</h2>
+<h2 id="section-9">§9 — References</h2>
 <ol class="ref-list">
 <li><a href="https://docs.litellm.ai/docs/proxy/logging" target="_blank">LiteLLM — Proxy Logging &amp; Callbacks</a></li>
 <li><a href="https://docs.litellm.ai/docs/observability/opentelemetry_integration" target="_blank">LiteLLM — OpenTelemetry Integration</a></li>
@@ -1024,6 +1071,32 @@ service:
   AI Gateway Series · Blog 8 of 15  ·  March 25, 2026  ·  All vendor names are trademarks of their respective owners.<br/>
   Feature claims cross-referenced against official public documentation. Verify before production decisions.
 </p>
+  </article>
+  <aside class="toc-sidebar">
+    <!-- ── TABLE OF CONTENTS ── -->
+    <div class="toc-wrap">
+      <div class="toc-header" id="toc-wrap-hdr">
+        <span class="toc-title">Table of Contents</span>
+        <span class="toc-arrow">&#9662;</span>
+      </div>
+      <nav class="toc-body" id="toc-nav-body">
+        <ol>
+          <li><a href="#section-0">§0 — TL;DR &amp; Quick-Picks</a></li>
+          <li><a href="#section-1">§1 — Why the Gateway Is the Right Instrumentation Point</a></li>
+          <li><a href="#vendor-litellm">§2 — LiteLLM: Callback-Driven Polyglot Logging</a></li>
+          <li><a href="#vendor-kong">§3 — Kong: Plugin-Composable Observability</a></li>
+          <li><a href="#vendor-portkey">§4 — Portkey: Analytics-First SaaS Observability</a></li>
+          <li><a href="#vendor-tf">§5 — TrueFoundry: Built-In Monitor &amp; Trace Export</a></li>
+          <li><a href="#section-6">§6 — Trace Dashboard Flexibility</a></li>
+          <li><a href="#section-7">§7 — Feature Matrix</a></li>
+          <li><a href="#section-8">§8 — Editorial Verdict</a></li>
+          <li><a href="#section-9">§9 — References</a></li>
+        </ol>
+      </nav>
+    </div>
+  </aside>
+</div>
+
 <script>
 (function () {
   function flashCopied(btn) {
@@ -1059,5 +1132,48 @@ service:
   });
 })();
 </script>
+
+<script>
+(function(){
+  // TOC toggle on mobile
+  var hdr = document.getElementById('toc-toggle-hdr');
+  if (hdr) {
+    hdr.addEventListener('click', function(){
+      var body = document.getElementById('toc-list-body');
+      var arrow = hdr.querySelector('.toc-arrow');
+      if (body) body.classList.toggle('open');
+      if (arrow) arrow.classList.toggle('open');
+    });
+  }
+  var wrap = document.getElementById('toc-wrap-hdr');
+  if (wrap) {
+    wrap.addEventListener('click', function(){
+      var body = document.getElementById('toc-nav-body');
+      var arrow = wrap.querySelector('.toc-arrow');
+      if (body) body.classList.toggle('open');
+      if (arrow) arrow.classList.toggle('open');
+    });
+  }
+})();
+</script>
 </body>
 </html>
+<script>
+(function(){
+  var links = document.querySelectorAll('.toc-body a[href^="#"]');
+  if (!links.length) return;
+  var sectionIds = Array.from(links).map(function(a){ return a.getAttribute('href').slice(1); });
+  var headings = sectionIds.map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  if (!headings.length) return;
+  function setActive(id) {
+    links.forEach(function(a){
+      a.classList.toggle('toc-active', a.getAttribute('href') === '#' + id);
+    });
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if (e.isIntersecting) setActive(e.target.id); });
+  }, { rootMargin: '-10px 0px -85% 0px' });
+  headings.forEach(function(h){ io.observe(h); });
+  if (headings[0]) setActive(headings[0].id);
+})();
+</script>
