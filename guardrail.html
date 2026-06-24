@@ -4513,14 +4513,27 @@ rules:
     </script>
   <script>/* toc-scroll-offset */
 (function(){
+  function smoothScroll(to, duration) {
+    var startY = window.scrollY;
+    var diff = to - startY;
+    var startT = performance.now();
+    function ease(t){ return t<0.5?2*t*t:-1+(4-2*t)*t; }
+    function step(now){
+      var t = Math.min((now-startT)/duration, 1);
+      window.scrollTo(0, startY + diff * ease(t));
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
   document.querySelectorAll('.toc-body a[href^="#"]').forEach(function(a){
     a.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
       var id = this.getAttribute('href').slice(1);
       var target = document.getElementById(id);
       if (!target) return;
-      e.preventDefault();
       var top = target.getBoundingClientRect().top + window.scrollY - 100;
-      window.scrollTo({ top: top, behavior: 'smooth' });
+      smoothScroll(top, 500);
     });
   });
 })();

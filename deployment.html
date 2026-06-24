@@ -134,7 +134,7 @@ a.dot:hover { transform: scale(1.6); opacity: .85; }
 .toc-body li { font-size: .82rem; }
 .toc-body a { color: var(--muted); text-decoration: none; line-height: 1.6; display: block; padding: .1rem 0; border-left: 2px solid transparent; padding-left: .5rem; }
 .toc-body a:hover { color: #60a5fa; border-left-color: #60a5fa; }
-.toc-body a.toc-active { color: #60a5fa; border-left-color: #60a5fa; font-weight: 600; }
+.toc-sidebar .toc-body a.toc-active { color: #60a5fa !important; border-left-color: #60a5fa !important; font-weight: 600 !important; }
 @media (max-width: 900px) {
   .toc-header { cursor: pointer; user-select: none; }
   .toc-body { display: none; }
@@ -1029,14 +1029,27 @@ curl https://gateway.internal.mycompany.com/v1/chat/completions \
 </script>
 <script>/* toc-scroll-offset */
 (function(){
+  function smoothScroll(to, duration) {
+    var startY = window.scrollY;
+    var diff = to - startY;
+    var startT = performance.now();
+    function ease(t){ return t<0.5?2*t*t:-1+(4-2*t)*t; }
+    function step(now){
+      var t = Math.min((now-startT)/duration, 1);
+      window.scrollTo(0, startY + diff * ease(t));
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
   document.querySelectorAll('.toc-body a[href^="#"]').forEach(function(a){
     a.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
       var id = this.getAttribute('href').slice(1);
       var target = document.getElementById(id);
       if (!target) return;
-      e.preventDefault();
       var top = target.getBoundingClientRect().top + window.scrollY - 100;
-      window.scrollTo({ top: top, behavior: 'smooth' });
+      smoothScroll(top, 500);
     });
   });
 })();
