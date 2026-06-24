@@ -871,7 +871,8 @@
           margin-top: 2rem;
         }
       }
-    </style>
+    html { scroll-behavior: smooth; }
+</style>
   </head>
   <body>
     <!-- ═══════════════ HEADER ═══════════════ -->
@@ -4510,5 +4511,19 @@ rules:
         if (headings[0]) setActive(headings[0].id);
       })();
     </script>
-  </body>
+  <script>/* toc-scroll-offset */
+(function(){
+  document.querySelectorAll('.toc-body a[href^="#"]').forEach(function(a){
+    a.addEventListener('click', function(e){
+      var id = this.getAttribute('href').slice(1);
+      var target = document.getElementById(id);
+      if (!target) return;
+      e.preventDefault();
+      var top = target.getBoundingClientRect().top + window.scrollY - 100;
+      window.scrollTo({ top: top, behavior: 'smooth' });
+    });
+  });
+})();
+</script>
+</body>
 </html>
