@@ -1133,19 +1133,34 @@ print(resp.headers.get(<span class="str">"server-timing"</span>))
 (function(){
   var links = document.querySelectorAll('.toc-body a[href^="#"]');
   if (!links.length) return;
-  var sectionIds = Array.from(links).map(function(a){ return a.getAttribute('href').slice(1); });
-  var headings = sectionIds.map(function(id){ return document.getElementById(id); }).filter(Boolean);
-  if (!headings.length) return;
+  var ids = Array.from(links).map(function(a){ return a.getAttribute('href').slice(1); });
+  var heads = ids.map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  if (!heads.length) return;
   function setActive(id) {
     links.forEach(function(a){
-      a.classList.toggle('toc-active', a.getAttribute('href') === '#' + id);
+      var on = a.getAttribute('href') === '#' + id;
+      a.classList.toggle('toc-active', on);
+      if (on) {
+        a.style.setProperty('color', '#60a5fa', 'important');
+        a.style.setProperty('border-left-color', '#60a5fa', 'important');
+        a.style.setProperty('font-weight', '600', 'important');
+      } else {
+        a.style.removeProperty('color');
+        a.style.removeProperty('border-left-color');
+        a.style.removeProperty('font-weight');
+      }
     });
   }
-  var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(e){ if (e.isIntersecting) setActive(e.target.id); });
-  }, { rootMargin: '-10px 0px -85% 0px' });
-  headings.forEach(function(h){ io.observe(h); });
-  if (headings[0]) setActive(headings[0].id);
+  function update() {
+    var line = window.scrollY + 130;
+    var cur = heads[0].id;
+    for (var i = 0; i < heads.length; i++) {
+      if (heads[i].getBoundingClientRect().top + window.scrollY <= line) cur = heads[i].id;
+    }
+    setActive(cur);
+  }
+  window.addEventListener('scroll', update, { passive: true });
+  update();
 })();
 </script>
 <script>/* toc-scroll-offset */
@@ -1154,24 +1169,28 @@ print(resp.headers.get(<span class="str">"server-timing"</span>))
     var startY = window.scrollY;
     var diff = to - startY;
     var startT = performance.now();
+    var html = document.documentElement;
+    html.style.scrollBehavior = 'auto';
     function ease(t){ return t<0.5?2*t*t:-1+(4-2*t)*t; }
     function step(now){
       var t = Math.min((now-startT)/duration, 1);
-      window.scrollTo(0, startY + diff * ease(t));
-      if (t < 1) requestAnimationFrame(step);
+      window.scrollTo(0, Math.round(startY + diff * ease(t)));
+      if (t < 1) { requestAnimationFrame(step); } else { html.style.scrollBehavior = ''; }
     }
     requestAnimationFrame(step);
   }
-  document.querySelectorAll('.toc-body a[href^="#"]').forEach(function(a){
-    a.addEventListener('click', function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      var id = this.getAttribute('href').slice(1);
-      var target = document.getElementById(id);
-      if (!target) return;
-      var top = target.getBoundingClientRect().top + window.scrollY - 100;
-      smoothScroll(top, 500);
-    });
-  });
+  /* capture=true fires before Webflow's bubble-phase document listener */
+  document.addEventListener('click', function(e){
+    var link = e.target.closest && e.target.closest('.toc-body a[href^="#"]');
+    if (!link) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    var id = link.getAttribute('href').slice(1);
+    var target = document.getElementById(id);
+    if (!target) return;
+    var top = target.getBoundingClientRect().top + window.scrollY - 100;
+    smoothScroll(top, 500);
+  }, true);
 })();
 </script>
